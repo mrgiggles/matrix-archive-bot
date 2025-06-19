@@ -11,12 +11,15 @@ let { root, historicalRoot, rooms, sanitizeRoomName, applyModifications } = requ
 let { makeDb } = require('./scripts/make-dbs.js');
 
 (async () => {
+  let dbDir = path.join(__dirname, 'sql');
+  fs.mkdirSync(dbDir, { recursive: true });
   for (let { room, historical } of rooms) {
     let jsonDir = path.join(historical ? historicalRoot : root, room);
     let sanitized = sanitizeRoomName(room);
-    let dbFile = path.join(__dirname, 'sql', sanitized + '.sqlite3');
+    let dbFile = path.join(dbDir, sanitized + '.sqlite3');
     let lastAddedFile = path.join(__dirname, 'sql', sanitized + '-last-added.json');
     if (!fs.existsSync(dbFile)) {
+      console.log(`DB does not exist, calling makeDb(${jsonDir}, ${dbFile})`);
       await makeDb(jsonDir, dbFile);
     }
     if (!fs.existsSync(dbFile)) {

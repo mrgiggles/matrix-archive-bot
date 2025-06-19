@@ -16,11 +16,13 @@ let { root, historicalRoot, rooms, sanitizeRoomName, applyModifications } = requ
 
 if (require.main === module) {
   (async () => {
+    let dbDir = path.join(__dirname, '..', 'sql');
+    fs.mkdirSync(dbDir, { recursive: true });
     for (let { room, historical } of rooms) {
       console.log(`Making DB for ${room}`);
       let jsonDir = path.join(historical ? historicalRoot : root, room);
       let sanitized = sanitizeRoomName(room);
-      let dbFile = path.join(__dirname, '..', 'sql', sanitized + '.sqlite3');
+      let dbFile = path.join(dbDir, sanitized + '.sqlite3');
       await makeDb(jsonDir, dbFile);
       execFileSync(path.join(__dirname, 'split-db.sh'), [dbFile, path.join(__dirname, '..', 'logs', 'docs', '_indexes', sanitized)]);
     }
