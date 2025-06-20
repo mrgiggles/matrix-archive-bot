@@ -25,7 +25,7 @@ let roomsWithDays = rooms.map(({ room, historical }) => {
 }).filter(x => x.days.length > 0);
 
 for (let { room, historical, days } of roomsWithDays) {
-  let roomDir = path.join('logs', 'docs', sanitizeRoomName(room));
+  let roomDir = path.join('docs', sanitizeRoomName(room));
   fs.mkdirSync(roomDir, { recursive: true });
   let roomJsonDir = path.join(historical ? historicalRoot : root, room);
   let alreadyDoneHtml = fs
@@ -42,7 +42,7 @@ for (let { room, historical, days } of roomsWithDays) {
 
   let alreadyDone = new Set(alreadyDoneHtml);
 
-  let hasSearch = fs.existsSync(path.join('logs', 'docs', '_indexes', sanitizeRoomName(room), 'config.json'));
+  let hasSearch = fs.existsSync(path.join('docs', '_indexes', sanitizeRoomName(room), 'config.json'));
 
   for (let i = 0; i < days.length; ++i) {
     let day = days[i];
@@ -74,7 +74,7 @@ for (let { room, historical, days } of roomsWithDays) {
 }
 
 if (roomsWithDays.length > 0) {
-  let indexDir = path.join('logs', 'docs');
+  let indexDir = path.join('docs');
   fs.mkdirSync(indexDir, { recursive: true });
   let index = renderDay(roomsWithDays, 'index', '', [], null, null, false);
   fs.writeFileSync(path.join(indexDir, 'index.html'), index, 'utf8');
