@@ -103,6 +103,11 @@ const MESSAGE_AND_MEMBER_FILTER = `{"types":["m.room.message","m.room.member"],"
       let name = state.find(e => e.type === 'm.room.name')?.content.name ?? 'UNKNOWN';
       console.log(`looking at ${name}`);
 
+      if (config.include_rooms && !config.include_rooms.includes(name)) {
+        console.log(`  skipping because not in include_rooms`);
+        return;
+      }
+
       let createEvent = state.find(e => e.type === 'm.room.create');
       if (createEvent == null) {
         console.error(`could not find create event for room ${roomId}`);
