@@ -1,0 +1,78 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2024-06-07</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2024-06-07<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2024-06-06" class="nav-link"><span>prev</span></a>
+<a href="2024-06-08" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Fri Jun 07 2024 03:26:27 GMT-0700 (Pacific Daylight Time)">10:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> Yeah it should just be moving code. If I was still using hg, I used to be able to do hg cp to duplicate the file then remove the stuff I was moving, and then the diffs would understand it all. But I don’t know the git equivalent</blockquote></mx-reply><p>What I did is that <a href="https://phabricator.services.mozilla.com/D212797?download=true">I pulled the patch out of phabricator</a>, applied it locally, and ran:</p>
+<pre><code class="language-sh">$ curl https://phabricator.services.mozilla.com/D212797?download=true | patch -p1 &amp;&amp; git commit -am "to review"
+$ git show --color-moved=zebra --diff-algorithm=patience
+</code></pre>
+<p>This highlights the blocks which are moved without modifications, and the rest are addition and removal as usual. Then the review is just making sure moved blocks are coherent. (<code>--diff-algorithm=patience</code> was needed to simplify the task)</p>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Fri Jun 07 2024 05:06:09 GMT-0700 (Pacific Daylight Time)">12:06</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-16" title="@rhunt:mozilla.org">Ryan Hunt</span>&gt;</div></td><td class="msg-cell"><span class="nick-2">nbp</span>: okay, good to hear there’s something to help review it. Let me know if you have a suggestion for me next time, I want to continue splitting off the wasm Ion code into their own files, so there will be more patches. And I’d like to make them easy to review</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Fri Jun 07 2024 05:34:11 GMT-0700 (Pacific Daylight Time)">12:34</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell"><p>My opinion on IonMonkey organization is that we want 2 things we are opposite of each others.</p>
+<ul>
+<li>We want locality of thoughts, where the MIR classes are declared, defined, range-analyzed, lowered, and compiled in the same files.</li>
+<li>We want locality of computation, where all similar operations are co-located to reduce the number of cache lines and cache misses.</li>
+</ul>
+</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Fri Jun 07 2024 05:35:53 GMT-0700 (Pacific Daylight Time)">12:35</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell">I had an idea for a while that we could have a single header file per MIR, and various #ifdef surrounding each functions, such that the files could be included in multiple headers / cpp files to recover the assembly co-location, but I am not sure this would be ergonomic in terms of usage.</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Fri Jun 07 2024 13:15:24 GMT-0700 (Pacific Daylight Time)">20:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">confession: I keep writing tests... and they keep passing... and yet I still think this patch is maybe broken. </td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Fri Jun 07 2024 13:15:28 GMT-0700 (Pacific Daylight Time)">20:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@botzilla:mozilla.org">botzilla</span>&gt;</div></td><td class="msg-cell">Seen! Your update will eventually appear on <a href="https://robotzilla.github.io/histoire">https://robotzilla.github.io/histoire</a></td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Fri Jun 07 2024 13:24:51 GMT-0700 (Pacific Daylight Time)">20:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><p>Ok -- here's a realm question.</p>
+<pre><code class="language-js">g = newGlobal({ newCompartment: true });
+g.eval(`
+    regular = /s/
+`);
+
+
+let r = /s/;
+r.exec = g.regular.exec;
+assertEq(isCCW(r.exec), true)
+res = RegExp.prototype[Symbol.match].call(r, "sss")
+res instanceof Array // ??
+</code></pre>
+<p>Should res be allocated in the realm of g or in the current realm? <a href="https://tc39.es/ecma262/#sec-regexp.prototype-@@match">@@match is in the current realm</a>, and then returns [RegExpExec](<a href="https://tc39.es/ecma262/#sec-regexpexec">https://tc39.es/ecma262/#sec-regexpexec</a>, which looks up <code>exec</code> and calls it. This is in <code>g</code>'s realm; the invocation there should change into <code>g</code>'s realm, so the result should come from <code>g</code>'s realm right? (I thought we determined execution realm based on the origin realm of the function, not the <code>this</code> value)</p>
+<p>If the answer is that this should come from g's realm currently that's not true...</p>
+</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Fri Jun 07 2024 13:40:04 GMT-0700 (Pacific Daylight Time)">20:40</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@santiroche:mozilla.org">santiroche</span>&gt;</div></td><td class="msg-cell">Hey all, I'm trying to leverage the DEBUG compile mode to try to reproduce some of our GC related issues. Are there any other configurations like JS_GC_ZEAL that I should enable as part of this? Is JS_DEFAULT_ZEAL_FREQ (i.e 100) good enough for this approach ? </td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Fri Jun 07 2024 13:42:48 GMT-0700 (Pacific Daylight Time)">20:42</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">JS_GC_ZEAL covers a whole family of checks; what kind of setting have you been using? </td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Fri Jun 07 2024 13:43:32 GMT-0700 (Pacific Daylight Time)">20:43</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><a href="https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#596-636">https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#596-636</a></td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Fri Jun 07 2024 13:51:31 GMT-0700 (Pacific Daylight Time)">20:51</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@santiroche:mozilla.org">santiroche</span>&gt;</div></td><td class="msg-cell">oh man, I haven't been specifying anything other than defining it as part of the DEBUG build. </td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Fri Jun 07 2024 13:52:09 GMT-0700 (Pacific Daylight Time)">20:52</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@santiroche:mozilla.org">santiroche</span>&gt;</div></td><td class="msg-cell">I'm trying to increase the likelihood of a sporadic issue that manifests itself during GC cycles, any recommendation on what settings to use?</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Fri Jun 07 2024 14:20:33 GMT-0700 (Pacific Daylight Time)">21:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><span class="nick-3">santiroche</span>: Definitely you want to use the environment variable; if you're willing to run slow, I've found <code>JS_GC_ZEAL=2,1</code> to be brutally effective; this does a collection every allocation. You could also turn that down to <code>2,50</code> if that's too slow (every 50th allocation)</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Fri Jun 07 2024 14:21:27 GMT-0700 (Pacific Daylight Time)">21:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">For an embedding, you actually might find <code>JS_GC_ZEAL=1</code> to be your best bet -- that'll collect on root addition and removal, and will help highlight rooting errors</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Fri Jun 07 2024 14:22:16 GMT-0700 (Pacific Daylight Time)">21:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">Once you get a crash at reasonable frequency, highly recommend getting an <code>rr</code> trace (and even more recommend uploading said <code>rr</code> trace to <a href="https://pernos.co/">https://pernos.co/</a>)</td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Fri Jun 07 2024 14:40:57 GMT-0700 (Pacific Daylight Time)">21:40</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@santiroche:mozilla.org">santiroche</span>&gt;</div></td><td class="msg-cell">Thanks so much! Does combining many modes become a bit counterproductive? I was about to give "1;2;7;14;15,1" a try.</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Fri Jun 07 2024 14:42:12 GMT-0700 (Pacific Daylight Time)">21:42</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@twisniewski:mozilla.org">twisniewski</span>&gt;</div></td><td class="msg-cell">I'm guessing folks here have already seen <a href="https://blog.chromium.org/2024/06/how-chrome-achieved-highest-score-ever.html">https://blog.chromium.org/2024/06/how-chrome-achieved-highest-score-ever.html</a> ?</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Fri Jun 07 2024 14:44:24 GMT-0700 (Pacific Daylight Time)">21:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@twisniewski:mozilla.org">twisniewski</span>&gt;</div></td><td class="msg-cell">there might be some interesting GC notes there</td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Fri Jun 07 2024 14:48:49 GMT-0700 (Pacific Daylight Time)">21:48</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> Thanks so much! Does combining many modes become a bit counterproductive? I was about to give "1;2;7;14;15,1" a try.</blockquote></mx-reply>Honestly: no idea. I suspect the biggest issue would be slowing down without actually making your failure more likely; I'd try simpler before complicate</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Fri Jun 07 2024 14:52:22 GMT-0700 (Pacific Daylight Time)">21:52</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">(Everyone who runs jstests: run-don't-walk to rebase your trees on top of central... <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1900847">https://bugzilla.mozilla.org/show_bug.cgi?id=1900847</a> is a big perf win for running tests)</td></tr>
+  <tr class="msg" id="L20"><td class="ts-cell"><a class="ts" href="#L20" alt="Fri Jun 07 2024 15:55:16 GMT-0700 (Pacific Daylight Time)">22:55</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@jonco:mozilla.org">jonco</span>&gt;</div></td><td class="msg-cell"><span class="nick-3">santiroche</span>: Many of the zeal modes are mutually exclusive. Mode 10 is a good general purpose one that covers most things.</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

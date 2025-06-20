@@ -1,0 +1,52 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2024-03-22</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2024-03-22<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2024-03-21" class="nav-link"><span>prev</span></a>
+<a href="2024-03-23" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Thu Mar 21 2024 23:10:14 GMT-0700 (Pacific Daylight Time)">06:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@liam_g:mozilla.org">liam_g</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> Hello, I'm getting these weird runtime crashes around on startup around <code>JS::InitSelfHostedCode</code>. They are irregular and only occur about 1 in 4 times on startup. This never happened before last week, so I don't think it's any problem in SpiderMonkey--more likely a Visual Studio thing. Or maybe I have a race condition somewhere, but I don't currently see what it would be. Has anyone had this before? Stack trace is here: <a href="https://paste.mozilla.org/fw6dui3h">https://paste.mozilla.org/fw6dui3h</a></blockquote></mx-reply>Unfortunately this problem isn't going away. <code>JS::InitSetlfHostedCode()</code> crashes about half the time, even in fresh projects. I'm not expecting anyone to magically solve the problem, but it'd be helpful if I could get some expert input on what type of problem this is. Right now, my best guess is that something in a Visual Studio dll changed with an update or has been corrupted, and that this is somehow causing a race condition. Is this plausible, or not?</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Thu Mar 21 2024 23:10:40 GMT-0700 (Pacific Daylight Time)">06:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@liam_g:mozilla.org">liam_g</span>&gt;</div></td><td class="msg-cell">Here is the stack trace again: <a href="https://paste.mozilla.org/O9vYD2ym">https://paste.mozilla.org/O9vYD2ym</a></td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Thu Mar 21 2024 23:11:46 GMT-0700 (Pacific Daylight Time)">06:11</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@liam_g:mozilla.org">liam_g</span>&gt;</div></td><td class="msg-cell"><p>It crashes at ProcessExecutableMemory.cpp on line 794:</p>
+<pre><code>#  ifdef XP_WIN
+  DWORD oldProtect;
+  DWORD flags = ProtectionSettingToFlags(protection);
+  if (!VirtualProtect(pageStart, size, flags, &amp;oldProtect)) {  // &lt;&lt;&lt;&lt; here
+    return false;
+  }
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Fri Mar 22 2024 08:13:08 GMT-0700 (Pacific Daylight Time)">15:13</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> Unfortunately this problem isn't going away. <code>JS::InitSetlfHostedCode()</code> crashes about half the time, even in fresh projects. I'm not expecting anyone to magically solve the problem, but it'd be helpful if I could get some expert input on what type of problem this is. Right now, my best guess is that something in a Visual Studio dll changed with an update or has been corrupted, and that this is somehow causing a race condition. Is this plausible, or not?</blockquote></mx-reply>It's certainly very weird. What version of windows are you on?</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Fri Mar 22 2024 08:25:24 GMT-0700 (Pacific Daylight Time)">15:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@lgoodacre:matrix.org">liam_g</span>&gt;</div></td><td class="msg-cell">Windows 11</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Fri Mar 22 2024 08:36:04 GMT-0700 (Pacific Daylight Time)">15:36</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">Hmm.  (I can't see the stack anymore; is that ReprotectRegion?) </td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Fri Mar 22 2024 08:36:40 GMT-0700 (Pacific Daylight Time)">15:36</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">The reason I ask is mostly because we did recently change how this works Circa firefox 114 in <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1823634">Bug 1823634 - Reduce the CPU usage of antivirus software on Windows when Firefox is running</a></td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Fri Mar 22 2024 08:36:41 GMT-0700 (Pacific Daylight Time)">15:36</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@botzilla:mozilla.org">botzilla</span>&gt;</div></td><td class="msg-cell"><a href="https://bugzil.la/1823634">https://bugzil.la/1823634</a> — RESOLVED (yannis) — Reduce the CPU usage of antivirus software on Windows when Firefox is running</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Fri Mar 22 2024 08:38:01 GMT-0700 (Pacific Daylight Time)">15:38</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">But you've got the older battle tested implementation</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Fri Mar 22 2024 08:41:53 GMT-0700 (Pacific Daylight Time)">15:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">... the never happened before last week is gently worrisome if this is a slow roll out of some windows update. <span class="nick-12">liam_g</span> can you open a bug with your stack ? (I'd like to peek a crash-stats when I get a minute)</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Fri Mar 22 2024 09:47:48 GMT-0700 (Pacific Daylight Time)">16:47</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@liam_g:mozilla.org">liam_g</span>&gt;</div></td><td class="msg-cell">Sure, here is a bug report: <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1887084">https://bugzilla.mozilla.org/show_bug.cgi?id=1887084</a></td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Fri Mar 22 2024 09:48:19 GMT-0700 (Pacific Daylight Time)">16:48</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@liam_g:mozilla.org">liam_g</span>&gt;</div></td><td class="msg-cell">It's really weird that my pastebin link disappeared. I clicked the 21 day option.</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

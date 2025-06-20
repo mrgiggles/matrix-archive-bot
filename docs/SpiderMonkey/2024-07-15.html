@@ -1,0 +1,99 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2024-07-15</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2024-07-15<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2024-07-13" class="nav-link"><span>prev</span></a>
+<a href="2024-07-16" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Mon Jul 15 2024 00:46:44 GMT-0700 (Pacific Daylight Time)">07:46</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@debadree25:mozilla.org">debadree25</span>&gt;</div></td><td class="msg-cell">how does one call the equivalent of <a href="https://arai-a.github.io/ecma262-compare/snapshot.html?pr=3000#await">https://arai-a.github.io/ecma262-compare/snapshot.html?pr=3000#await</a> from the C++ apis? (apologies if i dont have the right intuition for this i imagine it is possible to do the equivalent of await &lt;some expr&gt; from C++ too?) </td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Mon Jul 15 2024 00:49:49 GMT-0700 (Pacific Daylight Time)">07:49</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">The Await itself is implemented as <a href="https://searchfox.org/mozilla-central/rev/54a5c4f14f3eb514a29e0cebcb5a095144bcd450/js/src/builtin/Promise.cpp#5487">InternalAwait</a></td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Mon Jul 15 2024 00:50:20 GMT-0700 (Pacific Daylight Time)">07:50</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">and each specific consumer is implemented as wrapper around it <a href="https://searchfox.org/mozilla-central/search?q=InternalAwait&amp;redirect=false">https://searchfox.org/mozilla-central/search?q=InternalAwait&amp;redirect=false</a></td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Mon Jul 15 2024 00:51:12 GMT-0700 (Pacific Daylight Time)">07:51</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@debadree25:mozilla.org">debadree25</span>&gt;</div></td><td class="msg-cell">ah so best way to go would be to define a specific consumer for my case?</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Mon Jul 15 2024 00:51:38 GMT-0700 (Pacific Daylight Time)">07:51</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">the handler can be either a callable value, or an enum variant <a href="https://searchfox.org/mozilla-central/rev/54a5c4f14f3eb514a29e0cebcb5a095144bcd450/js/src/builtin/Promise.h#32">js::PromiseHandler</a></td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Mon Jul 15 2024 00:53:00 GMT-0700 (Pacific Daylight Time)">07:53</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so, for internal promise handling with closures for handlers, you can add a new wrapper around the <code>InternalAwait</code>, and dedicate handler variant for <code>PromiseHandler</code>, and add the corresponding code to the reaction job</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Mon Jul 15 2024 00:53:53 GMT-0700 (Pacific Daylight Time)">07:53</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">The <code>AsyncFromSyncIteratorContinuation</code> case would be a good example</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Mon Jul 15 2024 00:59:18 GMT-0700 (Pacific Daylight Time)">07:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@debadree25:mozilla.org">debadree25</span>&gt;</div></td><td class="msg-cell">perfect! thank you!!</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Mon Jul 15 2024 08:29:17 GMT-0700 (Pacific Daylight Time)">15:29</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><span class="nick-10">jandem</span>: Just put up the newsletter PR: <a href="https://github.com/mozilla-spidermonkey/spidermonkey.dev/pull/180">https://github.com/mozilla-spidermonkey/spidermonkey.dev/pull/180</a></td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Mon Jul 15 2024 09:04:23 GMT-0700 (Pacific Daylight Time)">16:04</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><p>Was there any attempt to create a dedicate type for "specific <code>NativeObject*</code> subclass, or CCW of it", or "specific <code>NativeObject*</code> subclass, possibly from another compartment" ?  Now I'm experimenting with generating binding code from WebIDL for testing functions, with auto-generated type conversion. and I'm having trouble figuring out what the best way to interact with <code>NativeObject</code> subclasses and CCW, in the parameter type.<br>For example, <a href="https://searchfox.org/mozilla-central/rev/54a5c4f14f3eb514a29e0cebcb5a095144bcd450/js/src/builtin/TestingFunctions.cpp#4517">resolvePromise</a> testing function takes a promise object, where it can be CCW, and if it's CCW, the function needs to unwrap and enter its realm.<br>The type check and unwrap operation can be done in the auto-generated binding code, and the unwrapped <code>PromiseObject*</code> pointer can be passed to the implementation. But the problem is how to pass the "whether it's from another compartment" (in other words, "whether the implementation needs to enter its realm or not") to the implementation and how to handle it with less-error-prone way.<br>Possible options I can think of are the following:</p>
+<ul>
+<li>(a) Pass them as separate parameters <code>JS::Handle&lt;PromiseObject*&gt; promise</code> and <code>bool promiseIsFromAnotherCompartment</code>, and let the implementation enter the realm depending on <code>promiseIsFromAnotherCompartment</code> value (the CCW-ness becomes somewhat explicit, but still slightly error-prone)</li>
+<li>(b) Only check the type and unwrap-ability, but pass the original (not-yet-unwrapped) object as <code>JS::Handle&lt;JSObject*&gt; promise</code> parameter and let the implementation unwrap again, cast, and enter the realm if necessary  (this doesn't much improve the safety compared to current code)</li>
+<li>(c) Add dedicate type for "<code>PromiseObject*</code> possibly from another compartment", for example <code>JS::MaybeFromAnotherCompartment&lt;PromiseObject*&gt;</code>, and optionally enter its realm as part of converting it to <code>PromiseObject*</code> pointer</li>
+</ul>
+<p>currently I'm prototyping with (a), but if there was an attempt for (c)'s type, I'm curious.</p>
+</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Mon Jul 15 2024 09:07:31 GMT-0700 (Pacific Daylight Time)">16:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">I can't recall seeing the like of (c), but I think it would be an interesting thing to prototype. I worry that the type would be very viral -- i.e. the most common case would actually be maybeFromAnotherCompartment; the reverse might be a more useful type marker: <code>JS::SameCompartment&lt;T*&gt;</code>.</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Mon Jul 15 2024 09:09:26 GMT-0700 (Pacific Daylight Time)">16:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">yeah, <code>JS::SameCompartment</code> sounds interesting.  we have comments to clarify that fact in several places, and integrating it into type system will improve the safety</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Mon Jul 15 2024 09:12:43 GMT-0700 (Pacific Daylight Time)">16:12</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">and, yes, using the <code>MaybeFromAnotherCompartment</code> everywhere won't be realistic.  it can be used in limited cases, but now I feel that, having an explicit type for "maybe from another compartment" makes other cases without the type look like "it's from the same compartment", that may be risky</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Mon Jul 15 2024 09:15:13 GMT-0700 (Pacific Daylight Time)">16:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">There's definitely some challenges in this design space though; like, I imagine you'd have to assert on every de-reference, to handle the case where you have an AutoRealm with a SameCompartment already on the stack. </td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Mon Jul 15 2024 09:15:50 GMT-0700 (Pacific Daylight Time)">16:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">and then the question is do you assert in release, or just use this as a guidance type, but still suffer possible failures in prod; or do you design it like an option type, where it is fallible? </td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Mon Jul 15 2024 09:26:51 GMT-0700 (Pacific Daylight Time)">16:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">For <code>JS::SameCompartment</code>, I would expect it to be an almost transparent type, with debug-only assertions.<br>For <code>JS::MaybeFromAnotherCompartment</code>, the unwrap+EnterRealm operation should be necessary to get the underlying NativeObject type, so the branch around the compartment will exist also on release build.</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Mon Jul 15 2024 09:29:22 GMT-0700 (Pacific Daylight Time)">16:29</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><p>I was thinking something like the following, but now I realise that entering another realm requires wrapping existing local variables (<a href="https://searchfox.org/mozilla-central/rev/54a5c4f14f3eb514a29e0cebcb5a095144bcd450/js/src/builtin/TestingFunctions.cpp#4535-4537">example</a>), so, implicitly-and-conditionally entering another realm won't work in simple way...</p>
+<pre><code>bool resolvePromise(JS::Handle&lt;JS::MaybeFromAnotherCompartment&lt;PromiseObject*&gt;&gt; promiseArg) {
+  mozilla::Maybe&lt;AutoRealm&gt; ar;
+  JS::Rooted&lt;PromiseObject*&gt; promise(cx, promiseArg.get(cx, ar));
+  // Inside promise's realm.
+  // ...
+}
+
+class MaybeFromAnotherCompartment {
+  T* get(JSContext* cx, mozilla::Maybe&lt;AutoRealm&gt;&amp; ar) {
+    if (!isSameCompartment) {
+      ar.emplace(cx, value);
+    }
+    return value;
+  }
+  ...
+}
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Mon Jul 15 2024 09:41:25 GMT-0700 (Pacific Daylight Time)">16:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">Yeah, the biggest problem with this being depending on how you design this, it's either lightweight but not infallible, or it's heavyweight and not as usable. 
+
+I do think there's something interesting to prototype here if only because I frequently have the same questions as the bindings code "Is this a CCW; could this be a CCW? Why should I assume it's not a CCW" etc. </td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Mon Jul 15 2024 09:41:33 GMT-0700 (Pacific Daylight Time)">16:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">and there's no type support here.</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Mon Jul 15 2024 09:44:09 GMT-0700 (Pacific Daylight Time)">16:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><p><span class="nick-12">sfink</span>: Thanks for the good review on <a href="https://phabricator.services.mozilla.com/D215816">https://phabricator.services.mozilla.com/D215816</a> -- rvalue references continue to be confusing. (I love the "valid but unspecified" language all over the discussion of this.)</p>
+<p>I'm about to upload a version that looks like this:</p>
+<pre><code class="language-c++">  // Steal the contents of this weak cache.
+  Set stealContents() {
+    // This operation is not currently allowed while barriers are in place
+    // since it doesn't make sense to steal the contents while we are
+    // sweeping.
+    MOZ_ASSERT(!barrierTracer);
+
+    auto&amp;&amp; rval = std::move(set);
+    // Ensure set is in a specified (empty) state after the move
+    set.clear();
+
+    // Return set.
+    return rval;
+  }
+</code></pre>
+<p>Just to nail everything to the floor</p>
+</td></tr>
+  <tr class="msg" id="L20"><td class="ts-cell"><a class="ts" href="#L20" alt="Mon Jul 15 2024 09:47:27 GMT-0700 (Pacific Daylight Time)">16:47</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">okay, I'll look into possible options around type support for CCW-ness.  thank you for your input :)</td></tr>
+  <tr class="msg" id="L21"><td class="ts-cell"><a class="ts" href="#L21" alt="Mon Jul 15 2024 14:01:57 GMT-0700 (Pacific Daylight Time)">21:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@anba:mozilla.org">anba</span>&gt;</div></td><td class="msg-cell"><span class="nick-15">arai</span>: Temporal code has <a href="https://searchfox.org/mozilla-central/source/js/src/builtin/temporal/Wrapped.h">https://searchfox.org/mozilla-central/source/js/src/builtin/temporal/Wrapped.h</a> to represent possibly wrapped native objects.</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

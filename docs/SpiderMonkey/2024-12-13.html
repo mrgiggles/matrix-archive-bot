@@ -1,0 +1,41 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2024-12-13</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2024-12-13<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2024-12-12" class="nav-link"><span>prev</span></a>
+<a href="2024-12-17" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Fri Dec 13 2024 01:15:18 GMT-0800 (Pacific Standard Time)">09:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@tarek:mozilla.org">Tarek</span>&gt;</div></td><td class="msg-cell">I have two WebAssembly.Module sharing the same WebAssembly.Memory, and I have some C++ code that writes data into the bufffer in one, and another function that grabs it in the other. The problem I have is that the reader gets only empty data (zeroes) with the pointer. It seems that I am not reading the same block in the buffer. what would be a good way to debug this and verify that they work on the same addresses ? </td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Fri Dec 13 2024 02:24:23 GMT-0800 (Pacific Standard Time)">10:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell"><span class="nick-14">@tarek:mozilla.org</span>: in gdb you might be able to set breakpoints to the C++ functions to print the pointers. I do not know much about wasm module memory, but in JS people added calls to functions such as Math.sin to set a breakpoint in the generated JS code. You could do the same and inspect the registers of the caller frames, to check if there is a pointer to the buffer either on the stack or in registers.</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Fri Dec 13 2024 02:31:10 GMT-0800 (Pacific Standard Time)">10:31</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@tarek:mozilla.org">Tarek</span>&gt;</div></td><td class="msg-cell">I am printing the pointers with printf in the C++ function that creates the matrix in memory. Then I can the other C++ function via the imported wasm module. And that function reads back the memory at the pointer, and it's not there. So I suspect they don't have the same buffers. It's supposed to be a single shared one</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Fri Dec 13 2024 02:38:27 GMT-0800 (Pacific Standard Time)">10:38</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@tarek:mozilla.org">Tarek</span>&gt;</div></td><td class="msg-cell">maybe the issue is because the memory can grow and the buffer gets updated.. digging</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Fri Dec 13 2024 06:42:32 GMT-0800 (Pacific Standard Time)">14:42</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@yury:mozilla.org">yury</span>&gt;</div></td><td class="msg-cell">C++ code shall get right/updated pointer to the data, even though on wasm side it will be the same i32 address. C++ code (if you are talking about gemmology builtins) is not managing/moving/growing memory</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Fri Dec 13 2024 06:49:05 GMT-0800 (Pacific Standard Time)">14:49</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@yury:mozilla.org">yury</span>&gt;</div></td><td class="msg-cell">You may verify if the same wasm address was used. The C++ pointer maybe not the same, for the reason you mentioned above.</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Fri Dec 13 2024 07:06:52 GMT-0800 (Pacific Standard Time)">15:06</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-16" title="@rhunt:mozilla.org">Ryan Hunt</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> maybe the issue is because the memory can grow and the buffer gets updated.. digging</blockquote></mx-reply>if you're using shared memory, the buffer should never move in memory</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Fri Dec 13 2024 07:15:42 GMT-0800 (Pacific Standard Time)">15:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@tarek:mozilla.org">Tarek</span>&gt;</div></td><td class="msg-cell">Thanks all, will continue digging</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Fri Dec 13 2024 07:17:19 GMT-0800 (Pacific Standard Time)">15:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@tarek:mozilla.org">Tarek</span>&gt;</div></td><td class="msg-cell">The problem is on onnx side not gemmology. It’s putting the data in an unexpected spot it seems</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2025-04-11</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2025-04-11<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2025-04-10" class="nav-link"><span>prev</span></a>
+<a href="2025-04-14" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Fri Apr 11 2025 03:30:06 GMT-0700 (Pacific Daylight Time)">10:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>Hello, Community! Could someone help me verify whether the code I wrote is sound? What I'm trying to achieve is fairly simple: having a slot on a JSObject that holds a list of items. The problem I'm encountering is that at some point (presumably after a garbage collection cycle), the JS::Value objects in the list become invalidated, causing the app to crash.</p>
+<p>Here's a simplified example adapted from the original code:</p>
+<pre><code class="language-cpp">struct Item {
+  void trace(JSTracer *trc) {
+    TraceEdge(trc, &amp;field, "Item field");
+  }
+
+  JS::Heap&lt;JS::Value&gt; field;
+  bool other_field;
+}
+
+using ItemList = JS::GCVector&lt;Item, 0, js::SystemAllocPolicy&gt;;
+
+struct MyObject {
+  enum Slots { Items, SlotCount };
+
+  static void finalize(JS::GCContext* gcx, JSObject* obj);
+  static void trace(JSTracer* trc, JSObject* obj);
+
+  static bool add_item(JSContext* cx, HandleObject self, HandleValue item);
+  static JSObject* create(JSContext* cx);
+
+  static constexpr JSClassOps classOps = {
+      .finalize = finalize,
+      .trace = trace
+  };
+
+  static constexpr JSClass clasp = {
+      .name = "MyObject",
+      .flags =
+          JSCLASS_HAS_RESERVED_SLOTS(SlotCount) | JSCLASS_FOREGROUND_FINALIZE,
+      .cOps = &amp;classOps};
+
+};
+
+bool MyObject::add_item(JSContext* cx, HandleObject obj, HandleValue item) {
+  auto items = static_cast&lt;ItemList *&gt;(
+      JS::GetReservedSlot(obj, Slots::Items).toPrivate());
+
+  MOZ_ASSERT(items);
+
+  Item newItem;
+  newItem.field = item;
+
+  items-&gt;append(newItem);
+  return true;
+}
+
+JSObject* MyObject::create(JSContext* cx) {
+  JS::Rooted&lt;JSObject*&gt; obj(cx, JS_NewObject(cx, &amp;clasp));
+  if (!obj) {
+    return nullptr;
+  }
+
+  JS_SetReservedSlot(obj, Items, JS::PrivateValue(new ItemList));
+  return obj;
+}
+
+void MyObject::finalize(JS::GCContext* gcx, JSObject* obj) {
+  auto items = static_cast&lt;ItemList *&gt;(
+      JS::GetReservedSlot(self, Slots::Items).toPrivate());
+
+  if (items)
+    delete items;
+}
+
+void MyObject::trace(JSTracer* trc, JSObject* obj) {
+  auto items = static_cast&lt;ItemList *&gt;(
+      JS::GetReservedSlot(self, Slots::Items).toPrivate());
+
+  if (items)
+    items-&gt;trace(trc);
+}
+
+
+JS::PersistentRootedObject GLOBAL_MY_OBJECT;
+
+bool init(JSContext* cx) {
+  GLOBAL_MY_OBJECT.init(cx, MyObject::create(cx));
+  if (!GLOBAL_MY_OBJECT) {
+    return false;
+  }
+
+  return true;
+}
+
+bool add_item(JSContext* cx, unsigned argc, JS::Value* vp) {
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+  if (!args.requireAtLeast(cx, "add_item", 1)) {
+    return false;
+  }
+
+  RootedValue item(cx, args.get(0));
+  args.rval().setUndefined();
+
+  return MyObject::add_item(cx, GLOBAL_MY_OBJECT, item);
+}
+
+</code></pre>
+<p>Interestingly, I'm able to fix it if I reference the item values in some other global vector like so:</p>
+<pre><code class="language-cpp">
+JS::PersistentRootedObjectVector *GLOBAL_ITEMS;
+
+bool MyObject::add_item(JSContext* cx, HandleObject obj, HandleValue item) {
+  ...
+  // additionally
+  std::ignore = GLOBAL_ITEMS-&gt;append(&amp;item.toObject());
+}
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Fri Apr 11 2025 03:32:53 GMT-0700 (Pacific Daylight Time)">10:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">I would appreciate any feedback on this 🙏</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Fri Apr 11 2025 03:44:34 GMT-0700 (Pacific Daylight Time)">10:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">how does it crash, especially if you build SpiderMonkey with --enable-debug ?</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Fri Apr 11 2025 03:46:18 GMT-0700 (Pacific Daylight Time)">10:46</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so far I don't see anything obvious in the code.    if it crashes, some assertion might catch something, and that may tell us what goes wrong</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Fri Apr 11 2025 03:50:54 GMT-0700 (Pacific Daylight Time)">10:50</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">Here is an example:</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Fri Apr 11 2025 03:51:59 GMT-0700 (Pacific Daylight Time)">10:51</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">I think the whole error stacktrace begins with referencing the field.</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Fri Apr 11 2025 03:53:32 GMT-0700 (Pacific Daylight Time)">10:53</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">does it hit any assertion failure, or it simply hits segfault or something?</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Fri Apr 11 2025 03:55:25 GMT-0700 (Pacific Daylight Time)">10:55</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">if you're using debug build, and if assertion fails, it will print "Assertion failure: &lt;expression&gt;" in the output</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Fri Apr 11 2025 03:59:04 GMT-0700 (Pacific Daylight Time)">10:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">also, can you check if the <code>MyObject::trace</code> function is actually called, and it's performing trace on the list, in the crashing scenario?</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Fri Apr 11 2025 04:01:09 GMT-0700 (Pacific Daylight Time)">11:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>Right, here for example:</p>
+<pre><code>Assertion failure: this-&gt;flags() == 0, at /home/runner/work/spidermonkey-wasi-embedding/spidermonkey-wasi-embedding/gecko-dev/js/src/gc/Cell.h:798
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Fri Apr 11 2025 04:02:11 GMT-0700 (Pacific Daylight Time)">11:02</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>and full stacktrace:</p>
+<pre><code>stderr [0] :: [-1] Assertion failure: this-&gt;flags() == 0, at /home/runner/work/spidermonkey-wasi-embedding/spidermonkey-wasi-embedding/gecko-dev/js/src/gc/Cell.h:798
+2025-04-11T10:59:31.060302Z ERROR wasmtime_cli::commands::serve: [0] :: error while executing at wasm backtrace:
+    0: 0x6592fd - &lt;unknown&gt;!JSObject::zoneFromAnyThread() const
+    1: 0xf6714d - &lt;unknown&gt;!void CheckIsMarkedThing&lt;JSObject&gt;(JSObject*)
+    2: 0xf66e8d - &lt;unknown&gt;!bool js::gc::IsAboutToBeFinalizedInternal&lt;JSObject&gt;(JSObject*)
+    3: 0xf67973 - &lt;unknown&gt;!auto js::MapGCThingTyped&lt;bool js::ApplyGCThingTyped&lt;bool js::gc::IsAboutToBeFinalizedInternal&lt;JS::Value&gt;(JS::Value const&amp;)::'lambda'(JS::Value)&gt;(JS::Value const&amp;, JS::Value&amp;&amp;)::'lambda'(JS::Value)&gt;(JS::Value const&amp;, JS::Value&amp;&amp;)
+    4: 0xf677e4 - &lt;unknown&gt;!bool js::gc::EdgeNeedsSweepUnbarrieredSlow&lt;JS::Value&gt;(JS::Value*)
+    5: 0x14e306b - &lt;unknown&gt;!JS::ExposeValueToActiveJS(JS::Value const&amp;)
+    6: 0x14e3028 - &lt;unknown&gt;!js::BarrierMethods&lt;JS::Value, void&gt;::exposeToJS(JS::Value const&amp;)
+    7: 0x14e2ff5 - &lt;unknown&gt;!JS::Heap&lt;JS::Value&gt;::exposeToActiveJS() const
+    8: 0x14e2f7a - &lt;unknown&gt;!JS::Heap&lt;JS::Value&gt;::get() const
+    9: 0x14e2a12 - &lt;unknown&gt;!JS::Heap&lt;JS::Value&gt;::operator JS::Value const&amp;() const
+   10: 0x14e272f - &lt;unknown&gt;!JS::Rooted&lt;JS::Value&gt;::Rooted&lt;JSContext*, JS::Heap&lt;JS::Value&gt; const&amp;&gt;(JSContext* const&amp;, JS::Heap&lt;JS::Value&gt; const&amp;)
+   11: 0x14e207a - &lt;unknown&gt;!builtins::web::event::EventTarget::inner_invoke(JSContext*, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JS::StackGCVector&lt;builtins::web::event::EventListener, js::TempAllocPolicy&gt;&gt;, bool*)
+   12: 0x14e1bf0 - &lt;unknown&gt;!builtins::web::event::EventTarget::invoke_listeners(JSContext*, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JSObject*&gt;)
+   13: 0x14e0f31 - &lt;unknown&gt;!builtins::web::event::EventTarget::dispatch(JSContext*, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JSObject*&gt;, JS::MutableHandle&lt;JS::Value&gt;)
+   14: 0x14e026c - &lt;unknown&gt;!builtins::web::event::EventTarget::dispatch_event(JSContext*, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JS::Value&gt;, JS::MutableHandle&lt;JS::Value&gt;)
+   15: 0x1565aeb - &lt;unknown&gt;!builtins::web::fetch::fetch_event::dispatch_fetch_event(JS::Handle&lt;JSObject*&gt;, double*)
+   16: 0x156579c - &lt;unknown&gt;!builtins::web::fetch::fetch_event::handle_incoming_request(host_api::HttpIncomingRequest*)
+   17: 0x14acb96 - &lt;unknown&gt;!exports_wasi_http_incoming_handler_handle
+   18: 0x14ca9f2 - &lt;unknown&gt;!__wasm_export_exports_wasi_http_incoming_handler_handle
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Fri Apr 11 2025 04:05:54 GMT-0700 (Pacific Daylight Time)">11:05</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so, inner_invoke grabs the list and puts one item into Rooted ?</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Fri Apr 11 2025 04:08:00 GMT-0700 (Pacific Daylight Time)">11:08</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">then, the flag being non-zero mostly means the cell is forwarded (<a href="https://searchfox.org/mozilla-central/rev/19764d620c02025bdcc8d1f3c4fcf5a580407a01/js/src/gc/Cell.h#84-86">js::gc::HeaderWord::FORWARD_BIT</a>), unless the pointer is completely broken</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Fri Apr 11 2025 04:09:08 GMT-0700 (Pacific Daylight Time)">11:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><code>inner_invoke</code> is where previously added item is referenced</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Fri Apr 11 2025 04:10:35 GMT-0700 (Pacific Daylight Time)">11:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">yes, so, the function reads the ItemList, and holds the item or the <code>field</code> value in <code>Rooted</code>, right?</td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Fri Apr 11 2025 04:10:52 GMT-0700 (Pacific Daylight Time)">11:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">yes, exaclty</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Fri Apr 11 2025 04:11:31 GMT-0700 (Pacific Daylight Time)">11:11</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">okay, then, yes, it would mean the list has been holding some invalid pointer</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Fri Apr 11 2025 04:12:06 GMT-0700 (Pacific Daylight Time)">11:12</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">Can you for example add logging to the <code>MyObject::trace</code> method and then perform GC on some timing, and see if the method is called?</td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Fri Apr 11 2025 04:14:19 GMT-0700 (Pacific Daylight Time)">11:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">one possible case is that the MyObject itself is not properly rooted at some point, and that makes the list invalid.  and in that case, the issue would be outside of the above codelet</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Fri Apr 11 2025 04:16:00 GMT-0700 (Pacific Daylight Time)">11:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">Right, so if apply the fix that I mentioned which is referencing value items additionally in global vector I can see that the pointer value actually changes at some point, aka it's different when I add the value and I reference that value later. Whereas if I remove the fix the pointer value remains the same.</td></tr>
+  <tr class="msg" id="L20"><td class="ts-cell"><a class="ts" href="#L20" alt="Fri Apr 11 2025 04:16:57 GMT-0700 (Pacific Daylight Time)">11:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">okay, so there's some timing where the trace is not performed correctly</td></tr>
+  <tr class="msg" id="L21"><td class="ts-cell"><a class="ts" href="#L21" alt="Fri Apr 11 2025 04:17:42 GMT-0700 (Pacific Daylight Time)">11:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so, the first step would be to verify the trace is working (or at least called) at least in some case</td></tr>
+  <tr class="msg" id="L22"><td class="ts-cell"><a class="ts" href="#L22" alt="Fri Apr 11 2025 04:18:40 GMT-0700 (Pacific Daylight Time)">11:18</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">if it's never called, then the issue would be inside the setup for the JSClass itself or something.  if it's called at some point, then it would mean the trace is not always called, and that results in the field being unchanged</td></tr>
+  <tr class="msg" id="L23"><td class="ts-cell"><a class="ts" href="#L23" alt="Fri Apr 11 2025 04:20:22 GMT-0700 (Pacific Daylight Time)">11:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">So I just added the <code>MOZ_ASSERT(false)</code> to  MyObject::trace and it looks like it's never called.</td></tr>
+  <tr class="msg" id="L24"><td class="ts-cell"><a class="ts" href="#L24" alt="Fri Apr 11 2025 04:23:08 GMT-0700 (Pacific Daylight Time)">11:23</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">I apply the fix and have the assertion and everything works fine, which would suggest that the global vector is doing all the tracing and <code>MyObject::trace</code> is never called.</td></tr>
+  <tr class="msg" id="L25"><td class="ts-cell"><a class="ts" href="#L25" alt="Fri Apr 11 2025 04:24:39 GMT-0700 (Pacific Daylight Time)">11:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">just to make sure, if you put the <code>MOZ_ASSERT(false)</code> in somewhere  definitely-executed, does it crash?</td></tr>
+  <tr class="msg" id="L26"><td class="ts-cell"><a class="ts" href="#L26" alt="Fri Apr 11 2025 04:25:18 GMT-0700 (Pacific Daylight Time)">11:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">(sometimes the macro may behave differently between inside SpiderMonkey and inside embeddings, depending on how they're compiled)</td></tr>
+  <tr class="msg" id="L27"><td class="ts-cell"><a class="ts" href="#L27" alt="Fri Apr 11 2025 04:27:09 GMT-0700 (Pacific Daylight Time)">11:27</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">Yes, if I move it to <code>create</code> than it crashes as expected.</td></tr>
+  <tr class="msg" id="L28"><td class="ts-cell"><a class="ts" href="#L28" alt="Fri Apr 11 2025 04:28:29 GMT-0700 (Pacific Daylight Time)">11:28</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">okay, so it's definitely around the jsclass definition</td></tr>
+  <tr class="msg" id="L29"><td class="ts-cell"><a class="ts" href="#L29" alt="Fri Apr 11 2025 04:30:30 GMT-0700 (Pacific Daylight Time)">11:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">hm, for example, what happens if you perform GC immediately after <code>JS_SetReservedSlot</code> call in the <code>MyObject::create</code> ?</td></tr>
+  <tr class="msg" id="L30"><td class="ts-cell"><a class="ts" href="#L30" alt="Fri Apr 11 2025 04:31:00 GMT-0700 (Pacific Daylight Time)">11:31</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">(I'm not sure if <code>trace</code> is guaranteed to be called in such situation tho)</td></tr>
+  <tr class="msg" id="L31"><td class="ts-cell"><a class="ts" href="#L31" alt="Fri Apr 11 2025 04:34:19 GMT-0700 (Pacific Daylight Time)">11:34</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">So, call <code>JS_GC(cx);</code> there</td></tr>
+  <tr class="msg" id="L32"><td class="ts-cell"><a class="ts" href="#L32" alt="Fri Apr 11 2025 04:49:02 GMT-0700 (Pacific Daylight Time)">11:49</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>If I add <code>JS_GC(cx)</code> it looks like I'm crashing at init phase:</p>
+<pre><code>          12: 0x91cf8b - ModuleEvaluate(JSContext*, JS::Handle&lt;js::ModuleObject*&gt;, JS::MutableHandle&lt;JS::Value&gt;)
+                           at /home/runner/work/spidermonkey-wasi-embedding/spidermonkey-wasi-embedding/gecko-dev/js/src/vm/Modules.cpp:1523:13            
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L33"><td class="ts-cell"><a class="ts" href="#L33" alt="Fri Apr 11 2025 04:52:19 GMT-0700 (Pacific Daylight Time)">11:52</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">oh, maybe there's unrooted pointer somewhere in the call stack?</td></tr>
+  <tr class="msg" id="L34"><td class="ts-cell"><a class="ts" href="#L34" alt="Fri Apr 11 2025 04:53:01 GMT-0700 (Pacific Daylight Time)">11:53</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>Preciseley:</p>
+<pre><code>[-1] Assertion failure: is_instance(self), at /home/tandr/workspace/StarlingMonkey/builtins/web/event/event-target.cpp:168
+Error: the `wizer.initialize` function trapped
+
+Caused by:
+    0: error while executing at wasm backtrace:
+           0: 0x14dd174 - builtins::web::event::EventTarget::add_listener(JSContext*, JS::Handle&lt;JSObject*&gt;, JS::Handle&lt;JS::Value&gt;, JS::Handle&lt;JS::Value&gt;, 
+
+</code></pre>
+<p>which is equvalent of <code>add_item</code> on GLOBAL_MY_OBJECT</p>
+</td></tr>
+  <tr class="msg" id="L35"><td class="ts-cell"><a class="ts" href="#L35" alt="Fri Apr 11 2025 04:54:40 GMT-0700 (Pacific Daylight Time)">11:54</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">the assertion looks like a part of your code?</td></tr>
+  <tr class="msg" id="L36"><td class="ts-cell"><a class="ts" href="#L36" alt="Fri Apr 11 2025 05:01:39 GMT-0700 (Pacific Daylight Time)">12:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>yes, it checks if JSObject is that of JSClass:</p>
+<pre><code class="language-cpp">  static bool is_instance(const JSObject *obj) {
+    return (obj != nullptr) &amp;&amp; (JS::GetClass(obj) == &amp;class_ );
+  }
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L37"><td class="ts-cell"><a class="ts" href="#L37" alt="Fri Apr 11 2025 05:03:09 GMT-0700 (Pacific Daylight Time)">12:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so, where does it fail, with what kind of argument?</td></tr>
+  <tr class="msg" id="L38"><td class="ts-cell"><a class="ts" href="#L38" alt="Fri Apr 11 2025 05:08:03 GMT-0700 (Pacific Daylight Time)">12:08</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">it's not null: 0x4000c0 so I guess it has to be <code>JS::GetClass(obj) == &amp;class_</code> condition that fails</td></tr>
+  <tr class="msg" id="L39"><td class="ts-cell"><a class="ts" href="#L39" alt="Fri Apr 11 2025 05:09:05 GMT-0700 (Pacific Daylight Time)">12:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">let me check...</td></tr>
+  <tr class="msg" id="L40"><td class="ts-cell"><a class="ts" href="#L40" alt="Fri Apr 11 2025 06:13:07 GMT-0700 (Pacific Daylight Time)">13:13</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>It looks like if I call <code>JS_GC()</code> in a <code>create</code> function of the object the global pointer is messed up.</p>
+<p>If I call it right after return from <code>create</code> function everythin works as previously:</p>
+<pre><code class="language-cpp">JS::PersistentRootedObject GLOBAL_MY_OBJECT;
+
+bool init(JSContext* cx) {
+  GLOBAL_MY_OBJECT.init(cx, MyObject::create(cx));
+  JS_GC();
+  if (!GLOBAL_MY_OBJECT) {
+    return false;
+  }
+
+  return true;
+}
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L41"><td class="ts-cell"><a class="ts" href="#L41" alt="Fri Apr 11 2025 06:14:01 GMT-0700 (Pacific Daylight Time)">13:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">So code above ends up with previous behavior.</td></tr>
+  <tr class="msg" id="L42"><td class="ts-cell"><a class="ts" href="#L42" alt="Fri Apr 11 2025 06:14:26 GMT-0700 (Pacific Daylight Time)">13:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">okay, then let's use that code for the further investigation</td></tr>
+  <tr class="msg" id="L43"><td class="ts-cell"><a class="ts" href="#L43" alt="Fri Apr 11 2025 06:14:36 GMT-0700 (Pacific Daylight Time)">13:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">Is the trace function called in the case?</td></tr>
+  <tr class="msg" id="L44"><td class="ts-cell"><a class="ts" href="#L44" alt="Fri Apr 11 2025 06:15:43 GMT-0700 (Pacific Daylight Time)">13:15</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">No it's not.</td></tr>
+  <tr class="msg" id="L45"><td class="ts-cell"><a class="ts" href="#L45" alt="Fri Apr 11 2025 06:16:57 GMT-0700 (Pacific Daylight Time)">13:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">Can you check if the object has the right JSClass ?</td></tr>
+  <tr class="msg" id="L46"><td class="ts-cell"><a class="ts" href="#L46" alt="Fri Apr 11 2025 06:17:04 GMT-0700 (Pacific Daylight Time)">13:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">at that point</td></tr>
+  <tr class="msg" id="L47"><td class="ts-cell"><a class="ts" href="#L47" alt="Fri Apr 11 2025 06:26:32 GMT-0700 (Pacific Daylight Time)">13:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>Just for reference this is roughly how the class is created:</p>
+<pre><code class="language-cpp">  PersistentRooted&lt;JSObject *&gt; proto_obj;
+
+  static constexpr JSClassOps class_ops{
+      nullptr,        // addProperty
+      nullptr,        // delProperty
+      nullptr,        // enumerate
+      nullptr,        // newEnumerate
+      nullptr,        // resolve
+      nullptr,        // mayResolve
+      MyObject::finalize, // finalize
+      nullptr,        // call
+      nullptr,        // construct
+      MyObject::trace,    // trace
+  };
+
+  static constexpr uint32_t class_flags = JSCLASS_BACKGROUND_FINALIZE;
+
+  static constexpr JSClass class_{
+      Impl::class_name,
+      JSCLASS_HAS_RESERVED_SLOTS(Slots::Count) | class_flags,
+      &amp;class_ops,
+  };
+
+  template &lt;typename Impl&gt;
+  static bool init_class_impl(JSContext *cx, const HandleObject global,
+                              const HandleObject parent_proto = nullptr) {
+    proto_obj.init(cx, JS_InitClass(cx, global, &amp;class_, parent_proto, Impl::class_name,
+                                    Impl::constructor, Impl::ctor_length, Impl::properties,
+                                    Impl::methods, Impl::static_properties, Impl::static_methods));
+
+    return proto_obj != nullptr;
+  }
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L48"><td class="ts-cell"><a class="ts" href="#L48" alt="Fri Apr 11 2025 06:44:28 GMT-0700 (Pacific Daylight Time)">13:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell"><p>Yes there is something off, the actual trace pointer in GLOBAL class is null, so I guess that explains why it's not called :)</p>
+<pre><code class="language-cpp">  DBG("expected trace %p\n",&amp;EventTarget::trace);
+  DBG("actual trace %p\n", JS::GetClass(global_event_target())-&gt;cOps-&gt;trace);
+
+</code></pre>
+<pre><code>global\_event\_target\_init#70: expected trace 0x1ccc
+global\_event\_target\_init#71: actual trace 0
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L49"><td class="ts-cell"><a class="ts" href="#L49" alt="Fri Apr 11 2025 06:45:39 GMT-0700 (Pacific Daylight Time)">13:45</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">I feel we're getting closer, let me debug it further 🙂</td></tr>
+  <tr class="msg" id="L50"><td class="ts-cell"><a class="ts" href="#L50" alt="Fri Apr 11 2025 07:22:33 GMT-0700 (Pacific Daylight Time)">14:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@smaug:mozilla.org">smaug</span>&gt;</div></td><td class="msg-cell">Do calls to empty functions somehow get optimized out in jit?</td></tr>
+  <tr class="msg" id="L51"><td class="ts-cell"><a class="ts" href="#L51" alt="Fri Apr 11 2025 07:41:38 GMT-0700 (Pacific Daylight Time)">14:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@tandr:mozilla.org">tandr</span>&gt;</div></td><td class="msg-cell">So the The issue I was facing is with static member inheritance in C++ templates.
+
+Long story short the ops I used for initializing the class were shadowed and compiler didn't bother to warn me about this. 
+
+Thank you @arai for helping me to debug this and pointing me to the right direction 🙏
+
+The trace is now called and everything works as expected.</td></tr>
+  <tr class="msg" id="L52"><td class="ts-cell"><a class="ts" href="#L52" alt="Fri Apr 11 2025 08:05:56 GMT-0700 (Pacific Daylight Time)">15:05</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-4">smaug</span>: We might inline them?</td></tr>
+  <tr class="msg" id="L53"><td class="ts-cell"><a class="ts" href="#L53" alt="Fri Apr 11 2025 08:55:50 GMT-0700 (Pacific Daylight Time)">15:55</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@tcampbell:mozilla.org">tcampbell</span>&gt;</div></td><td class="msg-cell"><span class="nick-12">sfink</span>: reviving discussion about session-restore-stringify.. <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1849393#c65">https://bugzilla.mozilla.org/show_bug.cgi?id=1849393#c65</a><br>Do you think it was be straightforward to add an alternate stringify that generates segment lists instead of linear strings?</td></tr>
+  <tr class="msg" id="L54"><td class="ts-cell"><a class="ts" href="#L54" alt="Fri Apr 11 2025 08:56:02 GMT-0700 (Pacific Daylight Time)">15:56</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@tcampbell:mozilla.org">tcampbell</span>&gt;</div></td><td class="msg-cell">cc <span class="nick-8">beth</span></td></tr>
+  <tr class="msg" id="L55"><td class="ts-cell"><a class="ts" href="#L55" alt="Fri Apr 11 2025 08:58:03 GMT-0700 (Pacific Daylight Time)">15:58</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@kbrecordzz:mozilla.org">kbrecordzz</span>&gt;</div></td><td class="msg-cell">Hey! I have a question I've been wondering about. Would it be possible for me, who writes games and web apps in Javascript, to minimize the time Spidermonkey spends on garbage collection by making all my variables global? I just thought that if no variables are possible to remove, garbage collection would be unnecessary. But how is it in reality?</td></tr>
+  <tr class="msg" id="L56"><td class="ts-cell"><a class="ts" href="#L56" alt="Fri Apr 11 2025 09:07:31 GMT-0700 (Pacific Daylight Time)">16:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-2">kbrecordzz</span>: I don't think that would help. Garbage collection works by finding all the objects that are reachable, and then throwing away the rest. The time taken is proportional to the amount of stuff that's still alive. It doesn't really matter where that stuff is reachable from.</td></tr>
+  <tr class="msg" id="L57"><td class="ts-cell"><a class="ts" href="#L57" alt="Fri Apr 11 2025 09:08:56 GMT-0700 (Pacific Daylight Time)">16:08</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@kbrecordzz:mozilla.org">kbrecordzz</span>&gt;</div></td><td class="msg-cell">Okay, I see! So the best way to minimize garbage collection time would be to have fewer variables, objects, things in general in my code?</td></tr>
+  <tr class="msg" id="L58"><td class="ts-cell"><a class="ts" href="#L58" alt="Fri Apr 11 2025 09:11:58 GMT-0700 (Pacific Daylight Time)">16:11</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Yeah. Emphasis on the "objects" in that list. If you have code like <code>var a = {x: 1}; var b = a; var c = b</code> then you have three variables but only one object, whereas code like <code>var a = {x: 1}; a = {y: 2}; a = {z: 3}</code> has a single variable, but three objects. There's three times as much work for the GC in the latter case.</td></tr>
+  <tr class="msg" id="L59"><td class="ts-cell"><a class="ts" href="#L59" alt="Fri Apr 11 2025 09:14:33 GMT-0700 (Pacific Daylight Time)">16:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">(More precisely: each of those examples have one object still reachable at the end, but the second example has two dead objects that need to be cleaned up, which means we'll have to run another GC sooner.)</td></tr>
+  <tr class="msg" id="L60"><td class="ts-cell"><a class="ts" href="#L60" alt="Fri Apr 11 2025 09:17:49 GMT-0700 (Pacific Daylight Time)">16:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Trying to work out the big-picture situation: we have a big object in the parent process that stores all the session-restore state for every tab. Every fifteen seconds we JSON.stringify that object and send it to a separate process that persists it to disk. This scales poorly with lots of tabs, we want to make it faster, and we are very cautious about making big architectural changes because messing up session restore is Bad. Yes?</td></tr>
+  <tr class="msg" id="L61"><td class="ts-cell"><a class="ts" href="#L61" alt="Fri Apr 11 2025 09:21:18 GMT-0700 (Pacific Daylight Time)">16:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@tcampbell:mozilla.org">tcampbell</span>&gt;</div></td><td class="msg-cell">you have cursed the timeline, <span class="nick-4">iain</span>. Someone wasn't supposed to talk to their future past self</td></tr>
+  <tr class="msg" id="L62"><td class="ts-cell"><a class="ts" href="#L62" alt="Fri Apr 11 2025 09:22:18 GMT-0700 (Pacific Daylight Time)">16:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@kbrecordzz:mozilla.org">kbrecordzz</span>&gt;</div></td><td class="msg-cell">Hmm, okay, but why do objects affect GC more than variables?</td></tr>
+  <tr class="msg" id="L63"><td class="ts-cell"><a class="ts" href="#L63" alt="Fri Apr 11 2025 09:24:42 GMT-0700 (Pacific Daylight Time)">16:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Roughly speaking: because objects are chunks of heap-allocated memory that the GC needs to go clean up, whereas variables live in stack frames and go away when the function returns.</td></tr>
+  <tr class="msg" id="L64"><td class="ts-cell"><a class="ts" href="#L64" alt="Fri Apr 11 2025 09:27:49 GMT-0700 (Pacific Daylight Time)">16:27</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@kbrecordzz:mozilla.org">kbrecordzz</span>&gt;</div></td><td class="msg-cell">Is that true for global "var" variables that are declared outside of all functions as well?</td></tr>
+  <tr class="msg" id="L65"><td class="ts-cell"><a class="ts" href="#L65" alt="Fri Apr 11 2025 09:30:04 GMT-0700 (Pacific Daylight Time)">16:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Global variables live in the global object (the thing you get with <code>globalThis</code>), so they don't go away until the global object is unreachable. However, the bit about them just being pointers to objects, not objects themselves, is still accurate.</td></tr>
+  <tr class="msg" id="L66"><td class="ts-cell"><a class="ts" href="#L66" alt="Fri Apr 11 2025 09:32:19 GMT-0700 (Pacific Daylight Time)">16:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@kbrecordzz:mozilla.org">kbrecordzz</span>&gt;</div></td><td class="msg-cell">Thanks so much for the answers. I'll have to think about this and then maybe come back with more questions later :)</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>
