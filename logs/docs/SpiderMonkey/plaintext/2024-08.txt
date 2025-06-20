@@ -1,0 +1,3061 @@
+2024-08-01
+[08:58:00.0163] <jakechampion>
+jandem: The linker error is exactly the reason I wanted to get a debug WASI build with Intl added - it'd be good to ensure this type of error doesn't happen
+
+I haven't been able to get to the bottom of it though, and wasn't able to open a good ticket on LLVM because it relied on lots of patches to gecko-dev, now those patches have landed which makes it simpler to reproduce 🙏
+
+[08:59:09.0258] <jandem>
+jakechampion: ah makes sense. So I should hold off on landing this until it's fixed in our wasi toolchain?
+
+[08:59:42.0483] <jakechampion>
+Yep 👍️
+
+[09:05:39.0794] <jakechampion>
+jandem: if of interest, here is the llvm ticket I also opened https://github.com/llvm/llvm-project/issues/100084#issuecomment-2263433265
+
+[12:13:35.0711] <debadree25>
+what will happen if we end up having more than 256 Opcodes? is it some sort of hard limit for some reason https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#3714 asking out of curiosity 😄
+
+[12:15:04.0982] <iain>
+We would no longer be able to represent an opcode with a single byte.
+
+[12:16:15.0443] <iain>
+I imagine we would go with some system where we dedicate one opcode to "extended opcode" and make a bunch of less common ops take two bytes instead.
+
+[13:10:20.0080] <arai>
+looks like your case matches to [Tier-3 Targets](https://firefox-source-docs.mozilla.org/contributing/build/supported.html#tier-3-targets) which covers OS + architecture
+
+
+2024-08-02
+[00:13:53.0640] <Jonathan Schwender>
+Thanks, that looks like exactly the kind of "suppport" I'd be looking for. Is there any formal process to propose adding a new tier-3 platform?
+
+[00:14:12.0972] <Jonathan Schwender>
+ * Thanks, that looks like exactly the kind of "support" I'd be looking for. Is there any formal process to propose adding a new tier-3 platform?
+
+[00:29:07.0646] <arai>
+it doesn't often happen, and I'm not sure if there's any formal process . Filing a bug in bugzilla.mozilla.org with details (including the link to the patch) can be a good start
+
+[02:22:41.0763] <jandem>
+256 opcodes ought to be enough for anyone
+
+[02:51:59.0619] <nbp>
+🤔 variable size opcodes, that's not as-if this caused any issues with x86.
+
+[04:17:14.0130] <Ms2ger (OOO)>
+Should have reserved a second byte back in the nineties
+
+[04:17:25.0029] <Ms2ger (OOO)>
+Or whenever the interpreter was written
+
+[06:05:47.0841] <debadree25>
+> <@ms2ger:igalia.com> Should have reserved a second byte back in the nineties
+
+should never leave behind extra byte real estate!
+
+
+2024-08-05
+[01:38:53.0418] <Redfire>
+Trying out Structured Clone but I'm confused, as to why transfer is modifying the data
+```js
+let array = new Uint8Array([0, 4, 8, 16]);
+let array2 = structuredClone(array, {transfer: [array.buffer]});
+console.log(array2);
+>> Uint8Array(4) [ 0, 91, 51, 52 ] }
+```
+
+[01:39:07.0941] <Redfire>
+My Own Embedding, All Callbacks are null
+
+[01:42:50.0225] <Redfire>
+Seems to be fixed if I use `DifferentProcess` instead of `SameProcess`
+
+[02:35:12.0764] <arai>
+Are the writer and reader in different processes?  `SameProcess` uses pointer instead of cloning the underlying buffer
+
+[02:37:21.0189] <arai>
+so, reading it from different process will result in reading some unknown data.  I would expect it to just crash tho..
+
+[02:38:21.0487] <arai>
+or are the above 3 lines evaluated at once in single process?
+
+[02:56:55.0765] <Redfire>
+I'm running it in my repl, but that should still be same process
+
+[02:57:04.0564] <Redfire>
+ * I'm running it in my repl line by line, but that should still be same process
+
+[03:02:25.0818] <Redfire>
+Huh, if I run it as a single file, it's fine
+
+[03:16:17.0358] <Redfire>
+Oh, I think I know why. It may be because I copy the bytes to my own buffer, `js_delete` on SC buffer, and then copy the bytes back to a new SC buffer?
+
+[04:52:22.0060] <jandem>
+probably yes. The destructor on the SC buffer would free the transferables
+
+
+2024-08-06
+[22:02:57.0032] <Redfire>
+I was just copying the servo code and wondering why a different scope didn't work lol
+
+[12:31:24.0511] <mgaudet>
+confession: Ah yes, ChatGPT is gonna make us all more effective. Anyhow... I just lost 5+ hours to the difference between `constexpr X(y)` and `inline constexpr X(y)`  ([background](https://quuxplusone.github.io/blog/2022/07/08/inline-constexpr/)). To be fair to ChatGPT... who the heck would have expected the way to share a definition across translation units would be to add the `inline` keyword.
+
+
+2024-08-07
+[03:00:56.0255] <debadree25>
+If i have 3 boolean values on the stack a b and c and want to do the equivalent of a && b && c is there any opcode that does that? it seems like trying to do it with JSOp::And would require emitting jumps and stuff: https://searchfox.org/mozilla-central/source/js/src/frontend/BytecodeEmitter.cpp#8996 
+
+[03:13:10.0361] <arai>
+BitAnd + BitAnd ?
+
+[03:18:28.0068] <debadree25>
+oh! argh missed it 
+
+[03:18:32.0373] <debadree25>
+trying! tysm!
+
+[03:22:05.0654] <arai>
+just to be clear, the actual equivalent of `&&` is indeed `JSOp::And`.  it has short circuit behavior, which is implemented with the jump.  `JSOp::BitAnd` is for `&`, which converts the operands to integer.  if the result is used only for a condition and all operands are known to be bool value, almost same thing can be achieved with it
+
+[07:32:45.0240] <padenot>
+While sfink is out, does anybody knows what's up with https://treeherder.mozilla.org/jobs?repo=try&author=paul%40paul.cx&selectedTaskRun=ZM_257z9SpKGh16U4mCO6A.0 ? I'm not touching bindings or js in any way in this patch set, this is adding the formatting library `{fmt}` to the tree
+
+[07:33:02.0043] <padenot>
+very surprise the Hazard analysis finds anything
+
+[07:33:05.0750] <padenot>
+ * very surprised the Hazard analysis finds anything
+
+[07:35:16.0032] <arai>
+does your patch stack touch `js/src/vm/ArrayObject.h` ?
+
+[07:36:06.0556] <arai>
+oh, sorry, you already mentioned that
+
+[07:36:56.0676] <arai>
+does your patch change any build configuration?
+
+[07:37:38.0653] <padenot>
+a lot yeah
+
+[07:39:01.0986] <padenot>
+http://paul.cx/public/full-fmt-patch.diff is a roll-up if need be, it touches a lot of things, but nothing related to bindings or js api
+
+[07:39:30.0629] <padenot>
+that's the `--stat`: https://paste.mozilla.org/bz7r5QKR/raw
+
+[07:40:12.0716] <jandem>
+(steve is our expert on the hazard analysis builds but he's on pto this week)
+
+[07:40:37.0796] <padenot>
+yeah that's what I found unfortunately
+
+[07:41:25.0343] <jandem>
+issue is most likely that you're adding an indirect call somewhere and the analysis now thinks this can trigger a GC
+
+[07:42:16.0519] <padenot>
+well I'm touching nsString and MOZ_LOG so...
+
+[07:43:03.0376] <arai>
+gcFunctions file will tell us what's going on
+
+[07:43:23.0472] <arai>
+now I'm looking `shrinkCapacityToInitializedLength`, which is called in `ArrayObject.h` above
+
+[07:43:50.0088] <arai>
+https://pastebin.mozilla.org/VUa7yc33
+
+[07:45:03.0670] <arai>
+so, yes, the formatter calls arbitrary function, which is used inside `detail::DiagnosticMessage`
+
+[07:46:00.0568] <padenot>
+ok that seems logical, but why it is complaining?
+
+[07:46:24.0259] <arai>
+"calling arbitrary function" can perform GC
+
+[07:47:00.0439] <padenot>
+sure, so I guess I should annotate something somewhere
+
+[07:47:10.0288] <arai>
+yeah
+
+[07:49:51.0866] <padenot>
+here: https://searchfox.org/mozilla-central/source/js/src/devtools/rootAnalysis/annotations.js#86-123 ?
+
+[07:51:17.0597] <arai>
+or maybe https://searchfox.org/mozilla-central/source/js/src/devtools/rootAnalysis/annotations.js#189
+
+[07:51:48.0605] <arai>
+there are already `NS_Log*`
+
+[07:51:52.0577] <padenot>
+ah yeah that looks easier
+
+[07:52:47.0618] <padenot>
+here it's more similar to `vprintf_stderr` and all
+
+[07:56:05.0309] <padenot>
+I'm going to ignore `mozilla::detail::DiagnosticMessage` that is the thing that causes the issue it seems like, found when one does an `AssertedCast` that fails, because it formats a message that prints the failure
+
+[07:58:51.0957] <arai>
+For the full list, you can download the `gcFunctions.txt.gz` artifact of the job and look for each function marked `TEST-UNEXPECTED-FAIL` in the log and see where the arbitrary function call happens.  If all of them goes through `DiagnosticMessage`, then adding it to the ignore list should solve the failure
+
+[08:00:41.0379] <padenot>
+that's the one thing from `js/` that can call into this new `{fmt}` library I think
+
+[08:01:07.0108] <padenot>
+only in debug though
+
+[08:02:01.0748] <padenot>
+there's facilities to do things like `MOZ_LOG` with modern formatting and I saw that mgaudet  `js/` is doing work in that area so maybe there's going to be more things to do 
+
+[08:02:18.0640] <padenot>
+ * there's facilities to do things like `MOZ_LOG` with modern formatting and I saw that mgaudet  in `js/` is doing work in that area so maybe there's going to be more things to do
+
+[08:02:29.0813] <mgaudet>
+So, my patches haven't landed yet 
+
+[08:02:51.0515] <mgaudet>
+but eventually I'll be exposing MOZ_LOG to SM via a function-pointer interface
+
+[08:03:44.0803] <padenot>
+yeah, just so you're aware -- it's very easy to integrate if folks don't want to type `PRId64` and such
+
+[08:04:02.0550] <padenot>
+or easily print custom types, etc., like you'd do in rust really
+
+[08:05:00.0244] <mgaudet>
+Yes, this definitely seems interesting and something to look deeper into once you've got your patch landed 
+
+[08:05:11.0270] <mgaudet>
+what caused you to start pulling this particular weed? 
+
+[08:06:32.0094] <padenot>
+I needed a way to format stuff correctly without knowing the type of the arguments for various things: better assertion failure messages, making it easier to write logging statements, various metaprogramming things in which you don't know the type and don't want to dispatch manually, etc.
+
+[08:07:26.0104] <padenot>
+and also the deep belief that in 2024 I shouldn't have to tell the compiler that this uint64_t is to be printed like an uint64_t
+
+[08:07:56.0938] <mgaudet>
+Fair! So that's this one? https://github.com/fmtlib/fmt
+
+[08:08:31.0400] <padenot>
+yeah, patched in various ways, in particular to print floating point number precisely like we need to (using `mfbt/double-conversion`)
+
+[08:09:15.0389] <padenot>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1717448 is the bug
+
+[09:33:14.0011] <ptomato>
+ArrayBuffers require their buffer to be aligned and this is enforced with a debug check. but if the BufferKind is `EXTERNAL` or `USER_OWNED`, is that really necessary? if the buffer can come from anywhere in the embedding including dependencies, there may not be control over how it is allocated
+
+[09:34:03.0073] <ptomato>
+would anything break if that assertion (https://searchfox.org/mozilla-central/source/js/src/vm/ArrayBufferObject.h#634) was just removed for `EXTERNAL` or `USER_OWNED` buffers?
+
+[09:38:08.0896] <arai>
+non-aligned buffer can result in undefined behavior when it's used with typed array that requires 2+ bytes alignment
+
+[09:41:26.0462] <ptomato>
+so, an unaligned buffer would only be usable with Uint8Array or Unit8ClampedArray then?
+
+[09:42:31.0239] <ptomato>
+if the buffer isn't aligned correctly, and the embedding doesn't have control over its allocation, is the only solution to copy it?
+
+[09:43:25.0115] <arai>
+you can allocate the `length + 8` bytes and then pass aligned pointer I think?
+
+[09:44:22.0897] <ptomato>
+I'm thinking about the case where the embedder doesn't allocate the buffer, but it's returned from a library function
+
+[09:46:45.0395] <arai>
+if there's completely no control over the allocation, then copying the buffer would be the safest way, and only the way I can think of
+
+[11:00:49.0642] <debadree25>
+i am seeing source notes something like this 
+
+[11:00:57.0612] <debadree25>
+```
+Source notes:
+ ofs line column    pc  delta desc             args
+---- ---- ------ ----- ------ ---------------- ------
+  0:    1      1     8 [   8] breakpoint-step-sep
+  1:    1      1    18 [  10] setlinecolumn    lineno 3 column 14
+  4:    3     14    18 [   0] breakpoint-step-sep
+  5:    3     14    29 [  11] setline          lineno 18
+  7:   18      1    29 [   0] breakpoint-step-sep
+  8:   18      1    35 [   6] colspan          colspan 6
+ 10:   18      7    35 [   0] breakpoint      
+ 11:   18      7    77 [  42] xdelta          
+ 12:   18      7    77 [   0] newline         
+ 13:   19      1    77 [   0] breakpoint-step-sep
+ 14:   19      1    89 [  12] colspan          colspan 12
+ 16:   19     13   101 [  12] colspan          colspan 15
+ 18:   19     28   106 [   5] colspan          colspan 4294967286
+ 23:   19     18   106 [   0] breakpoint      
+ 24:   19     18   109 [   3] colspan          colspan 4294967287
+ 29:   19      9   109 [   0] breakpoint      
+ 30:   19      9   113 [   4] colspan          colspan 26
+ 32:   19     35   156 [  43] xdelta          
+ 33:   19     35   156 [   0] breakpoint
+```
+ 
+
+[11:01:31.0509] <debadree25>
+the number 4294967286 seems like something overflowed! where are these source notes generated from? i feel like i might broke something
+
+[11:02:55.0548] <arai>
+it's negative number. it happens if the bytecode order and the source order differs
+
+[11:03:20.0633] <arai>
+(it would be nice to fix the formatting in `dis()`)
+
+[11:03:40.0028] <debadree25>
+is it normal to happen? or indicates i maybe broke something?
+
+[11:03:52.0541] <debadree25>
+> <@arai:mozilla.org> (it would be nice to fix the formatting in `dis()`)
+
+as in showing it as -1 in the dis output?
+
+[11:04:10.0146] <arai>
+it's normal. for loop can also hit that
+
+[11:04:58.0926] <arai>
+yeah, treating the span as signed integer will fix the output
+
+[13:30:05.0995] <sfink|backAug10>
+> <@arai:mozilla.org> or maybe https://searchfox.org/mozilla-central/source/js/src/devtools/rootAnalysis/annotations.js#189
+
+Yes, it's either that or an `AutoSuppressGCAnalysis` in the source code. The latter is generally better (since it has a runtime backstop check and is less likely to go stale as things are renamed), but sometimes there isn't a great place to put it or it doesn't fit. 
+
+[13:30:55.0797] <sfink|backAug10>
+padenot ^
+
+[13:31:52.0700] <arai>
+thanks!  I always forget `AutoSuppressGCAnalysis`
+
+
+2024-08-08
+[17:49:23.0754] <dragonslayer>
+good day all
+
+[17:49:42.0383] <dragonslayer>
+Arai i was the one asking about the issues with conversion on strings
+
+[17:50:00.0783] <dragonslayer>
+about memory crash
+
+[17:50:43.0109] <dragonslayer>
+Just wandering why Mozzila has not created a Discord channel being as big discord is
+
+[17:53:46.0761] <dragonslayer>
+IS any one here know c++ and spidermonkey embedding
+
+[17:54:33.0434] <arai>
+yes, feel free to ask questions
+
+[17:54:55.0997] <dragonslayer>
+Okay same question i tryed to do debug with it but i end up with a different error
+
+[17:54:59.0288] <dragonslayer>
+and i am unsure why
+
+[17:55:30.0595] <dragonslayer>
+const corpseDecayTimer = GetServerSetting("CORPSEDECAYTIMER");
+
+[17:55:31.0626] <arai>
+have you tried debug build + debugger ?
+
+[17:55:36.0347] <dragonslayer>
+this the string i am trying to get
+
+[17:55:48.0096] <dragonslayer>
+using this code
+
+[17:55:49.0497] <dragonslayer>
+std::string ConvertJSStringToString(JSContext* cx, JSString* jsString) {
+    // Root the JSString to ensure it's managed properly
+    JS::Rooted<JSString*> rootedString(cx, jsString);
+
+    // Convert the JSString to a Latin1 encoded string
+    JS::UniqueChars latin1Chars = JS_EncodeStringToLatin1(cx, rootedString);
+    if (!latin1Chars) {
+        std::cerr << "Failed to convert JSString to Latin1!" << std::endl;
+        return "";
+    }
+
+    // Return as std::string
+    return std::string(latin1Chars.get());
+}
+
+[17:56:17.0906] <dragonslayer>
+i tryed so many differant ways but the system blows up and crashes
+
+[17:56:22.0380] <dragonslayer>
+on trying to find that string
+
+[17:56:40.0996] <dragonslayer>
+i registered the event
+
+[17:57:10.0144] <dragonslayer>
+We have spent the last 6 to 8 months updating this project to 115 from spidermonkey 1.8
+
+[17:57:59.0156] <dragonslayer>
+https://github.com/UOX3DevTeam/UOX3/tree/feature/spidermonkey-esr115
+
+[17:58:02.0577] <dragonslayer>
+this is the project
+
+[17:58:35.0529] <dragonslayer>
+the sevrer emu uses spidermonkey 1.8 but we been working on getting it to current 115
+
+[17:58:51.0489] <dragonslayer>
+because support for the old engine is getting harder and harder
+
+[17:59:54.0289] <dragonslayer>
+i have not tryed that in vs yet
+
+[18:00:09.0013] <dragonslayer>
+i just compile exe in debug mode and run it on vs as debug
+
+[18:01:03.0114] <arai>
+if the application literally crashes (segmentation fault etc), catching it in the debugger is the first step
+
+[18:02:14.0287] <dragonslayer>
+ill ill run it again
+
+[07:53:02.0058] <zcorpan>
+FYI https://x.com/yoavweiss/status/1821470496971456725
+
+[08:48:53.0489] <mgaudet>
+-sigh- love me a failure I can't reproduce locally 
+
+[09:06:23.0599] <ptomato>
+hi! anyone have a moment to look at the embedders migration guide for esr128 https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/85 ? arai reviewed most of it but we have one open question about `JS::GCPolicy` that could use some feedback
+
+[12:27:41.0350] <mgaudet>
+If I want to mark a function pointer as "I promise, this pointer won't GC"... is there an annotation for this, or should I be going straight to the  [`ignoreIndirectCalls`](https://searchfox.org/mozilla-central/source/js/src/devtools/rootAnalysis/annotations.js#10-18) list 
+
+[12:31:50.0473] <arai>
+is the function pointer used/called in multiple places?
+
+[12:32:38.0238] <mgaudet>
+Yes :)
+
+[12:32:59.0851] <arai>
+(I wondered if AutoSuppressGCAnalysis mentioned above fits, if it's called in a few places)
+
+[12:33:10.0399] <mgaudet>
+(Otherwise I could use AutoSuppressGCAnalysis at the call site... I suppose I still could but was wondering if there was an annotation) 
+
+[12:33:56.0005] <mgaudet>
+(This is for the MOZ_LOG interface I've been working on -- I've hooked it up to JitSpewer, so that'd put AutoSuppressGCAnalysis in a lot of places) 
+
+[12:34:45.0703] <mgaudet>
+Oh wait. Hold on. No. I forgot. JitSpew is wierd... it does have only one call site. but JS_LOG would have more than one,  should we use it more frequently 
+
+[13:35:52.0535] <kfjvj>
+Question about interrupt handling: Is there any way to attach additional information to an interrupt request so that I can tell exactly where the request came from?
+
+[13:40:07.0553] <arai>
+the engine itself doesn't provide a way to add info.  but as long as there's no recursive interrupt request, you can have single global variable or something that shared between the requester and the the consumer, in order to track the additional info
+
+[13:41:19.0248] <kfjvj>
+> <@arai:mozilla.org> the engine itself doesn't provide a way to add info.  but as long as there's no recursive interrupt request, you can have single global variable or something that shared between the requester and the the consumer, in order to track the additional info
+
+That's what I was afraid of.
+
+[13:42:33.0621] <arai>
+do you mean there can be multiple requests?  what's the situation or the requester ?
+
+[13:46:03.0845] <kfjvj>
+I just want to distinguish my own interrupts from those invoked by the GC or other things.
+
+[13:48:53.0221] <arai>
+[JS_RequestInterruptCallback consumer](https://searchfox.org/mozilla-central/rev/0c55d51c0d2a9b672e42ad40ea54f90267f92a8e/js/src/shell/js.cpp#4792-4793) and [ShellInterruptCallback](https://searchfox.org/mozilla-central/rev/0c55d51c0d2a9b672e42ad40ea54f90267f92a8e/js/src/shell/js.cpp#997-1007) in the JS shell uses single bool to distinguish them
+
+
+2024-08-09
+[02:18:34.0449] <jandem>
+> <@kfjvj:matrix.org> I just want to distinguish my own interrupts from those invoked by the GC or other things.
+
+internally the engine tracks the interrupt reason and will only invoke the callback if you requested an interrupt callback through `JS_RequestInterruptCallback`, not for GC or other internal interrupt reasons
+
+[02:20:38.0398] <jandem>
+this was different before version 61 / bug 1458567
+
+[02:35:41.0990] <evilpie>
+https://github.com/mozilla/standards-positions/issues/1058
+
+[07:33:49.0270] <padenot>
+arai, sfink|backAug10, thanks for the help the other day. I ended up listing the specific function ptr instantiation in various templated things, and that appeared to appease the analysis. `AutoSuppressGCAnalsys` probably would have worked, but it caused circular header inclusion issues, and it wasn't immediately obvious how to deal with this in this context where ~everything is in headers because of template and/or inlining
+
+[07:34:36.0286] <padenot>
+https://phabricator.services.mozilla.com/D218770
+
+[08:10:43.0766] <l11d>
+what is the best way to disable the semi-space nursery for fuzzing? fuzzers are finding *so* many different asserts when this setting in enabled
+
+[08:15:07.0209] <mgaudet>
+l11d: ... huh. afaict it shouldn't be on unless you ask for it? 
+
+[08:16:26.0493] <l11d>
+well, the fuzzer manages to enable the functionality at runtime. I'd like to turn this into a no-op
+
+[08:18:01.0487] <mgaudet>
+Ah; we probably should guard the option as fuzzing-unsafe if it's not working
+
+[08:18:11.0190] <mgaudet>
+could you open a bug? 
+
+[08:20:31.0281] <mgaudet>
+Patch seems like it'd be around here: https://searchfox.org/mozilla-central/source/js/src/builtin/TestingFunctions.cpp#814-881
+
+[08:21:28.0313] <mgaudet>
+(special casing on `JSGC_SEMISPACE_NURSERY_ENABLED`) 
+
+[13:22:39.0864] <mgaudet>
+iain: Am I right in understanding that once a stub has been warp transpiled, the expectation is that the warp body no longer keeps any reference to the stub at all?
+
+[13:40:46.0367] <iain>
+mgaudet: There's no direct reference
+
+[13:41:22.0644] <iain>
+In the case of stub folding, the stub contains a pointer to the shape list object, and we bake a pointer to that object into the Ion code
+
+[13:41:36.0399] <iain>
+So that we can update its contents by returning to baseline
+
+[13:41:40.0174] <mgaudet>
+how is that object kept alive? 
+
+[13:43:23.0207] <iain>
+Hmm, good question
+
+[13:46:34.0797] <mgaudet>
+/me suspects https://searchfox.org/mozilla-central/search?q=symbol:F_%3CT_JS%3A%3AZone%3E_objectsWithWeakPointers&redirect=false
+
+[13:47:23.0369] <iain>
+That's more about clearing shapes out of it if the shapes are dead
+
+[13:47:31.0138] <iain>
+We trace it via the stub itself
+
+[13:48:13.0595] <iain>
+And I don't think you can get rid of the stub without getting rid of the Ion code
+
+[13:49:40.0756] <mgaudet>
+orly... hmm. 
+
+[13:50:23.0104] <iain>
+Although I'm suddenly less certain about that
+
+[13:50:59.0933] <mgaudet>
+(it's been really hard to trigger this UAF locally. I have a huuuuuge rr trace that has been replaying for 40 min now, and caused pernosco to oom.... but thus far it's my only repro) 
+
+[14:37:42.0467] <iain>
+mgaudet: Ah, I'm dumb. The GC pointers embedded in Ion code get traced [here](https://searchfox.org/mozilla-central/source/js/src/jit/x86-shared/Assembler-x86-shared.cpp#43)
+
+[14:37:51.0653] <iain>
+So the IonScript keeps it alive directly
+
+
+2024-08-10
+[17:26:17.0031] <mgaudet>
+hmm. 2% on some subtests if I just bypass the warp issue by not transpiling the op in warp... https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=e82bd354b3252cdcd6ce003ad17dd2bffb1edddd&originalSignature=5131097&newSignature=5131097&framework=13&application=firefox&originalRevision=6527ae1e689195f5a53dc0c4ee3a57f7a33c4565&page=1 
+
+
+2024-08-11
+[06:07:36.0205] <arai>
+kbrecordzz: hi, are you still there?  I'm going to explain, but it can take some time
+
+[06:10:40.0014] <kbrecordzz>
+> <@arai:mozilla.org> kbrecordzz: hi, are you still there?  I'm going to explain, but it can take some time
+
+Hi, yes! What I'm having trouble understanding is if built-in functions are converted to bytecode or not (if we ignore JIT optimization and focus on normal interpretation).
+
+[06:12:11.0962] <arai>
+There are 2 types of built-in functions.  one is native functions, and the other is self-hosted JS functions.  both are encapsulated with [JSFunction](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/vm/JSFunction.h#53), which maps to function (`typeof v == "function"`) in JavaScript
+
+[06:12:55.0494] <arai>
+When those values are called, the implementation checks if the value is function, and whether it's native or scripted
+
+[06:13:39.0888] <arai>
+if it's native function, it directly calls the native function.  if it's scripted function, it calls the function in the same way as if user-defined function is called
+
+[06:14:00.0429] <arai>
+so, self-hosted JS cases is converted to bytecode.
+
+[06:16:09.0672] <arai>
+example: https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/builtin/Array.cpp#5065,5085-5086
+```cpp
+static const JSFunctionSpec array_methods[] = {
+...
+    JS_FN("indexOf", array_indexOf, 1, 0),
+    JS_SELF_HOSTED_FN("forEach", "ArrayForEach", 1, 0),
+```
+
+[06:16:55.0639] <arai>
+`Array#indexOf` is native function.  so it doesn't have corresponding bytecode.  the last bytecode before reaching it will be `JSOp::Call` etc, that calls given value.
+
+[06:17:53.0644] <arai>
+`Array#forEach` is self-hosted function, defined in [Array.js](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/builtin/Array.js#80).  it behaves almost same way as if you write the function in JS file, except for that the file is compiled in special mode
+
+[06:18:24.0337] <arai>
+kbrecordzz: ^ does it make sense?   if you have further questions, feel free to ask
+
+[06:19:06.0213] <arai>
+ * `Array#forEach` is self-hosted function, defined in [Array.js](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/builtin/Array.js#80).  it behaves almost same way as if you write the function in JS file and each operation is converted to bytecode, except for that the file is compiled in special mode
+
+[06:25:25.0342] <kbrecordzz>
+> <@arai:mozilla.org> kbrecordzz: ^ does it make sense?   if you have further questions, feel free to ask
+
+Thank you, this is a good explanation! So self-hosted functions are added into the javascript code before the parsing, and then gets treated like any code?
+
+[06:26:30.0227] <arai>
+self-hosted functions are parsed at the parent process startup, and shared across processes, instead of parsed for each global or user-provided script
+
+[06:26:47.0773] <kbrecordzz>
+> <@arai:mozilla.org> kbrecordzz: ^ does it make sense?   if you have further questions, feel free to ask
+
+And regarding this: "if it's native function, it directly calls the native function", where is this done? Is there a bytecode opcode to call native functions?
+
+[06:26:59.0462] <arai>
+those functions are cloned into each global when necessary
+
+[06:28:00.0964] <kbrecordzz>
+Hmm, I'm not really following the terms here. What is "global"?
+
+[06:28:08.0636] <arai>
+[JSOp::Call](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/vm/Interpreter.cpp#3296) and some others listed there are opcodes for function call
+
+[06:28:22.0051] <arai>
+https://developer.mozilla.org/en-US/docs/Glossary/Global_object
+
+[06:28:47.0354] <arai>
+for example, each web page, or frame
+
+[06:30:03.0928] <kbrecordzz>
+Okay got it. So, when the bytecode is being executed (interpreted) and there is a "CALL" opcode to a native function, the interpreter jumps to the C++ code for this native function? Or am I getting it wrong?
+
+[06:32:39.0361] <arai>
+yeah, that's correct understanding. `JSOp::Call` -> [js::CallFromStack](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/vm/Interpreter.cpp#3296,3357) -> [(some others)](https://searchfox.org/mozilla-central/query/default?q=calls-between-source%3A%27js%3A%3ACallFromStack%27+calls-between-target%3A%27CallJSNative%27) -> the native function
+
+[06:33:28.0142] <arai>
+[this line](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/vm/Interpreter.cpp#489) calls the native function
+
+[06:33:50.0343] <arai>
+the `native` function is for example [js::array_indexOf](https://searchfox.org/mozilla-central/rev/03258de701dbcde998cfb07f75dce2b7d8fdbe20/js/src/builtin/Array.cpp#4398) above
+
+[06:34:07.0523] <kbrecordzz>
+Awesome. Tried to understand this from reading the source code during a couple of days. Finally I got it!
+
+[06:34:10.0213] <kbrecordzz>
+Thanks!
+
+[06:34:21.0457] <arai>
+you're welcome :)
+
+
+2024-08-12
+[22:25:17.0555] <sfink|covid>
+> <@mgaudet:mozilla.org> (Otherwise I could use AutoSuppressGCAnalysis at the call site... I suppose I still could but was wondering if there was an annotation)
+
+Sadly, only the annotions.js one. I keep meaning to add one. I think I may have even worked on it once, only to get annoyed at old-style vs new-style attribute handling in the compilers. If it's for the individual callsites, I could always fall back on a `JS::MagicFunctionThatDoesntActuallyDoAnything(fptr)`. But that's not really much better than `AutoSuppressGCAnalysis`. It would be better to associate it with the type, and hope that people are using a consistent type (the one with the annotation) everywhere.
+
+[22:26:31.0055] <sfink|covid>
+> <@padenot:mozilla.org> arai, sfink|backAug10, thanks for the help the other day. I ended up listing the specific function ptr instantiation in various templated things, and that appeared to appease the analysis. `AutoSuppressGCAnalsys` probably would have worked, but it caused circular header inclusion issues, and it wasn't immediately obvious how to deal with this in this context where ~everything is in headers because of template and/or inlining
+
+Ah, yes, I have done the same thing for the same reason.
+
+[22:31:39.0194] <sfink|covid>
+> <@mgaudet:mozilla.org> (it's been really hard to trigger this UAF locally. I have a huuuuuge rr trace that has been replaying for 40 min now, and caused pernosco to oom.... but thus far it's my only repro)
+
+fwiw, I don't generally trust rr to not crash in the situations I really care about, and for long recordings, I'll often use `taskset -c ... rr replay -u ...` to run multiple replay attempts on different cores (it'll default to core 0, which is where the original recording ran). Then when one crashes, I'll flip to the next. In theory, rr doesn't ensure that traces are portable across cores, but I've never had a problem (and roc/khuey didn't think it was a wholly stupid thing to do, so they let me add the `-u` option).
+
+[13:39:25.0038] <smaug>
+I guess we don' have any simple way to check if there are cross-realm references
+
+
+2024-08-13
+[00:31:12.0130] <jandem>
+> <@smaug:mozilla.org> I guess we don' have any simple way to check if there are cross-realm references
+
+no, there's no boundary or membrane between same-compartment realms
+
+[16:44:22.0657] <iain>
+[This is a good writeup of a Chrome exploit](https://github.blog/security/vulnerability-research/from-object-transition-to-rce-in-the-chrome-renderer/)
+
+
+2024-08-14
+[05:59:00.0351] <mbrodesser>
+Is https://searchfox.org/mozilla-central/rev/b1b87f95ecea00828298d1b3cd3d8718f9fcc3fc/js/src/jsapi.h#956 to return an empty file name, even if a scripted frame is available?
+
+[05:59:15.0624] <mbrodesser>
+ * Is https://searchfox.org/mozilla-central/rev/b1b87f95ecea00828298d1b3cd3d8718f9fcc3fc/js/src/jsapi.h#956 allowed to return an empty file name, even if a scripted frame is available?
+
+[07:56:27.0988] <jandem>
+mbrodesser: there is a code path where [it does that](https://searchfox.org/mozilla-central/rev/b1b87f95ecea00828298d1b3cd3d8718f9fcc3fc/js/src/jsapi.cpp#4686)
+
+[07:58:57.0092] <jandem>
+embedders can also supply an empty file name
+
+[08:02:19.0990] <jandem>
+ * embedders can also supply an empty file name that could then be returned there
+
+[10:25:18.0163] <mccr8>
+Is there a particular reason to go with `MutableHandle<GCVector<Value>>` vs `MutableHandle<StackGCVector<Value>>`? I see `MapObject.h` is using the latter but some other places are using the form (as `MutableHandleValueVector`). I guess the former could take a heap vector, even though the call sites I'm looking at are all allocated on the stack.
+
+[10:25:56.0542] <mccr8>
+I kind of like the latter more but really only because then I can use the shorter name...
+
+[12:01:32.0973] <jonco>
+mccr8: StackGCVector has an inline capacity of 8 to avoid an allocation in many cases when used on the stack.  It's a bit unfortunate that the MutableHandleFooVector aliases don't convey this.
+
+[12:17:24.0662] <mccr8>
+Alright, makes sense.
+
+
+2024-08-15
+[00:05:52.0679] <mbrodesser>
+> <@jandem:mozilla.org> mbrodesser: there is a code path where [it does that](https://searchfox.org/mozilla-central/rev/b1b87f95ecea00828298d1b3cd3d8718f9fcc3fc/js/src/jsapi.cpp#4686)
+
+jandem: in Firefox it might happen for non-Wasm code too; is that expected?
+
+[00:56:07.0315] <jandem>
+mbrodesser: it's most likely JS code being executed without passing a file name. Do you know what kind of code this is?
+
+[00:56:24.0838] <jandem>
+ * mbrodesser: it's most likely JS code being executed without passing a file name to the engine. Do you know what kind of code this is?
+
+[00:57:55.0684] <jandem>
+ * mbrodesser: it's most likely JS code being executed without passing a file name to the engine. Do you know what kind of code this is? But yes it's expected
+
+[01:10:20.0694] <jandem>
+ * mbrodesser: it's most likely JS code being executed without passing a file name to the engine. Do you know what kind of code this is? But yes it's expected behavior for the API
+
+[02:48:48.0893] <mbrodesser>
+jandem: might not be a minimal example, but the code at https://jsfiddle.net/r3hvdt65/ leads to that behavior
+
+[03:27:18.0692] <debadree25>
+what does it mean in context of ArrayObjects to be ["dense"](https://searchfox.org/mozilla-central/source/js/src/builtin/Array.h#44)  ? I am trying to create an array object the way i am going about it (by reading some surrounding code) is something like this below: 
+```
+uint32_t length = disposeCapability->getDenseInitializedLength();
+  uint32_t newLength = length + 1;
+  disposeCapability->setDenseInitializedLength(newLength);
+  disposeCapability->initDenseElement(length, resource);
+```
+
+[03:27:25.0433] <debadree25>
+is this the right way to go about it?
+
+[03:31:23.0332] <debadree25>
+* what does it mean in context of ArrayObjects to be "dense" ? I am trying to create an array object and add elements to it the way i am going about it (by reading some surrounding code) is something like this below:
+uint32_t length = disposeCapability->getDenseInitializedLength();  uint32_t newLength = length + 1;  disposeCapability->setDenseInitializedLength(newLength);  disposeCapability->initDenseElement(length, resource);
+
+[04:17:52.0762] <debadree25>
+* what does it mean in context of ArrayObjects to be "dense" ? I am trying to create an array object and add elements to it the way i am going about it (by reading some surrounding code) is something like this below:
+``` uint32_t length = disposeCapability->getDenseInitializedLength(); uint32_t newLength = length + 1; disposeCapability->setDenseInitializedLength(newLength); disposeCapability->initDenseElement(length, resource);
+```
+
+[04:20:14.0068] <debadree25>
+* what does it mean in context of ArrayObjects to be "dense" ? I am trying to create an array object and add elements to it the way i am going about it (by reading some surrounding code) is something like this below:
+
+```
+uint32_t length = arr->getDenseIntialisedLength();
+arr->initDenseElement(length++, value);
+arr->setDenseInitialisedLength(length)
+```
+
+[05:40:55.0679] <jandem>
+debadree25: if it's a newly allocated array you could use `NewbornArrayPush`
+
+[05:42:46.0746] <jandem>
+another common pattern is to add elements to a vector and use `NewDenseCopiedArray` [like here](https://searchfox.org/mozilla-central/rev/4496b3ed9bb535832e4826f09fbcb645b559a32d/js/src/debugger/Debugger.cpp#207)
+
+[05:46:33.0558] <debadree25>
+> <@jandem:mozilla.org> debadree25: if it's a newly allocated array you could use `NewbornArrayPush`
+
+This looks like would solve my problem! but are there any caveats like some time limit/any other condition in which the array would cease to be "new born" or something like that? 
+
+[05:49:31.0557] <jandem>
+debadree25: 'newborn' means the array should not have been exposed to arbitrary JS code that could have messed with it
+
+[05:53:04.0618] <debadree25>
+got it! fits my case this wont be exposed to js code! tysm jandem !
+
+[14:01:32.0344] <gkw>
+Interspersing wasmCompileMode turning on and off options will operate as intended right? i.e. the shell does not need to be restarted
+
+
+2024-08-16
+[03:11:17.0054] <smaug>
+jandem: is there some helper method to cancel all current/pending jit compilation
+
+[03:12:25.0879] <smaug>
+ * jandem: is there some helper method to cancel all current/pending jit compilation (but not disable future compilation )
+
+[03:52:31.0156] <jandem>
+smaug: you could call [this one](https://searchfox.org/mozilla-central/rev/2455e4d6388cbdeadb44b9633b971a65a98b504c/js/src/vm/HelperThreads.h#205). We could add a version of that for a single realm instead of zone I should have patches for that somewhere
+
+[03:52:49.0858] <jandem>
+ * smaug: you could call [this one](https://searchfox.org/mozilla-central/rev/2455e4d6388cbdeadb44b9633b971a65a98b504c/js/src/vm/HelperThreads.h#205). We could add a version of that for a single realm instead of zone. I should have patches for that somewhere...
+
+
+2024-08-18
+[10:55:48.0215] <debadree25>
+does running `./mach jit-test` put some additional flags which wouldnt be available when we run the same script via `./mach run`? if so where can i find those additional params?
+
+[12:22:19.0318] <arai>
+debadree25: there are 2 things added by `./mach jit-test`.  one is [constants for directory](https://searchfox.org/mozilla-central/source/js/src/tests/lib/jittests.py#395-397), specified by `-e` arguments.  for `load(libdir + "asserts.js");` etc. The other is [JIT flags](https://searchfox.org/mozilla-central/source/js/src/tests/lib/tests.py#13-31), this controls JIT behavior and some others.   Also, you can pass `--show-cmd` to `./mach jit-test` to see the actual command used for running the test
+
+[12:23:34.0513] <arai>
+passing `--jitflags=all` runs the test 6 times, for each JIT flag combinations
+
+[12:26:55.0467] <debadree25>
+ahah got it! thank you!!
+
+[12:31:25.0072] <iain>
+debadree25: You can pass -s to see the exact command line for each test, or -S to only see it for failing tests.
+
+[12:39:37.0589] <debadree25>
+> <@iain:mozilla.org> debadree25: You can pass -s to see the exact command line for each test, or -S to only see it for failing tests.
+
+ah the failing tests command is helpful!
+
+[12:40:47.0667] <debadree25>
+i had another question does the baseline interpreter immidiately start generating code right after the interpreter has finished its job? and the code is just kept aside until the function is hot enough?
+
+[12:42:46.0759] <iain>
+There is a per-script warm-up counter that is incremented when we enter a function or reach the top of a loop. When that counter hits [10](https://searchfox.org/mozilla-central/source/js/src/jit/JitOptions.cpp#189), we transition from the C++ interpreter to the baseline interpreter.
+
+[12:44:34.0825] <iain>
+We don't generate any code for a script when it runs in the baseline interpreter. That doesn't happen until the baseline compiler (warmup count [100](https://searchfox.org/mozilla-central/source/js/src/jit/JitOptions.cpp#200)). We delay because we do have to allocate some memory for inline caches, which is a waste of time for code that will only run once or twice.
+
+[12:55:25.0206] <debadree25>
+oh ok now it strikes me Interpreter generates bytecode -> the baseline interpreter has machine level instructions relevant for each bytecode but still executes them 1 by 1 -> baseline compiler/jit uses the same code as the baseline interpreter but it now compile everything and it includes incline caches -> finally we have warp which has more advanced stuff
+
+[12:55:27.0369] <debadree25>
+right?
+
+[13:01:05.0845] <iain>
+Pretty close. The parser generates bytecode, not the interpreter. (Roughly speaking, code in js/frontend). The C++ interpreter (in js/vm/Interpreter.cpp) and the baseline interpreter can both run the bytecode directly by interpreting bytecodes one by one. We start using inline caches in the baseline interpreter, not the baseline compiler.
+
+[13:06:11.0401] <debadree25>
+> <@iain:mozilla.org> Pretty close. The parser generates bytecode, not the interpreter. (Roughly speaking, code in js/frontend). The C++ interpreter (in js/vm/Interpreter.cpp) and the baseline interpreter can both run the bytecode directly by interpreting bytecodes one by one. We start using inline caches in the baseline interpreter, not the baseline compiler.
+
+got it! yes parser generates mixed it up 😅😅
+
+[13:07:55.0148] <debadree25>
+one maybe final question 
+so after baseline compiler -> there is warp builder which generates a MIR based on data gathered by CacheIR -> this MIR is then finally processed by Ion compiler and that is what does the final optimisations? 
+
+[13:08:56.0520] <iain>
+Yeah, basically right. WarpBuilder also uses the original bytecode, not just CacheIR.
+
+[13:12:51.0851] <debadree25>
+got it! thank you so much for answering 😄
+
+[15:27:27.0392] <kurokage09>
+Hello, I am new to SpiderMonkey and wanted to embed SpiderMonkey in my OpenGL application. I followed the instructions to build it on my machine (Windows 64 bit) and it seems like everything was a success. However, I cannot seem to get a start point as to where are my libraries (.lib) and binaries (.dll) and the source files (.h/.cpp/.hpp) so that I can include them in my VS solution and start learning about how the SpiderMonkey API.. any help would be much appreciated. Thanks :)
+
+[15:29:28.0466] <arai>
+kurokage09: did you follow this document https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr115/docs/Building%20SpiderMonkey.md#building-spidermonkey , or something else?
+
+[15:31:40.0398] <kurokage09>
+> <@arai:mozilla.org> kurokage09: did you follow this document https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr115/docs/Building%20SpiderMonkey.md#building-spidermonkey , or something else?
+
+Oh, I did not follow that one I followed the one that was present on the website: 
+
+https://firefox-source-docs.mozilla.org/setup/windows_build.html#building-firefox-on-windows
+
+Now that I read it, it says building Firefox for Windows, but I selected SpiderMonkey engine when there was a selection in the command prompt..
+
+I'll try to follow the document in the link that you have provided and let you know if there are any issues. Thanks :)
+
+[15:35:07.0248] <arai>
+(they're almost same thing, except for the command being different)  the https://firefox-source-docs.mozilla.org/setup/windows_build.html#building-firefox-on-windows covers the workflow for developing the Firefox or SpiderMonkey itself.   https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples this repository is an example for embedding SpiderMonkey into other application
+
+[15:35:59.0633] <arai>
+on Windows, I think, you'll need to specify `--prefix` option to the `configure` command
+
+[15:36:49.0303] <arai>
+after `make install`, headers and libraries are installed into the specified directory, and you can add those directories to the workspace/solution's setting
+
+[15:37:06.0356] <kurokage09>
+> <@arai:mozilla.org> (they're almost same thing, except for the command being different)  the https://firefox-source-docs.mozilla.org/setup/windows_build.html#building-firefox-on-windows covers the workflow for developing the Firefox or SpiderMonkey itself.   https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples this repository is an example for embedding SpiderMonkey into other application
+
+Ohhh, thanks for the clarification.. Also, I see this document says we have to use 'make' command.. I was wondering would it build using the MSVC compiler or the mingw-gcc compiler? Since my project is being built using the MSVC compiler I was wondering if it would generate .lib or .a files
+
+[15:41:56.0516] <arai>
+if you've already built with `./mach` commands above, all necessary tools should be installed into `~/.mozbuild` directory, including make and clang.  I think you can use them for compiling. I'm not sure about compatibility with MSVC, but at least there are some issues with MSVC right now where SpiderMonkey cannot be built with it
+
+[15:45:11.0791] <kurokage09>
+> <@arai:mozilla.org> if you've already built with `./mach` commands above, all necessary tools should be installed into `~/.mozbuild` directory, including make and clang.  I think you can use them for compiling. I'm not sure about compatibility with MSVC, but at least there are some issues with MSVC right now where SpiderMonkey cannot be built with it
+
+Hmm.. so does this mean I would have difficulties integrating SpiderMonkey in my Visual Studio project?
+
+[15:45:57.0999] <arai>
+Also, according to [bug 1768634](https://bugzilla.mozilla.org/show_bug.cgi?id=1768634), the issue also happens when building your project (after building SpiderMonkey itself with clang), and you might need to apply some workaround to make the header compatible with MSVC's compiler/preprocessor
+
+[15:49:20.0128] <arai>
+unfortunately, yes. currently building with MSVC is not tested (only gcc and clang are fully supported), and there will be some issues due to incompatibilities.   If these issues can be fixed with not-too-invasive way, patches are welcome
+
+[15:50:36.0168] <arai>
+https://firefox-source-docs.mozilla.org/code-quality/coding-style/using_cxx_in_firefox_code.html describes the compiler requirement
+
+[16:03:56.0156] <kurokage09>
+Oh, that's a lot of information for sure. Unfortunately, my project is made on Visual Studio so I don't think it would be a best idea as of now for going ahead with the build.. I opted for SpiderMonkey since V8 is just bloated when it comes to building it from scratch. Thanks anyways :), I'll look forward to SpiderMonkey in the future if it rolls out a MSVC compatible version
+
+[16:48:37.0087] <sfink|covid>
+SpiderMonkey tries to work in the configuration where you build SpiderMonkey with clang, but build your own project with MSVC. Only "tries to work" because sometimes the headers become incompatible with MSVC, which will cause it to break when building your project that is including SpiderMonkey header files, and we don't have a continuous integration job that tests this since it isn't used by Firefox. But we want it to work, and will certainly accept fixes and sometimes attempt fixes when we know it's broken.
+
+
+2024-08-19
+[17:52:50.0650] <arai>
+looks like `--disable-optimize` is broken right now ([bug 1913656](https://bugzilla.mozilla.org/show_bug.cgi?id=1913656)), and all builds use optimized build
+
+[07:28:57.0711] <mbrodesser (offline on Fridays)>
+What's the preferred way to allocate a `JS::Rooted<JSString*>` from a literal known at compile time (e.g. `"x"_ns`, or `u"y"_ns`))?
+
+There are functions like `NewStringFromLatin1Buffer` (https://searchfox.org/mozilla-central/rev/396a6123691f7ab3ffb449dcbe95304af6f9df3c/js/public/String.h#119) but those are for `StringBuffer`, i.e. for non-compile time known strings.
+
+`JS_NewUCString` and related functions (https://searchfox.org/mozilla-central/rev/396a6123691f7ab3ffb449dcbe95304af6f9df3c/js/public/String.h#56,90,94) are also the wrong candidates, because they take `UniquePtr`(s) which are heap-allocated.
+
+[07:30:33.0737] <mbrodesser (offline on Fridays)>
+Context: need to fill a `Sequence<JS::Value>` with two strings which are known at compile-time
+
+[07:32:35.0694] <mbrodesser (offline on Fridays)>
+...from Gecko-code
+
+[07:32:50.0842] <jandem>
+`xpc::NonVoidStringToJsval`?
+
+[07:37:26.0643] <Ms2ger>
+Add an atom?
+
+[07:46:39.0728] <mbrodesser (offline on Fridays)>
+`xpc::NonVoidStringToJsval` seems to work. For my use-case it might be more efficient than an atom, since there might be no need for a hash.
+
+[07:47:55.0888] <mbrodesser (offline on Fridays)>
+(Btw, `xpc::NonVoidStringToJsval` seems not be part of any documentation)
+
+[07:53:32.0817] <Ms2ger>
+Apologies for not documenting in bug 711240
+
+[09:33:23.0015] <sfink>
+> <@ms2ger:igalia.com> Apologies for not documenting in bug 711240
+
+You've had 13 years to fix it. What have you been doing all this time?
+
+[10:12:59.0405] <debadree25>
+)is it not possible to call into VM from WarpBuilder like we can do from Baseline [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.h#130) (apologies if the question doesnt make sense i guess if we have to call vm only why have it in warp, but just trying to prototype test something 😅😅😅)
+
+[10:13:07.0276] <debadree25>
+ * is it not possible to call into VM from WarpBuilder like we can do from Baseline [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.h#130) (apologies if the question doesnt make sense i guess if we have to call vm only why have it in warp, but just trying to prototype test something 😅😅😅)
+
+[10:27:46.0034] <iain>
+debadree25: Lots of things in Warp/Ion will call into the VM, but not directly from WarpBuilder. Instead, WarpBuilder will [emit](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#2630-2638) a [MIR instruction](https://searchfox.org/mozilla-central/source/js/src/jit/MIROps.yaml#1371), which will be [lowered](https://searchfox.org/mozilla-central/source/js/src/jit/Lowering.cpp#3658-3662)  to a [LIR instruction](https://searchfox.org/mozilla-central/source/js/src/jit/LIROps.yaml#1812), which will eventually [generate code](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#3841-3846). 
+
+[10:33:05.0635] <debadree25>
+ohhh i see i didnt know see this LIR
+
+[10:33:25.0963] <debadree25>
+so it goes like MIR -> optimisation -> LIR -> final code?
+
+[10:35:38.0437] <iain>
+Yes. 
+
+[10:36:54.0360] <iain>
+Technically we do register allocation between LIR generation and code generation, but you should usually not need to think about that.
+
+[10:38:31.0253] <debadree25>
+got it! thank you! 
+
+[10:39:34.0758] <iain>
+Also, if you want to take implementation one step at a time, you can temporarily add a JSOp to [this list](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.h#23-66) so that it is supported in blinterp/baseline but not Warp
+
+[10:41:27.0678] <debadree25>
+> <@iain:mozilla.org> Also, if you want to take implementation one step at a time, you can temporarily add a JSOp to [this list](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.h#23-66) so that it is supported in blinterp/baseline but not Warp
+
+its already added actually the all the Explicit Resource management opcodes now that i have finished implementing them in interpreter and baseline looking at how to implement in warp was thinking on lines of if i could just call vm from now and make all the tests pass and then improve it!
+
+[14:29:10.0076] <bvisness>
+how do I run web platform tests locally?
+
+[14:29:16.0872] <bvisness>
+they're seemingly not part of spidermonkey jit-tests
+
+[14:29:34.0949] <iain>
+jit-tests are shell-only. WPT tests are full-browser.
+
+[14:30:23.0701] <Bryan Thrall [:bthrall]>
+With a full-browser build, you can use `./mach wpt`
+
+[14:52:18.0214] <bvisness>
+uh
+```
+ 3:40.40 /home/bvisness/Developer/mozilla-unified/security/sandbox/common/test/SandboxTest.cpp:80:21: error: no member named 'SendInitSandboxTesting' in 'mozilla::dom::ContentParent'
+ 3:40.40    80 |   Unused << aActor->SendInitSandboxTesting(std::move(sandboxTestingChildEnd));
+ 3:40.40       |             ~~~~~~  ^
+```
+
+[14:52:25.0012] <bvisness>
+well this is unfortunate
+
+[15:05:18.0213] <bvisness>
+welp a clobber fixed it
+
+
+2024-08-20
+[00:18:57.0151] <Ms2ger>
+> <@sfink:mozilla.org> You've had 13 years to fix it. What have you been doing all this time?
+
+It's been waiting for your review for 12 of those years
+
+[00:19:09.0894] <Ms2ger>
+(Not really, but it could have been, right? :))
+
+[01:17:21.0578] <mbrodesser (offline on Fridays)>
+May `binding_detail::AutoSequence` (https://searchfox.org/mozilla-central/rev/527d691a542ccc0f333e36689bd665cb000360b2/dom/bindings/BindingDeclarations.h#526,528) be used instead of `Sequence`  for a compile-time known Sequence of length 2?
+
+[01:17:39.0675] <mbrodesser (offline on Fridays)>
+Outside of binding code, though.
+
+[01:30:59.0525] <Ms2ger>
+I would recommend against
+
+[03:06:48.0918] <mbrodesser (offline on Fridays)>
+Ms2ger: why?
+
+[03:13:04.0607] <Ms2ger>
+I would assume that method to be considered private to the bindings implementation
+
+[03:13:15.0640] <Ms2ger>
+Though maybe #dom:mozilla.org could give a more definitive answer
+
+[03:17:46.0062] <mbrodesser (offline on Fridays)>
+> <@ms2ger:igalia.com> I would assume that method to be considered private to the bindings implementation
+
+From the comment only, or from its functionality too? If so, why?
+
+[03:18:50.0389] <padenot>
+`detail` in a namespace implies that
+
+[03:19:30.0727] <mbrodesser (offline on Fridays)>
+Yeah, but does it make sense?
+
+[03:20:35.0068] <mbrodesser (offline on Fridays)>
+It could of course be moved out of that namespace.
+
+[03:22:02.0740] <padenot>
+well, if you want it, do it!
+
+[03:22:10.0481] <mbrodesser (offline on Fridays)>
+:D
+
+[03:23:08.0420] <evilpie>
+I doubt you really need it.  AutoTArray would probably work
+
+[03:31:13.0406] <peterv>
+exactly
+
+[06:52:15.0530] <jonco>
+sfink: "We should be able to remove these overloads when gcc hazard builds use modern clang" - do you know if this is possible yet? https://searchfox.org/mozilla-central/source/js/public/ComparisonOperators.h#188-189
+
+[06:52:53.0713] <jonco>
+Oh, if that really requires clang then I guess not
+
+[07:01:33.0574] <davidj361>
+Are there any instances of `JS::TranscodeBuffer` actually being saved to a file?
+
+[07:05:41.0537] <jandem>
+davidj361: yes we do that in a few places. Why?
+
+[07:06:10.0550] <davidj361>
+was trying to find the proper 1:1 way to do it instead of guessing it
+
+[07:12:18.0507] <davidj361>
+is std::filesystem used?
+
+[07:12:21.0631] <jandem>
+[here's code](https://searchfox.org/mozilla-central/rev/527d691a542ccc0f333e36689bd665cb000360b2/dom/xul/nsXULElement.cpp#1512-1534) that writes to a stream
+
+[07:13:40.0984] <jandem>
+the JS shell [has code](https://searchfox.org/mozilla-central/rev/527d691a542ccc0f333e36689bd665cb000360b2/js/src/shell/js.cpp#11672-11718) for writing self-hosted code to a file, but that uses a slightly different API
+
+[07:15:08.0790] <gerard-majax>
+hello, two questions: can one completely disable gc? not just postpone it ; does it makes sense that a webpage would have allocated ~3-4GB, and that after expected gc/cc and even forcing it via about:memory (+ minimize memory usage) it still reports 3-4GB in about:processes?
+
+[07:19:34.0576] <davidj361>
+What does XDR stand for?
+
+[07:21:07.0474] <jandem>
+davidj361: https://en.wikipedia.org/wiki/External_Data_Representation . These days in SM it's just the Stencil serialization format
+
+[07:23:36.0992] <jandem>
+ * davidj361: https://en.wikipedia.org/wiki/External\_Data\_Representation . These days in SM it's just the Stencil serialization format but the XDR name goes back to very old SM versions
+
+[07:27:27.0090] <jandem>
+gerard-majax: it could be a leak in Firefox or the website's JS code allocates a lot of memory (or leaks). An about:memory report might tell us why it's using so much memory
+
+[07:27:45.0736] <jandem>
+ * gerard-majax: it could be a leak in Firefox, or the website just allocates a lot of memory (or leaks). An about:memory report might tell us why it's using so much memory
+
+[07:28:15.0169] <gerard-majax>
+jandem: i captured the logs, but it's not a website, it's a microbenchmark as a local file and i dont think it should leak at that level
+
+[07:28:34.0861] <gerard-majax>
+it's the code emilio shared: https://bugzilla.mozilla.org/attachment.cgi?id=9419417&action=edit
+
+[07:28:49.0009] <gerard-majax>
+i'd like to make sure that the figures I see are not related to that issue
+
+[07:32:09.0708] <jandem>
+oh almost 3 GB of dom/orphan-nodes
+
+[07:33:49.0389] <jandem>
+emilio: ^
+
+[07:34:13.0920] <jandem>
+ * oh almost 3 GB of dom/orphan-nodes in about:memory
+
+[07:34:48.0858] <gerard-majax>
+even `window.onload = undefined;` i could not see freeing that memory
+
+[07:35:48.0069] <emilio>
+jandem: we should look what is keeping those nodes alive... gerard-majax can you file a separate bug for that?
+
+[07:35:58.0402] <gerard-majax>
+sure
+
+[07:36:00.0098] <emilio>
+Ah no
+
+[07:36:02.0554] <emilio>
+it's expected
+
+[07:36:09.0557] <gerard-majax>
+is it?
+
+[07:36:12.0162] <emilio>
+`window.a = tree.querySelectorAll("*")`
+
+[07:36:18.0086] <gerard-majax>
+oh
+
+[07:36:22.0326] <emilio>
+That basically puts all the nodes on a list and hangs it off the global
+
+[07:36:56.0278] <gerard-majax>
+nulled both
+
+[07:37:02.0533] <gerard-majax>
+CPU 100% likely gc?
+
+[07:37:10.0331] <gerard-majax>
+down to 2GB
+
+[07:37:10.0878] <emilio>
+I thought you were seeing it on the second test-case I attached to that bug (that doesn't return any node in the list)
+
+[07:38:26.0416] <gerard-majax>
+weird
+
+[07:38:51.0522] <gerard-majax>
+`window.a = null; window.b = null; window.onload = null;`, still 2GB visible 
+
+[07:39:03.0298] <gerard-majax>
+about:memory shows dom/orphan-nodes
+
+[07:39:20.0317] <gerard-majax>
+even after GC, CC and minimize memory
+
+[07:40:24.0470] <mbrodesser (offline on Fridays)>
+> <@evilpie:mozilla.org> I doubt you really need it.  AutoTArray would probably work
+
+Indeed
+
+[07:42:02.0550] <emilio>
+gerard-majax: ok that seems worth digging into. Please file and attach the modified test-case?
+
+[07:45:40.0538] <gerard-majax>
+ok i was doing it from the console, doing from the test it goes back to 18MB
+
+[08:07:04.0801] <gerard-majax>
+jandem: but no way to completely disable the gc to verify?
+
+[08:40:03.0017] <mccr8>
+> <@gerard-majax:mozilla.org> ok i was doing it from the console, doing from the test it goes back to 18MB
+
+Devtools has the tendency to leak the entire page FWIW
+
+[10:18:42.0264] <debadree25>
+In warp builder I see the following [environment objects](https://searchfox.org/mozilla-central/source/js/src/jit/WarpSnapshot.h#44-46) being referred to and one example use [here](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#2021) my question is it like guranteed that the other environment objects wont appear here? specifically thinking about ModuleEnvironmentObject is it like guranteed that the snapshot wont capture a ModuleEnvironmentObject?
+
+[10:24:48.0890] <iain>
+debadree25: Those snapshots are created [here](https://searchfox.org/mozilla-central/source/js/src/jit/WarpOracle.cpp#458-511). They're each created by a specific op (or set of ops). There are currently no ops that push a ModuleEnvironmentObject, so we don't have any need for WarpModuleEnvironment. (Compare the results if you search [Opcodes.h](https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#3364) for `ClassBodyEnvironmentObject` vs `ModuleEnvironmentObject`)
+
+[10:25:35.0350] <sfink>
+> <@jonco:mozilla.org> sfink: "We should be able to remove these overloads when gcc hazard builds use modern clang" - do you know if this is possible yet? https://searchfox.org/mozilla-central/source/js/public/ComparisonOperators.h#188-189
+
+It's possible that newer gcc handles it differently, though I'm not sure we've upgraded gcc in the last 4 years.
+
+[10:27:30.0561] <iain>
+WarpOracle runs on the main thread and takes a snapshot of all the information that is needed for a compilation. Then we send that snapshot to a background thread where WarpBuilder turns it all into MIR.
+
+[10:30:39.0885] <debadree25>
+> <@iain:mozilla.org> debadree25: Those snapshots are created [here](https://searchfox.org/mozilla-central/source/js/src/jit/WarpOracle.cpp#458-511). They're each created by a specific op (or set of ops). There are currently no ops that push a ModuleEnvironmentObject, so we don't have any need for WarpModuleEnvironment. (Compare the results if you search [Opcodes.h](https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#3364) for `ClassBodyEnvironmentObject` vs `ModuleEnvironmentObject`)
+
+so in case a opcode which would operate the EnvironmentObject and it could either be LexicalEnvironmentObject or ModuleEnvironmentObject we first have to add handling for the same here to create a snapshot
+
+[10:43:22.0584] <iain>
+debadree25: I think that sounds about right.
+
+[10:43:40.0601] <iain>
+What does the baseline code look like in this case?
+
+[10:48:23.0513] <debadree25>
+> <@iain:mozilla.org> What does the baseline code look like in this case?
+
+baseline code just calls into vm
+
+[10:49:32.0664] <iain>
+debadree25: Assuming we're talking about [this patch](https://phabricator.services.mozilla.com/D219406), I suspect you will want to store the disposeCapability ArrayObject in the snapshot, not the environment itself.
+
+[10:50:26.0199] <iain>
+Actually, wait, maybe I'm wrong there
+
+[10:50:31.0491] <iain>
+Let me read this patch more closely
+
+[10:50:56.0264] <debadree25>
+> <@iain:mozilla.org> debadree25: Assuming we're talking about [this patch](https://phabricator.services.mozilla.com/D219406), I suspect you will want to store the disposeCapability ArrayObject in the snapshot, not the environment itself.
+
+the array idea sounds very nice it would be very good if can do that
+
+[10:58:21.0046] <iain>
+debadree25: If you're just doing VM calls, it looks to me like you don't need to store the environment object at all?
+
+[10:59:59.0341] <debadree25>
+So basically as define this op as a LIR op that calls the vm?
+
+[11:01:07.0825] <iain>
+That's the simplest way to get something working
+
+[11:02:18.0588] <iain>
+I haven't been following this project closely enough to understand what these ops do, so I don't know whether the operation that's being done is simple enough that we could reasonably write it in masm, or whether calling into the VM is just the best approach.
+
+[11:03:41.0928] <debadree25>
+i was thinking along the lines of reading this [code](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#2025) that i could just retrive the environment object here and just call the method to add the resources into it (i have another patch in which i have moved all the handling of property access to existing bytecode so all these ops do it retrive the array and push on to it or pop of it)
+
+[11:06:01.0849] <iain>
+CreateSuppressedError seems like the sort of op that shouldn't be hot, so a VM call is probably fine as the final implementation. Pushing/popping from an array is the sort of thing that we can eventually implement pretty efficiently in native code, but for an initial prototype, VM calls are totally fine
+
+[11:06:14.0851] <iain>
+Especially if you're still working out exactly what the bytecode is going to look like
+
+[11:06:55.0333] <iain>
+The main difference between a VM call and native code is just performance, and we don't care about performance here yet
+
+[12:01:51.0870] <mgaudet>
+I've never seem this message from UpdateBot before, but I love it: 
+
+> All the jobs in the try run succeeded. Like literally all of them, there weren't
+even any intermittents. That is pretty surprising to me, so maybe you should double
+check to make sure I didn't misinterpret things and that the correct tests ran...
+>
+> Anyway, I've done all I can, so I'm passing to you to review and land the patch.
+When reviewing, please note that this is external code, which needs a full and
+careful inspection - not a rubberstamp.
+
+[13:23:19.0528] <mgaudet>
+jandem: Bug 1904429 should be back on your queue now -- I think it's pretty good now. 
+
+[13:34:23.0026] <iain>
+debadree25: Note that in the PushLexicalEnv case, we want to allocate a new environment object, so we're passing in a template and [using that in the code generator](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#4389-4409) as an input to `createGCObject` (roughly speaking: "allocate a new object that looks like this"). It doesn't look like you're allocating anything, so what you probably want is for your codegen to use the *current* environment object. ([build_Lambda](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#2920-2932) is an example of what that might look like)
+
+[13:38:13.0352] <debadree25>
+oh! the environmentChain is indeed there!! nice
+
+[13:40:22.0425] <debadree25>
+ok a rookie question what does`current->add` and `current->push` i understand its a graph so this would be adding edges?
+
+[13:43:11.0277] <iain>
+MIR is arranged into a control flow graph (CFG) consisting of [basic blocks](https://en.wikipedia.org/wiki/Basic_block) connecting by control flow edges. `current` is the block we're in the process of building. `add` inserts an instruction at the end of the current block.
+
+[13:47:53.0970] <iain>
+While we're in the process of building MIR, we keep track of the state of the VM stack. For example, if you have the bytecode `GetArg / GetArg / Add`, then the first two instructions push a value on the stack, and the Add pops two values and pushes a result. `current->push` and `current->pop` update the virtual state of the stack: you push a MIR instructions on the stack so that a subsequent op can pull it off and use it as an operand to a new MIR instruction.
+
+[13:49:36.0571] <iain>
+ * While we're in the process of building MIR, we keep track of the state of the VM stack. For example, if you have the bytecode `GetArg / GetArg / Add`, then the first two instructions push a value on the stack, and the Add pops two values and pushes a result. `current->push` and `current->pop` update the virtual state of the stack: you push a MIR instruction onto the stack so that a subsequent op can pull it off and use it as an operand to a new MIR instruction.
+
+[13:52:59.0114] <debadree25>
+> <@iain:mozilla.org> While we're in the process of building MIR, we keep track of the state of the VM stack. For example, if you have the bytecode `GetArg / GetArg / Add`, then the first two instructions push a value on the stack, and the Add pops two values and pushes a result. `current->push` and `current->pop` update the virtual state of the stack: you push a MIR instruction onto the stack so that a subsequent op can pull it off and use it as an operand to a new MIR instruction.
+
+ohhh i see got it!
+
+[13:55:11.0978] <debadree25>
+i guess maybe it can be done without vm call since we can have the (virtual) stack and the environment chain also
+
+[14:13:03.0026] <mgaudet>
+iain: So I've got a patch that sets the allocSite on the context; if I try to wire this into the MIR such that I set the actual predicted heap in warp when we transpile the cacheIR op, I'm faced with a challenge -- currently the code asserts because the instruction is marked as effectful, and we can only have one effectful instruction per block.
+
+I see "effectfulness" is essentially "Hey, does the alias set say this is a store"
+
+So I'm wondering how this is best handled architecturally... should I be 1) using addEffectfulUnsafe 2) setting a custom aliasset on my MIR node? 3) something else? 
+
+[14:15:38.0493] <iain>
+debadree25: If I understand correctly, there are three ops. JSOp::AddDisposable takes the object on top of the stack and pushes it into the array in a reserved slot on the current environment. JSOp::TakeDisposeCapability removes the array from the current environment and pushes it onto the stack. JSOp::CreateSuppressedError does some error handling stuff. CreateSuppressedError shouldn't need a fast implementation, since it shouldn't be on a hot path. The other two seem like they should be implementable in jitcode, with a little bit of work (eg you need to make sure you can handle the case where the array isn't currently big enough to push another element). But a VM call is okay for now. Note that if we can generate nice jitcode in Warp/Ion, we can probably also do the same in baseline.
+
+[14:17:45.0713] <debadree25>
+> <@iain:mozilla.org> debadree25: If I understand correctly, there are three ops. JSOp::AddDisposable takes the object on top of the stack and pushes it into the array in a reserved slot on the current environment. JSOp::TakeDisposeCapability removes the array from the current environment and pushes it onto the stack. JSOp::CreateSuppressedError does some error handling stuff. CreateSuppressedError shouldn't need a fast implementation, since it shouldn't be on a hot path. The other two seem like they should be implementable in jitcode, with a little bit of work (eg you need to make sure you can handle the case where the array isn't currently big enough to push another element). But a VM call is okay for now. Note that if we can generate nice jitcode in Warp/Ion, we can probably also do the same in baseline.
+
+yes indeed that is the case essentially Add and Take just either push or remove the capability i guess the array part can still be handled because during parsing we know how many bindings there will be so we can allocate an array of exact size too iguess
+
+[14:19:09.0241] <iain>
+mgaudet: Interesting question. One option is definitely to say AliasSet::None.
+
+[14:19:23.0021] <iain>
+I'm trying to think through whether that is safe.
+
+[14:19:30.0227] <iain>
+You probably don't want it to be movable.
+
+[14:19:34.0599] <mgaudet>
+I had already marked it as non-movable 
+
+[14:19:45.0680] <mgaudet>
+so... maybe AliasSet::none make sense? 
+
+[14:20:38.0664] <iain>
+So this op is reaching into the JSContext and setting a field that says "allocate things in the tenured heap"?
+
+[14:20:44.0318] <iain>
+When is that flag being cleared?
+
+[14:21:16.0656] <iain>
+The other option I would consider would be to add a flag on the dom call node that says "set that flag just before calling, and clear it after we return"
+
+[14:21:25.0729] <iain>
+ * The other option I would consider would be to add a flag on the dom call node that says "set that field just before calling, and clear it after we return"
+
+[14:22:10.0838] <mgaudet>
+flag is being cleared on return at the moment 
+
+[14:22:24.0943] <iain>
+In jitcode?
+
+[14:23:10.0603] <mgaudet>
+... looks at patch. Ah, I have only wired it up in baseline 
+
+
+
+[14:23:37.0828] <mgaudet>
+plan had been to edit the cacheIR transpilation for emitCallDomFunction to clear on return
+
+[14:25:42.0866] <iain>
+debadree25: A fixed-size array makes things simpler. I wonder a little bit whether there's a way to do this where we just push the value on the stack and dispose of it when we pop it, instead of using an array at all. Not sure how unwinding plays in, though.
+
+[14:32:14.0875] <iain>
+mgaudet: So, I'm guessing that we end up generating an [MCallDOMNative](https://searchfox.org/mozilla-central/source/js/src/jit/MIR.h#2346-2388), which gets code-genned [here](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#6011). My assumption is that if you pass an extra argument into that constructor somehow, you can set and clear whatever JSContext state you need inline with the call, and then you don't have to worry about alias sets / whether the state gets cleared properly if the call throws
+
+[14:32:48.0549] <iain>
+I think that's where I would start
+
+[14:33:45.0514] <mgaudet>
+The issue is how you communicate from the transpiled cacheIR op to the creation of the MCall (or subclass) 
+
+[14:34:33.0946] <mgaudet>
+like the transpilation of the former comes before the latter... just install a Maybe<AllocSite> on the warpbuilder and consume during call creation if it's there maybe? 
+
+[14:35:26.0546] <mgaudet>
+(I was more thinking you just always clear the alloc site on MCallNative codegen (which is what I do in baseline effectively) 
+
+[14:37:35.0742] <iain>
+So you have some sort of CacheOp::SetAllocSite op that you're inserting before the DOM call?
+
+[14:37:50.0959] <mgaudet>
+Yes 
+
+[14:38:59.0331] <iain>
+Hmm. It's a little unusual to have multiple effectful CacheIR ops, which is I guess why you're sort of running into this problem in WarpCacheIRTranspiler.
+
+[14:40:15.0646] <mgaudet>
+Hmm. I guess I could try and wire this through the CallDomFunction; they'd have an optional allocSite stub field instead of what I've got already 
+
+[14:40:26.0588] <mgaudet>
+but then it keeps everything connected tighter
+
+[14:40:33.0431] <mgaudet>
+less spooky-action-at-a-distance 
+
+[14:40:44.0230] <iain>
+Yeah, I think that's how I would approach it
+
+[14:40:52.0437] <mgaudet>
+This seems clearly better :P 
+
+[14:41:03.0130] <mgaudet>
+Darn. I was hoping this patch was almost over the line :P 
+
+[14:42:53.0141] <iain>
+It's possible that you'll want a separate op instead of an optional field, because the BaselineCacheIRCompiler doesn't look at the stub fields so it doesn't have an idiomatic way of knowing whether the optional parameter is present
+
+[14:43:26.0777] <mgaudet>
+wait... so do both? 
+
+[14:43:31.0730] <iain>
+Although I guess you could have one bool immediate to indicate whether the field is present
+
+[14:43:46.0228] <iain>
+I mean a new CallDOMFunctionWithAllocSite op
+
+[14:43:58.0808] <mgaudet>
+oh I see
+
+[14:44:12.0566] <mgaudet>
+Yeah, ok that scans as reasonable enough 
+
+
+2024-08-21
+[04:24:58.0196] <jonco>
+jandem: I put some patches up in bug 1914004 to allow rooting multiple things at once. The second patch is an example to show the API use since I don't know what the actual performance sensitive cases are.
+
+[04:31:52.0949] <jandem>
+jonco: looks very nice
+
+[04:35:17.0939] <jonco>
+thanks!
+
+[04:35:36.0181] <jonco>
+were there any particular hotspots that we should think about using this for?
+
+[04:51:27.0590] <jandem>
+I wonder if the difference would be measurable for object.assign [here](https://searchfox.org/mozilla-central/rev/e942f7bc56cd103bba86b396ddeba5b1ab04f1a4/js/src/builtin/Object.cpp#1209-1218)
+
+[04:52:25.0163] <jandem>
+also can we use this to replace the interpreter's `ReservedRooted` and the roots [here](https://searchfox.org/mozilla-central/rev/e942f7bc56cd103bba86b396ddeba5b1ab04f1a4/js/src/vm/Interpreter.cpp#2087-2094)?
+
+[05:07:13.0044] <jonco>
+what's a good benchmark for testing object.assign?
+
+[05:26:13.0979] <jandem>
+maybe just a micro-benchmark where you `Object.assign(obj, obj)` in a loop and it's just an empty object
+
+[05:38:07.0216] <jandem>
+there are probably similar builtins with more roots but can't think of any right now
+
+[05:40:04.0762] <jonco>
+looks like a 3% improvement for Object.assign(obj, obj)
+
+[05:55:04.0987] <jandem>
+nice. That's a very hot function and there must be other builtins with more than two roots
+
+[06:22:18.0431] <Ms2ger>
+anba: hey, I wonder if you have a minute to look at something for me. Do you agree that https://searchfox.org/mozilla-central/source/js/src/tests/non262/class/superElemDelete.js#49-50 is incorrect since the changes in https://github.com/tc39/ecma262/pull/3307/files#diff-181371b08d71216599b0acccbaabd03c306da6de142ea6275c2135810999805aR19804 ?
+
+[06:51:53.0385] <nbp>
+`Error: got 3.0528675044947478, expected a number near 3.052867504494748 (relative error: 1.793662034335766e-43)` 🤦
+
+[06:57:49.0550] <anba>
+Ms2ger: Yes, it looks like that the test is no longer correct. 
+
+[07:00:12.0544] <Ms2ger>
+Thanks!
+
+[09:06:43.0797] <jonco>
+tcampbell: I've invited you to the weekly GC meeting for next week (I thought you were on the invite list already or I would have done it in time for this week's meeting)
+
+[09:07:17.0801] <tcampbell>
+Thanks. I think I used to be on it, but must have removed myself last year
+
+[09:25:44.0654] <mccr8>
+One of these days I'll go to the GC meeting again.
+
+[10:50:02.0409] <debadree25>
+hello i am back with more jittery questions, its not possible right to allocate a NativeObject/some subclass of the same using BaselineCodeGen? i have found examples of pushing existing stuff to an array [example](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.cpp#6120) but no example of say allocating something and then pushing all of them are VM calls
+
+[10:53:15.0850] <iain>
+The jitcode to allocate an object bakes in a variety of realm-specific data, but the baseline interpreter is generated once and shared across an entire runtime, so in general you can't allocate an object directly from BaselineCodeGen. For ops like NewObject, we generally use an inline cache instead.
+
+[10:56:23.0010] <iain>
+Oh, one semi-related thing that occurs to me: assuming that the array you're using is never directly exposed to the user, you should probably be using a [ListObject](https://searchfox.org/mozilla-central/source/js/src/vm/List.h#32) instead
+
+[10:56:51.0259] <iain>
+ArrayObject has some magic involving the `length` property that you don't need
+
+[10:58:07.0330] <debadree25>
+> <@iain:mozilla.org> Oh, one semi-related thing that occurs to me: assuming that the array you're using is never directly exposed to the user, you should probably be using a [ListObject](https://searchfox.org/mozilla-central/source/js/src/vm/List.h#32) instead
+
+its indeed not exposed to the user yes and intial implementation used ListObject but later switched it to ArrayObject because bytecode cant operate on ListObject
+
+[10:59:11.0404] <iain>
+Huh, interesting
+
+[10:59:15.0922] <iain>
+It seems like we should be able to fix that
+
+[10:59:20.0443] <iain>
+But it's not a big deal either way
+
+[11:01:17.0437] <debadree25>
+> <@iain:mozilla.org> The jitcode to allocate an object bakes in a variety of realm-specific data, but the baseline interpreter is generated once and shared across an entire runtime, so in general you can't allocate an object directly from BaselineCodeGen. For ops like NewObject, we generally use an inline cache instead.
+
+but this should be possible to do in MIR?
+
+[11:01:29.0423] <iain>
+Yes, Ion code is not shared
+
+[11:06:22.0484] <debadree25>
+> <@debadree25:mozilla.org> its indeed not exposed to the user yes and intial implementation used ListObject but later switched it to ArrayObject because bytecode cant operate on ListObject
+
+also since i assume array handling is already very optimised so repeated index access and all would be automatically handled by existing jit code
+
+[11:07:11.0082] <debadree25>
+> <@debadree25:mozilla.org> its indeed not exposed to the user yes and intial implementation used ListObject but later switched it to ArrayObject because bytecode cant operate on ListObject
+
+ * also since i assume array handling is already very optimised so repeated index access and all would be automatically handled by existing jit code i assume 😅
+
+[11:11:37.0513] <iain>
+I would generally expect arrays and non-arrays to be optimized more-or-less the same unless you're actually calling array methods on them
+
+[11:11:57.0237] <iain>
+But maybe I'm forgetting something
+
+[11:14:04.0985] <iain>
+Out of curiosity, what does the bytecode actually look like for a simple case?
+
+[11:15:31.0176] <iain>
+Like, what is the output of `function foo(o) { using o; } dis(foo)`?
+
+[11:17:58.0963] <debadree25>
+its very long 😅 
+```
+loc   line  op
+----- ----  --
+main:
+00000:   1  PushLexicalEnv function lexical {x: env slot 4} # 
+00005:   1  Try                         # 
+00006:   2  NewInit                     # OBJ
+00007:   3  GetGName "Symbol"           # OBJ Symbol
+00012:   3  GetProp "dispose"           # OBJ Symbol.dispose
+00017:   3  ToPropertyKey               # OBJ TOPROPERTYKEY(Symbol.dispose)
+00018:   3  Lambda () => {}             # OBJ TOPROPERTYKEY(Symbol.dispose) FUN
+00023:   3  DupAt 1                     # OBJ TOPROPERTYKEY(Symbol.dispose) FUN TOPROPERTYKEY(Symbol.dispose)
+00027:   3  SetFunName 0                # OBJ TOPROPERTYKEY(Symbol.dispose) FUN
+00029:   3  InitElem                    # OBJ
+00030:   3  IsNullOrUndefined           # OBJ IS_NULL_OR_UNDEF
+00031:   3  Not                         # OBJ (!IS_NULL_OR_UNDEF)
+00032:   3  JumpIfFalse 116 (+84)       # OBJ
+00037:   3  JumpTarget (ic: 7)          # OBJ
+00042:   3  IsNullOrUndefined           # OBJ IS_NULL_OR_UNDEF
+00043:   3  JumpIfFalse 61 (+18)        # OBJ
+00048:   3  JumpTarget (ic: 8)          # OBJ
+00053:   3  Undefined                   # OBJ undefined
+00054:   3  Undefined                   # OBJ undefined undefined
+00055:   3  False                       # OBJ undefined undefined false
+00056:   3  Goto 109 (+53)              # OBJ undefined undefined false
+
+# from JumpIfFalse @ 00043
+00061:   3  JumpTarget (ic: 8)          # OBJ
+00066:   3  CheckIsObj 5                # OBJ
+00068:   3  Dup                         # OBJ OBJ
+00069:   3  Dup                         # OBJ OBJ OBJ
+00070:   3  Symbol 13                   # OBJ OBJ OBJ Symbol.dispose
+00072:   3  GetElem                     # OBJ OBJ OBJ[Symbol.dispose]
+00073:   3  False                       # OBJ OBJ OBJ[Symbol.dispose] false
+00074:   3  DupAt 1                     # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose]
+00078:   3  GetIntrinsic "IsCallable"   # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose] IsCallable
+00083:   3  Undefined                   # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose] IsCallable undefined
+00084:   3  DupAt 2                     # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose] IsCallable undefined OBJ[Symbol.dispose]
+00088:   3  Call 1                      # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose] IsCallable(...)
+00091:   3  JumpIfTrue 103 (+12)        # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose]
+00096:   3  JumpTarget (ic: 12)         # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose]
+00101:   3  ThrowMsg 9                  # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose]
+
+# from JumpIfTrue @ 00091
+00103:   3  JumpTarget (ic: 12)         # OBJ OBJ OBJ[Symbol.dispose] false OBJ[Symbol.dispose]
+00108:   3  Pop                         # OBJ OBJ OBJ[Symbol.dispose] false
+
+# from Goto @ 00056
+00109:   3  JumpTarget (ic: 12)         # OBJ merged<undefined> merged<undefined> merged<false>
+00114:   3  AddDisposable 0             # OBJ
+
+# from JumpIfFalse @ 00032
+00116:   3  JumpTarget (ic: 12)         # OBJ
+00121:   3  InitAliasedLexical "x" (hops = 0, slot = 4) # OBJ
+00126:   3  Pop                         # 
+00127:   3  False                       # false
+00128:   3  Undefined                   # false undefined
+00129:   3  TakeDisposeCapability       # false undefined DISPOSECAPABILITY
+00130:   3  IsNullOrUndefined           # false undefined DISPOSECAPABILITY IS_NULL_OR_UNDEF
+00131:   3  JumpIfFalse 147 (+16)       # false undefined DISPOSECAPABILITY
+00136:   3  JumpTarget (ic: 13)         # false undefined DISPOSECAPABILITY
+00141:   3  Zero                        # false undefined DISPOSECAPABILITY 0
+00142:   3  Goto 158 (+16)              # false undefined DISPOSECAPABILITY 0
+
+# from JumpIfFalse @ 00131
+00147:   3  JumpTarget (ic: 13)         # false undefined DISPOSECAPABILITY
+00152:   3  Dup                         # false undefined DISPOSECAPABILITY DISPOSECAPABILITY
+00153:   3  GetProp "length"            # false undefined DISPOSECAPABILITY DISPOSECAPABILITY.length
+
+# from Goto @ 00142
+00158:   3  JumpTarget (ic: 14)         # false undefined DISPOSECAPABILITY merged<0>
+00163:   3  Dec                         # false undefined DISPOSECAPABILITY (dec merged<0>)
+
+# from Goto @ 00303
+00164:   3  LoopHead (ic: 15, depthHint: 1) # false undefined DISPOSECAPABILITY (dec merged<0>)
+00170:   3  Dup                         # false undefined DISPOSECAPABILITY (dec merged<0>) (dec merged<0>)
+00171:   3  Zero                        # false undefined DISPOSECAPABILITY (dec merged<0>) (dec merged<0>) 0
+00172:   3  Ge                          # false undefined DISPOSECAPABILITY (dec merged<0>) ((dec merged<0>) >= 0)
+00173:   3  JumpIfFalse 308 (+135)      # false undefined DISPOSECAPABILITY (dec merged<0>)
+00178:   3  JumpTarget (ic: 17)         # false undefined DISPOSECAPABILITY (dec merged<0>)
+00183:   3  Dup2                        # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY (dec merged<0>)
+00184:   3  GetElem                     # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)]
+00185:   3  Dup                         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)]
+00186:   3  GetProp "hint"              # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint
+00191:   3  DupAt 1                     # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)]
+00195:   3  GetProp "method"            # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method
+00200:   3  Pick 2                      # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)]
+00202:   3  GetProp "value"             # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00207:   3  DupAt 1                     # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00211:   3  IsNullOrUndefined           # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method IS_NULL_OR_UNDEF
+00212:   3  JumpIfTrue 289 (+77)        # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00217:   3  JumpTarget (ic: 22)         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00222:   3  Pop                         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00223:   3  Try                         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00224:   3  Dup2                        # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00225:   3  Call 0                      # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method()
+00228:   3  Pop                         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00229:   3  Goto 276 (+47)              # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# try-catch from Try @ 00223
+00234:   3  JumpTarget (ic: 23)         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00239:   3  Exception                   # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION
+00240:   3  Pick 6                      # false DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION undefined
+00242:   3  Pick 7                      # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION undefined false
+00244:   3  JumpIfFalse 265 (+21)       # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION undefined
+00249:   3  JumpTarget (ic: 24)         # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION undefined
+00254:   3  CreateSuppressedError       # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value <unknown>
+00255:   3  Unpick 5                    # <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00257:   3  True                        # <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value true
+00258:   3  Unpick 6                    # true <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00260:   3  Goto 276 (+16)              # true <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# from JumpIfFalse @ 00244
+00265:   3  JumpTarget (ic: 24)         # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION undefined
+00270:   3  Pop                         # DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION
+00271:   3  Unpick 5                    # EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00273:   3  True                        # EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value true
+00274:   3  Unpick 6                    # true EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# from Goto @ 00229, from Goto @ 00260
+00276:   3  JumpTarget (ic: 24)         # merged<false> merged<undefined> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00281:   3  PopN 3                      # merged<false> merged<undefined> DISPOSECAPABILITY (dec merged<0>)
+00284:   3  Goto 297 (+13)              # merged<false> merged<undefined> DISPOSECAPABILITY (dec merged<0>)
+
+# from JumpIfTrue @ 00212
+00289:   3  JumpTarget (ic: 24)         # false undefined DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00294:   3  PopN 4                      # false undefined DISPOSECAPABILITY (dec merged<0>)
+
+# from Goto @ 00284
+00297:   3  JumpTarget (ic: 24)         # merged<false> merged<undefined> DISPOSECAPABILITY (dec merged<0>)
+00302:   3  Dec                         # merged<false> merged<undefined> DISPOSECAPABILITY (dec (dec merged<0>))
+00303:   3  Goto 164 (-139)             # merged<false> merged<undefined> DISPOSECAPABILITY (dec (dec merged<0>))
+
+# from JumpIfFalse @ 00173
+00308:   3  JumpTarget (ic: 25)         # false undefined DISPOSECAPABILITY (dec merged<0>)
+00313:   3  Pop                         # false undefined DISPOSECAPABILITY
+00314:   3  Pop                         # false undefined
+00315:   3  Swap                        # undefined false
+00316:   3  JumpIfFalse 332 (+16)       # undefined
+00321:   3  JumpTarget (ic: 26)         # undefined
+00326:   3  Throw                       # 
+00327:   3  Goto 338 (+11)              # !!! UNREACHABLE !!!
+
+# from JumpIfFalse @ 00316
+00332:   3  JumpTarget (ic: 26)         # undefined
+00337:   3  Pop                         # 
+00338:   3  JumpTarget (ic: 26)         # 
+00343:   3  Goto 571 (+228)             # 
+
+# try-finally from Try @ 00005
+00348:   3  JumpTarget (ic: 26)         # PC STACK THROWING
+00353:   3  Finally                     # PC STACK THROWING
+00354:   3  Pick 2                      # STACK THROWING PC
+00356:   3  True                        # STACK THROWING PC true
+00357:   3  Swap                        # STACK THROWING true PC
+00358:   3  TakeDisposeCapability       # STACK THROWING true PC DISPOSECAPABILITY
+00359:   3  IsNullOrUndefined           # STACK THROWING true PC DISPOSECAPABILITY IS_NULL_OR_UNDEF
+00360:   3  JumpIfFalse 376 (+16)       # STACK THROWING true PC DISPOSECAPABILITY
+00365:   3  JumpTarget (ic: 27)         # STACK THROWING true PC DISPOSECAPABILITY
+00370:   3  Zero                        # STACK THROWING true PC DISPOSECAPABILITY 0
+00371:   3  Goto 387 (+16)              # STACK THROWING true PC DISPOSECAPABILITY 0
+
+# from JumpIfFalse @ 00360
+00376:   3  JumpTarget (ic: 27)         # STACK THROWING true PC DISPOSECAPABILITY
+00381:   3  Dup                         # STACK THROWING true PC DISPOSECAPABILITY DISPOSECAPABILITY
+00382:   3  GetProp "length"            # STACK THROWING true PC DISPOSECAPABILITY DISPOSECAPABILITY.length
+
+# from Goto @ 00371
+00387:   3  JumpTarget (ic: 28)         # STACK THROWING true PC DISPOSECAPABILITY merged<0>
+00392:   3  Dec                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+
+# from Goto @ 00532
+00393:   3  LoopHead (ic: 29, depthHint: 1) # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+00399:   3  Dup                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) (dec merged<0>)
+00400:   3  Zero                        # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) (dec merged<0>) 0
+00401:   3  Ge                          # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) ((dec merged<0>) >= 0)
+00402:   3  JumpIfFalse 537 (+135)      # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+00407:   3  JumpTarget (ic: 31)         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+00412:   3  Dup2                        # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY (dec merged<0>)
+00413:   3  GetElem                     # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)]
+00414:   3  Dup                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)]
+00415:   3  GetProp "hint"              # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint
+00420:   3  DupAt 1                     # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)]
+00424:   3  GetProp "method"            # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)] DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method
+00429:   3  Pick 2                      # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)]
+00431:   3  GetProp "value"             # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00436:   3  DupAt 1                     # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00440:   3  IsNullOrUndefined           # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method IS_NULL_OR_UNDEF
+00441:   3  JumpIfTrue 518 (+77)        # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00446:   3  JumpTarget (ic: 36)         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00451:   3  Pop                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00452:   3  Try                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00453:   3  Dup2                        # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00454:   3  Call 0                      # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method()
+00457:   3  Pop                         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00458:   3  Goto 505 (+47)              # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# try-catch from Try @ 00452
+00463:   3  JumpTarget (ic: 37)         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00468:   3  Exception                   # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION
+00469:   3  Pick 6                      # STACK THROWING true DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION PC
+00471:   3  Pick 7                      # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION PC true
+00473:   3  JumpIfFalse 494 (+21)       # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION PC
+00478:   3  JumpTarget (ic: 38)         # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION PC
+00483:   3  CreateSuppressedError       # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value <unknown>
+00484:   3  Unpick 5                    # STACK THROWING <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00486:   3  True                        # STACK THROWING <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value true
+00487:   3  Unpick 6                    # STACK THROWING true <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00489:   3  Goto 505 (+16)              # STACK THROWING true <unknown> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# from JumpIfFalse @ 00473
+00494:   3  JumpTarget (ic: 38)         # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION PC
+00499:   3  Pop                         # STACK THROWING DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value EXCEPTION
+00500:   3  Unpick 5                    # STACK THROWING EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00502:   3  True                        # STACK THROWING EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value true
+00503:   3  Unpick 6                    # STACK THROWING true EXCEPTION DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+
+# from Goto @ 00458, from Goto @ 00489
+00505:   3  JumpTarget (ic: 38)         # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value
+00510:   3  PopN 3                      # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec merged<0>)
+00513:   3  Goto 526 (+13)              # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec merged<0>)
+
+# from JumpIfTrue @ 00441
+00518:   3  JumpTarget (ic: 38)         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>) DISPOSECAPABILITY[(dec merged<0>)].hint DISPOSECAPABILITY[(dec merged<0>)].method DISPOSECAPABILITY[(dec merged<0>)].value DISPOSECAPABILITY[(dec merged<0>)].method
+00523:   3  PopN 4                      # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+
+# from Goto @ 00513
+00526:   3  JumpTarget (ic: 38)         # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec merged<0>)
+00531:   3  Dec                         # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec (dec merged<0>))
+00532:   3  Goto 393 (-139)             # STACK THROWING merged<true> merged<PC> DISPOSECAPABILITY (dec (dec merged<0>))
+
+# from JumpIfFalse @ 00402
+00537:   3  JumpTarget (ic: 39)         # STACK THROWING true PC DISPOSECAPABILITY (dec merged<0>)
+00542:   3  Pop                         # STACK THROWING true PC DISPOSECAPABILITY
+00543:   3  Pop                         # STACK THROWING true PC
+00544:   3  Swap                        # STACK THROWING PC true
+00545:   3  Pop                         # STACK THROWING PC
+00546:   3  Unpick 2                    # PC STACK THROWING
+00548:   3  JumpIfFalse 564 (+16)       # PC STACK
+00553:   3  JumpTarget (ic: 40)         # PC STACK
+00558:   3  ThrowWithStack              # 
+00559:   3  Goto 571 (+12)              # !!! UNREACHABLE !!!
+
+# from JumpIfFalse @ 00548
+00564:   3  JumpTarget (ic: 40)         # PC STACK
+00569:   3  Pop                         # PC
+00570:   3  Pop                         # 
+
+# from Goto @ 00343
+00571:   3  JumpTarget (ic: 40)         # 
+00576:   3  PopLexicalEnv               # 
+00577:   5  Undefined                   # undefined
+00578:   5  SetRval                     # 
+00579:   5  RetRval                     # 
+
+Source notes:
+ ofs line column    pc  delta desc             args
+---- ---- ------ ----- ------ ---------------- ------
+  0:    1     12     0 [   0] colspan          colspan 3
+  2:    1     15     6 [   6] newlinecolumn    column 13
+  4:    2     13     6 [   0] breakpoint-step-sep
+  5:    2     13     7 [   1] newlinecolumn    column 5
+  7:    3      5   134 [ 127] xdelta          
+  8:    3      5   261 [ 127] xdelta          
+  9:    3      5   388 [ 127] xdelta          
+ 10:    3      5   515 [ 127] xdelta          
+ 11:    3      5   577 [  62] xdelta          
+ 12:    3      5   577 [   0] setline          lineno 5
+ 14:    5      1   579 [   2] breakpoint      
+
+Exception table:
+kind               stack    start      end
+ catch                 7      224      234
+ loop                  4      164      308
+ catch                 9      453      463
+ loop                  6      393      537
+ finally               0        6      348
+
+Scope notes:
+   index   parent    start      end
+       1   (none)        5      577
+
+GC things:
+   index   type       value
+       0   Scope      function {} -> global
+       1   Scope      function lexical {
+                         0: using x (env slot 4)
+                      } -> function -> global
+       2   Atom       "Symbol"
+       3   Atom       "dispose"
+       4   Function   (anonymous) @ 3:23
+       5   Atom       "IsCallable"
+       6   Atom       "length"
+       7   Atom       "hint"
+       8   Atom       "method"
+       9   Atom       "value"
+```
+
+
+[11:18:21.0137] <iain>
+Oh wow
+
+[11:19:42.0702] <debadree25>
+yeah originally all of it was implemented in a single bytecode but spec adds a await step in the [midst of a loop hence](https://arai-a.github.io/ecma262-compare/?pr=3000&id=sec-disposeresources) have to move the full handling into bytecode 
+
+[11:26:29.0092] <debadree25>
+its more or less equal to what the desugared form of the syntax is which looks some what like [this](https://github.com/tc39/proposal-explicit-resource-management) 
+```
+{
+  const $$try = { stack: [], error: undefined, hasError: false };
+  try {
+    ... // (1)
+
+    const x = expr1;
+    if (x !== null && x !== undefined) {
+      const $$dispose = x[Symbol.dispose];
+      if (typeof $$dispose !== "function") {
+        throw new TypeError();
+      }
+      $$try.stack.push({ value: x, dispose: $$dispose });
+    }
+
+    ... // (2)
+  }
+  catch ($$error) {
+    $$try.error = $$error;
+    $$try.hasError = true;
+  }
+  finally {
+    while ($$try.stack.length) {
+      const { value: $$expr, dispose: $$dispose } = $$try.stack.pop();
+      try {
+        $$dispose.call($$expr);
+      }
+      catch ($$error) {
+        $$try.error = $$try.hasError ? new SuppressedError($$error, $$try.error) : $$error;
+        $$try.hasError = true;
+      }
+    }
+    if ($$try.hasError) {
+      throw $$try.error;
+    }
+  }
+}
+```
+
+[12:00:52.0585] <iain>
+You mentioned yesterday that we can actually know how big the stack should be at parse time. Is it the case that at any particular point where we do TakeDisposeCapability, we can statically determine the corresponding set of AddDisposables?
+
+[12:01:09.0711] <iain>
+ * debadree25: You mentioned yesterday that we can actually know how big the stack should be at parse time. Is it the case that at any particular point where we do TakeDisposeCapability, we can statically determine the corresponding set of AddDisposables?
+
+[12:02:39.0210] <debadree25>
+we can only know the maximum size the stack can go to but no we cannot statically determine how many AddDisposables will be there 
+
+[12:02:43.0566] <debadree25>
+because consider the case 
+
+[12:03:32.0609] <debadree25>
+```
+function fn() {
+  switch (cond) {
+    case 1:
+      using x = {
+        [Symbol.dispose]() {}
+      }
+    case 2:
+      using y = {
+        [Symbol.dispose]() {}
+      }
+  }
+}
+```
+
+[12:03:39.0194] <debadree25>
+the above code is allowed
+
+[12:04:00.0544] <debadree25>
+could be other cases like conditionals etc where all the disposables may not be added
+
+[12:05:02.0855] <iain>
+If I have `function foo(o) { if (cond) { using o; a(); } b(); }`, do we dispose of `o` after `a()`, or `b()`?
+
+[12:05:17.0703] <nicolo-ribaudo>
+> <@debadree25:mozilla.org> ```
+> function fn() {
+>   switch (cond) {
+>     case 1:
+>       using x = {
+>         [Symbol.dispose]() {}
+>       }
+>     case 2:
+>       using y = {
+>         [Symbol.dispose]() {}
+>       }
+>   }
+> }
+> ```
+
+For this specific case, Shu from the V8 team opened an issue asking if it can be banned. It might be worth it for you SM folks to chime in
+
+[12:05:30.0539] <nicolo-ribaudo>
+> <@iain:mozilla.org> If I have `function foo(o) { if (cond) { using o; a(); } b(); }`, do we dispose of `o` after `a()`, or `b()`?
+
+After a()
+
+[12:05:36.0174] <iain>
+Okay, good
+
+[12:06:42.0904] <debadree25>
+> <@iain:mozilla.org> If I have `function foo(o) { if (cond) { using o; a(); } b(); }`, do we dispose of `o` after `a()`, or `b()`?
+
+after a()
+
+[12:08:50.0973] <iain>
+> <@nicolo-ribaudo:matrix.org> For this specific case, Shu from the V8 team opened an issue asking if it can be banned. It might be worth it for you SM folks to chime in
+
+Ah, that's a good pointer. I will leave a comment.
+
+[12:34:08.0080] <iain>
+Okay, assume that we manage to ban the switch fallthrough case, because it's terrible. In every other case, I think we can effectively desugar each `using` into a single try-finally and eliminate the need for the loop.
+
+[12:35:01.0982] <iain>
+Although I'm not sure how the await stuff interacts.
+
+[12:35:34.0869] <iain>
+(That is to say, there is one try-finally per using, not one try-finally overall)
+
+[12:37:36.0824] <iain>
+> <@nicolo-ribaudo:matrix.org> For this specific case, Shu from the V8 team opened an issue asking if it can be banned. It might be worth it for you SM folks to chime in
+
+ * Ah, that's a good pointer. I will leave a comment. (Edit: [comment is here](https://github.com/tc39/proposal-explicit-resource-management/issues/215#issuecomment-2302865619))
+
+[12:45:46.0782] <iain>
+It might be possible to store disposables either on the stack (roughly like we do with for-of) or in local slots, and skip the environment storage entirely
+
+[12:51:04.0485] <debadree25>
+> <@iain:mozilla.org> Although I'm not sure how the await stuff interacts.
+
+most of the problem is here only :-(
+
+[12:51:38.0131] <debadree25>
+but yes theres a bug for this https://bugzilla.mozilla.org/show_bug.cgi?id=1899502 once finished implementing will work on it
+
+[13:08:31.0810] <shu>
+iain: so you can do a try-finally desugaring in all cases, if the thing you're disposing is a DisposableStack instead of each individual `using` resource, one-by-one (i.e. unrolled)
+
+[13:09:18.0013] <shu>
+that is, if for each scope with `using` decls, have an internal stack structure that tracks how many resources are in scope
+
+[13:10:23.0101] <iain>
+I think you can also do a try-finally destructuring for individual `using` if you are prepared to generate nested try-finally statements
+
+[13:12:34.0896] <shu>
+> <@iain:mozilla.org> I think you can also do a try-finally destructuring for individual `using` if you are prepared to generate nested try-finally statements
+
+that feels right, yeah
+
+[13:13:20.0415] <iain>
+Our try-finally is pretty lightweight if you aren't throwing anything, so that's the direction I would lean
+
+[13:14:06.0490] <iain>
+Although debadree25, who is the one who's actually been looking at this, says that the await stuff is the hard part, and I haven't thought it through at all.
+
+[13:14:11.0450] <shu>
+to start, V8 opted to use a disposable stack internally, for maximal code sharing with the `DisposableStack` constructor which needs to exist anyways
+
+[13:14:17.0068] <shu>
+and for smaller bytecode
+
+[13:14:27.0174] <shu>
+fully unrolled might be worth it up to N resources for small N
+
+[13:14:34.0931] <shu>
+but we'll investigate that as an optimization later
+
+[13:15:17.0891] <shu>
+the awaits are annoying, for sure. something that tripped us up as an FYI: the spec is written with Await()s inside a loop
+
+[13:15:33.0890] <debadree25>
+> <@shuyuguo:matrix.org> the awaits are annoying, for sure. something that tripped us up as an FYI: the spec is written with Await()s inside a loop
+
+yeah its very sad
+
+[13:15:37.0015] <shu>
+you can't convert that to a promise chain in the implementation
+
+[13:15:45.0630] <shu>
+like, it's non-compliant to do so
+
+[13:15:46.0287] <iain>
+Doesn't that get better if you unroll?
+
+[13:16:26.0439] <shu>
+sorry my Awaits point has nothing to do with performance, it's that the spec prescribes a certain number of ticks because it uses inline Await in a loop
+
+[13:16:59.0872] <shu>
+and if you are tempted to implement a dispose loop via promise chaining, just FYI that it's technically non-compliant because that'll double the number of ticks
+
+[13:18:31.0356] <iain>
+I haven't looked closely. If I know at each point what resources are being disposed (which I think is possible if we close the switch hole), and I know whether each using was async or not, then inside my per-using finally, I only need an await iff the corresponding using was async, right?
+
+[13:18:47.0333] <shu>
+yep
+
+[13:19:21.0530] <shu>
+though there is this additional complexity about "at least one await" that got consensus in a recent plenary
+
+[13:19:42.0426] <shu>
+where if you have a bunch of `await using`s where the RHS end up being null, instead of awaiting once per null, adjacent nulls are coalesced into one await
+
+[13:19:46.0512] <shu>
+i forget the exact details it's in the spec
+
+[13:20:33.0750] <iain>
+Oh, that's what the needsAwait/hasAwaited stuff is about [here](https://arai-a.github.io/ecma262-compare/?pr=3000&id=sec-disposeresources)?
+
+[13:21:07.0332] <shu>
+yeah
+
+[13:21:08.0356] <debadree25>
+> <@iain:mozilla.org> Oh, that's what the needsAwait/hasAwaited stuff is about [here](https://arai-a.github.io/ecma262-compare/?pr=3000&id=sec-disposeresources)?
+
+yess
+
+[13:21:39.0592] <iain>
+Gross
+
+[13:27:11.0521] <iain>
+Ugh, it's especially bad because of the possibility of an early exit from the middle of a sequence of `await using`
+
+[13:27:56.0017] <shu>
+early exit?
+
+[13:27:56.0155] <iain>
+Why exactly do we need any ticks for `await using undefined`?
+
+[13:28:11.0328] <shu>
+take that up with mark miller and co
+
+[13:29:14.0869] <iain>
+Suppose you have a sequence of several await usings, and you want to desugar them to individual finally blocks. If you throw/return/whatever before you reach the last one, you will execute some suffix of the finally sequence (since disposal is done in reverse order)
+
+[13:29:42.0131] <shu>
+ah, jumps during evaluation of the declarations themselves you mean
+
+[13:30:18.0554] <iain>
+Even between them
+
+[13:30:30.0022] <debadree25>
+> <@iain:mozilla.org> Suppose you have a sequence of several await usings, and you want to desugar them to individual finally blocks. If you throw/return/whatever before you reach the last one, you will execute some suffix of the finally sequence (since disposal is done in reverse order)
+
+you can add an async generator here too even more fun!
+
+[13:30:41.0194] <shu>
+haha yeah
+
+[13:30:44.0157] <shu>
+anyway have fun
+
+[13:31:05.0300] <iain>
+It just seems complicated to track the state of needsAwait / hasAwaited in an unrolled loop when you can jump into arbitrary points in the middle of the "loop"
+
+[13:36:02.0200] <debadree25>
+> <@debadree25:mozilla.org> you can add an async generator here too even more fun!
+
+I guess a case like [this](https://searchfox.org/mozilla-central/source/js/src/jit-test/tests/explicit-resource-management/async-disposal-during-throw-async-generator.js#69) wont be statically analysable ?
+
+[13:37:31.0334] <iain>
+debadree25: Why not?
+
+[13:38:04.0522] <iain>
+Do you mean what happens when we return from [here](https://searchfox.org/mozilla-central/source/js/src/jit-test/tests/explicit-resource-management/async-disposal-during-throw-async-generator.js#53)?
+
+[13:38:24.0198] <iain>
+ * Do you mean what happens when we <del>return</del> throw from [here](https://searchfox.org/mozilla-central/source/js/src/jit-test/tests/explicit-resource-management/async-disposal-during-throw-async-generator.js#53)?
+
+[13:38:28.0364] <debadree25>
+yes
+
+[13:41:30.0034] <iain>
+Doesn't it desugar to something like this:
+```
+ async function* gen() {
+  yield 1;
+  let a_async_disposer = ...
+  try {
+    yield 2;
+    let b_async_disposer = ...
+    try {
+      yield 3;
+    } finally {
+      await b_async_disposer();
+    }
+  }
+  finally {
+    await a_async_disposer();
+  }
+}
+```
+
+[13:41:44.0969] <iain>
+ * Doesn't it desugar to something like this:
+
+```
+ async function* gen() {
+  yield 1;
+  let a_async_disposer = ...
+  try {
+    yield 2;
+    let b_async_disposer = ...
+    try {
+      yield 3;
+    } finally {
+      await b_async_disposer();
+    }
+  }  finally {
+    await a_async_disposer();
+  }
+}
+```
+
+[13:41:52.0318] <iain>
+ * Doesn't it desugar to something like this:
+
+```
+ async function* gen() {
+  yield 1;
+  let a_async_disposer = ...
+  try {
+    yield 2;
+    let b_async_disposer = ...
+    try {
+      yield 3;
+    } finally {
+      await b_async_disposer();
+    }
+  } finally {
+    await a_async_disposer();
+  }
+}
+```
+
+[13:42:44.0436] <iain>
+(Setting aside the whole needsAwait/hasAwaited nonsense for the moment)
+
+[13:43:28.0975] <debadree25>
+ohh ok yes i see it
+
+[13:59:33.0948] <iain>
+With needsAwait/hasAwaited it gets more complicated. I think maybe if there are multiple `await using` in a single scope, then we have a three-value enum (Initial/NeedsAwait/HasAwaited) living ~somewhere~ that gets initialized sometime before the first `await using`, and gets checked/updated in each of the finally blocks. Something like this:
+```
+ async function* gen() {
+  let awaitState = Initial;
+  yield 1;
+  let a_async_disposer = ...
+  try {
+    yield 2;
+    let b_async_disposer = ...
+    try {
+      yield 3;
+    } finally {
+      if (b_async_disposer) {
+        await b_async_disposer();
+	awaitState = HasAwaited;
+      } else if (awaitState == Initial) {
+        awaitState = NeedsAwait;
+      }
+    }
+  }
+  finally {
+    if (a_async_disposer) {
+      await a_async_disposer();
+      awaitState = HasAwaited;
+    } else if (awaitState == Initial) {
+      awaitState = NeedsAwait;
+    }
+    if (awaitState == NeedsAwait) {
+      await undefined;
+    }
+  }
+}
+```
+
+[13:59:56.0285] <iain>
+ * With needsAwait/hasAwaited it gets more complicated. I think maybe if there are multiple `await using` in a single scope, then we have a three-value enum (Initial/NeedsAwait/HasAwaited) living ~somewhere~ that gets initialized sometime before the first `await using`, and gets checked/updated in each of the finally blocks. Something like this:
+
+```
+ async function* gen() {
+  let awaitState = Initial;
+  yield 1;
+  let a_async_disposer = ...
+  try {
+    yield 2;
+    let b_async_disposer = ...
+    try {
+      yield 3;
+    } finally {
+      if (b_async_disposer) {
+        await b_async_disposer();
+	awaitState = HasAwaited;
+      } else if (awaitState == Initial) {
+        awaitState = NeedsAwait;
+      }
+    }
+  } finally {
+    if (a_async_disposer) {
+      await a_async_disposer();
+      awaitState = HasAwaited;
+    } else if (awaitState == Initial) {
+      awaitState = NeedsAwait;
+    }
+    if (awaitState == NeedsAwait) {
+      await undefined;
+    }
+  }
+}
+```
+
+[14:03:10.0486] <debadree25>
+finallys will also have to be special cased so that each of them suppress over the previous one's thrown error, but i get your idea now
+
+[14:03:43.0796] <iain>
+Yeah, I have deliberately avoided thinking about the error suppression stuff.
+
+[14:04:22.0235] <iain>
+You can tell that this proposal came from somebody who does not have to do any implementation work 😆
+
+[14:09:52.0598] <iain>
+Ugh, I thought for a moment that we could simplify the needsAwait/hasAwait stuff to a single check in the last `finally` to see whether we had done any awaits at all, but sadly the *timing* of the `await(undefined)` is also observable, and my simplification wouldn't preserve it.
+
+[14:12:11.0076] <iain>
+Anyway, I think I've convinced myself that a) a try-finally desugaring is workable, and b) I really don't want to be the person who has to make it work in the bytecode emitter
+
+[14:14:29.0288] <debadree25>
+> <@iain:mozilla.org> Anyway, I think I've convinced myself that a) a try-finally desugaring is workable, and b) I really don't want to be the person who has to make it work in the bytecode emitter
+
+i will explore the possibilities 😄
+
+
+2024-08-22
+[21:02:25.0471] <Redfire>
+Why does `JS_NewDataView` take a `size_t` for length, when the other typed array (with buffer) constructors take a `int64_t`?
+
+[21:26:51.0624] <arai>
+looks like some API takes `-1` (or any negative value) as special value https://searchfox.org/mozilla-central/rev/64f196824745c5db5ef7bb23725cfb9a41586149/js/src/vm/TypedArrayObject.cpp#760
+```cpp
+uint64_t lengthIndex = lengthInt >= 0 ? uint64_t(lengthInt) : UINT64_MAX;
+```
+
+[21:27:07.0011] <arai>
+example consumer: https://searchfox.org/mozilla-central/rev/64f196824745c5db5ef7bb23725cfb9a41586149/js/src/jsapi-tests/testArrayBuffer.cpp#133-134
+```cpp
+JS::RootedObject view1(cx, JS_NewUint8ArrayWithBuffer(cx, buffer, 0, -1));
+JS::RootedObject view2(cx, JS_NewUint8ArrayWithBuffer(cx, buffer, 1, 200));
+```
+
+[21:27:50.0952] <arai>
+document: https://searchfox.org/mozilla-central/rev/64f196824745c5db5ef7bb23725cfb9a41586149/js/public/experimental/TypedData.h#84-87
+```cpp
+* Create a new typed array using the given ArrayBuffer or
+* SharedArrayBuffer for storage.  The length value is optional; if -1
+* is passed, enough elements to use up the remainder of the byte
+* array is used as the default value.
+```
+
+[23:12:51.0145] <davidj361>
+does `JS::TranscodeBuffer` not have `.data()` or `.Elements()` or something that can be used with filebuf sputn or ofstream write?
+
+[23:28:33.0731] <arai>
+it's an alias for [ mozilla::Vector<uint8_t>](https://searchfox.org/mozilla-central/rev/64f196824745c5db5ef7bb23725cfb9a41586149/js/public/Transcoding.h#33)
+
+[23:29:00.0793] <arai>
+if you want a pointer for the elements, [mozilla::Vector::begin](https://searchfox.org/mozilla-central/rev/64f196824745c5db5ef7bb23725cfb9a41586149/mfbt/Vector.h#568) could be used
+
+[07:01:22.0473] <davidj361>
+I was thinking of using begin() pointer but I thought for sure there was dedicated function for `.data()` or so
+
+[08:02:26.0021] <davidj361>
+When doing `JS::SetProcessBuildIdOp(myBuildId)` does it trickle down to compartments? How do you decide on a build ID? Not sure when it should change.
+
+[08:04:56.0480] <davidj361>
+Is it typically generic like `esr128`?
+
+[08:05:18.0908] <mgaudet>
+davidj361: It appears to set on a global: https://searchfox.org/mozilla-central/source/js/src/vm/BuildId.cpp#18 Roughly what we seem to do is use the build timestamp 
+
+[08:05:34.0210] <mgaudet>
+* a C++ global, so the same through the process 
+
+[08:06:15.0648] <mgaudet>
+https://searchfox.org/mozilla-central/source/__GENERATED__/__android-armv7__/toolkit/library/buildid.cpp#10 
+
+[11:36:26.0525] <davidj361>
+> <@mgaudet:mozilla.org> davidj361: It appears to set on a global: https://searchfox.org/mozilla-central/source/js/src/vm/BuildId.cpp#18 Roughly what we seem to do is use the build timestamp
+
+it's not process wide? doing `JS::SetProcessBuildIdOp(myBuildId)`
+
+[11:39:53.0583] <iain>
+davidj361: See the next message: "a C++ global, so the same through the process"
+
+[11:50:11.0678] <davidj361>
+Can you call `JS::SetProcessBuildIdOp` multiple times? Can `JS::SetProcessBuildIdOp` be called before creation of the 1st JSContext* (`JS_NewContext`) and `JS::InitSelfHostedCode`?
+
+[11:50:20.0115] <davidj361>
+I assumed you meant JS global
+
+[11:52:24.0507] <davidj361>
+ * Can you call `JS::SetProcessBuildIdOp` multiple times? Can `JS::SetProcessBuildIdOp` be called before creation of the 1st JSContext\* (`JS_NewContext`) and `JS::InitSelfHostedCode`? worried of segfault due to order of calls
+
+[11:55:37.0270] <davidj361>
+ * Can you call `JS::SetProcessBuildIdOp` multiple times? Can `JS::SetProcessBuildIdOp` be called before creation of the 1st JSContext\* (`JS_NewContext`) and `JS::InitSelfHostedCode`? I'm worried of possible segfaults due to order of calls or resetting build ID
+
+[12:27:34.0653] <mgaudet>
+davidj361: That buildid op can be called extremely early (even before init) so if you'd like to do that it should just work. 
+
+[14:09:11.0472] <mgaudet>
+Checks email before leaving work... only to discover I got backed out. *shakes fist*. 
+
+Silly T-San data races are _fiiiiiine_ 
+
+[14:09:43.0513] <mgaudet>
+Tomorrow problem 
+
+
+2024-08-23
+[06:08:49.0567] <tcampbell>
+jonco: I linked some code on the RootedTuple bug with an example. I was mostly just modifying your example to use tuple-of-tuple where we match by index first, and then by type. This approach makes the interpreter come out clean, but smaller examples are more verbose than desired =\
+
+[06:09:43.0715] <tcampbell>
+ * jonco: I linked some code on the RootedTuple bug with an example. I was mostly just modifying your example to use tuple-of-tuple where we match by index first, and then by type. This approach makes the interpreter come out clean, but smaller examples are more verbose than desired =\ https://hg.mozilla.org/try/diff/a63ed96daa92e268804813f117a17a803108aedc/js/src/vm/Interpreter.cpp
+
+[06:15:18.0858] <jonco>
+Right, I don't think we want tuple of tuples for the general case.
+
+[06:15:50.0649] <jonco>
+The goal of this wasn't to clean up that special-case code in the interpreter, although that would be nice
+
+[06:21:16.0407] <debadree25>
+is there a way to know which parts of the final optimised code that we can see with the help of `print(disnative(fn))` were generated by which LIR ops? like some kind of annotation somewhere?
+
+[06:33:41.0141] <tcampbell>
+> <@jonco:mozilla.org> The goal of this wasn't to clean up that special-case code in the interpreter, although that would be nice
+
+True. Okay, lets go with your current version. It addresses the real concern about extra manipulation of cx that we want to avoid
+
+[07:13:01.0622] <evilpie>
+TIL std::get accepts both a type and index
+
+[07:14:36.0474] <evilpie>
+Related to jonco 's RootedTuple patch: https://hg.mozilla.org/integration/autoland/rev/f18d55c052e4cd57f7f59aab61011cf8f96762ef#l2.206
+
+[08:10:47.0835] <mgaudet>
+> <@debadree25:mozilla.org> is there a way to know which parts of the final optimised code that we can see with the help of `print(disnative(fn))` were generated by which LIR ops? like some kind of annotation somewhere?
+
+Not through print disnative; There's a way using `IONPERF` and samply IIRC.
+
+Here's a shell script I have written out from about 1.5 years past
+
+```
+#!/bin/bash
+
+export IONPERF=ir
+export PERF_SPEW_DIR=/tmp/output
+
+mkdir -p /tmp/output
+rm /tmp/output/*
+
+echo "RECORD"
+cd `dirname $1`
+pwd=$PWD
+perf record --freq=max -g -k 1 /home/iain/src/central/obj-perf/dist/bin/js `basename $1`
+
+echo "INJECT"
+perf inject -j -i perf.data -o jit.data
+
+echo "DISPLAY"
+# https://github.com/mstange/samply
+cd ~/src/samply/samply
+PROFILER_URL="https://deploy-preview-4196--perf-html.netlify.app/" cargo run --release --  load -v $pwd/jit.data
+```
+
+
+
+[08:11:45.0462] <mgaudet>
+I haven't used this workflow in a while, but others have -- the end result should be that in the profiler you can click on a function and see it's IR sources in. 
+
+We don't have interleaved at the moment, but the perf team is interested in doing this I think
+
+[08:18:01.0420] <debadree25>
+> <@mgaudet:mozilla.org> Not through print disnative; There's a way using `IONPERF` and samply IIRC.
+> 
+> Here's a shell script I have written out from about 1.5 years past
+> 
+> ```
+> #!/bin/bash
+> 
+> export IONPERF=ir
+> export PERF_SPEW_DIR=/tmp/output
+> 
+> mkdir -p /tmp/output
+> rm /tmp/output/*
+> 
+> echo "RECORD"
+> cd `dirname $1`
+> pwd=$PWD
+> perf record --freq=max -g -k 1 /home/iain/src/central/obj-perf/dist/bin/js `basename $1`
+> 
+> echo "INJECT"
+> perf inject -j -i perf.data -o jit.data
+> 
+> echo "DISPLAY"
+> # https://github.com/mstange/samply
+> cd ~/src/samply/samply
+> PROFILER_URL="https://deploy-preview-4196--perf-html.netlify.app/" cargo run --release --  load -v $pwd/jit.data
+> ```
+> 
+> 
+
+oh nice! trying this thank you!!
+
+[08:18:58.0407] <mstange|pto>
+You don't need the perf inject step these days
+
+[08:21:47.0206] <mstange|pto>
+Also there are wip docs at https://bit.ly/jit-profiling
+
+[08:27:08.0186] <iain>
+debadree25: If you are willing to wade through a lot of trampoline code, you can also use IONFLAGS=codegen, which will dump all of the code we generate. You get something that looks like this:
+```
+[Codegen] Created IonScript 7beb12933a00 (raw 5d2a0999c70)
+[Codegen] # Emitting code for script /home/iain/src/perf.js:35:41
+[Codegen] push       %rbp
+[Codegen] movq       %rsp, %rbp
+[Codegen] subq       $208, %rsp
+
+[Codegen] ==== BEGIN CodeGenerator::generateBody ====
+[Codegen] --------------------------------
+[Codegen] # block0 /home/iain/src/perf.js:37:5:
+[Codegen] .set .Llabel11, .
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=CheckOverRecursed
+[Codegen] movabsq    $0x7beb13328e98, %r11
+[Codegen] cmpq       %rsp, 0x0(%r11)
+[Codegen] jae        .Lfrom30
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=OsiPoint
+[Codegen] .set .Llabel30, .
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=GuardGlobalGeneration
+[Codegen] movabsq    $0x7beb133dcf40, %r11
+[Codegen] .set .Llabel40, .
+[Codegen] movl       0x0(%r11), %eax
+[Codegen] testl      %eax, %eax
+[Codegen] jne        .Lfrom51
+[Codegen] ==== BEGIN CodeGenerator::generateBody ====
+[Codegen] --------------------------------
+[Codegen] # block0 /home/iain/src/perf.js:37:5:
+[Codegen] .set .Llabel11, .
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=CheckOverRecursed
+[Codegen] movabsq    $0x7beb13328e98, %r11
+[Codegen] cmpq       %rsp, 0x0(%r11)
+[Codegen] jae        .Lfrom30
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=OsiPoint
+[Codegen] .set .Llabel30, .
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=GuardGlobalGeneration
+[Codegen] movabsq    $0x7beb133dcf40, %r11
+[Codegen] .set .Llabel40, .
+[Codegen] movl       0x0(%r11), %eax
+[Codegen] testl      %eax, %eax
+[Codegen] jne        .Lfrom51
+[Codegen] ==== BEGIN CodeGenerator::generateBody ====
+[Codegen] --------------------------------
+[Codegen] # block0 /home/iain/src/perf.js:37:5:
+[Codegen] .set .Llabel11, .
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=Parameter
+[Codegen]                                 # LIR=CheckOverRecursed
+[Codegen] movabsq    $0x7beb13328e98, %r11
+[Codegen] cmpq       %rsp, 0x0(%r11)
+[Codegen] jae        .Lfrom30
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=OsiPoint
+[Codegen] .set .Llabel30, .
+[Codegen] .set .Llabel30, .
+[Codegen]                                 # LIR=GuardGlobalGeneration
+[Codegen] movabsq    $0x7beb133dcf40, %r11
+[Codegen] .set .Llabel40, .
+[Codegen] movl       0x0(%r11), %eax
+[Codegen] testl      %eax, %eax
+[Codegen] jne        .Lfrom51
+...
+```
+
+[08:30:46.0815] <debadree25>
+> <@iain:mozilla.org> debadree25: If you are willing to wade through a lot of trampoline code, you can also use IONFLAGS=codegen, which will dump all of the code we generate. You get something that looks like this:
+> ```
+> [Codegen] Created IonScript 7beb12933a00 (raw 5d2a0999c70)
+> [Codegen] # Emitting code for script /home/iain/src/perf.js:35:41
+> [Codegen] push       %rbp
+> [Codegen] movq       %rsp, %rbp
+> [Codegen] subq       $208, %rsp
+> 
+> [Codegen] ==== BEGIN CodeGenerator::generateBody ====
+> [Codegen] --------------------------------
+> [Codegen] # block0 /home/iain/src/perf.js:37:5:
+> [Codegen] .set .Llabel11, .
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=CheckOverRecursed
+> [Codegen] movabsq    $0x7beb13328e98, %r11
+> [Codegen] cmpq       %rsp, 0x0(%r11)
+> [Codegen] jae        .Lfrom30
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=OsiPoint
+> [Codegen] .set .Llabel30, .
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=GuardGlobalGeneration
+> [Codegen] movabsq    $0x7beb133dcf40, %r11
+> [Codegen] .set .Llabel40, .
+> [Codegen] movl       0x0(%r11), %eax
+> [Codegen] testl      %eax, %eax
+> [Codegen] jne        .Lfrom51
+> [Codegen] ==== BEGIN CodeGenerator::generateBody ====
+> [Codegen] --------------------------------
+> [Codegen] # block0 /home/iain/src/perf.js:37:5:
+> [Codegen] .set .Llabel11, .
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=CheckOverRecursed
+> [Codegen] movabsq    $0x7beb13328e98, %r11
+> [Codegen] cmpq       %rsp, 0x0(%r11)
+> [Codegen] jae        .Lfrom30
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=OsiPoint
+> [Codegen] .set .Llabel30, .
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=GuardGlobalGeneration
+> [Codegen] movabsq    $0x7beb133dcf40, %r11
+> [Codegen] .set .Llabel40, .
+> [Codegen] movl       0x0(%r11), %eax
+> [Codegen] testl      %eax, %eax
+> [Codegen] jne        .Lfrom51
+> [Codegen] ==== BEGIN CodeGenerator::generateBody ====
+> [Codegen] --------------------------------
+> [Codegen] # block0 /home/iain/src/perf.js:37:5:
+> [Codegen] .set .Llabel11, .
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=Parameter
+> [Codegen]                                 # LIR=CheckOverRecursed
+> [Codegen] movabsq    $0x7beb13328e98, %r11
+> [Codegen] cmpq       %rsp, 0x0(%r11)
+> [Codegen] jae        .Lfrom30
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=OsiPoint
+> [Codegen] .set .Llabel30, .
+> [Codegen] .set .Llabel30, .
+> [Codegen]                                 # LIR=GuardGlobalGeneration
+> [Codegen] movabsq    $0x7beb133dcf40, %r11
+> [Codegen] .set .Llabel40, .
+> [Codegen] movl       0x0(%r11), %eax
+> [Codegen] testl      %eax, %eax
+> [Codegen] jne        .Lfrom51
+> ...
+> ```
+
+trampoline here means -> code that generates more code?
+
+[08:35:24.0451] <iain>
+At runtime startup we generate a lot of little bits of code that can be called by other jit code later. For example, every VM call actually calls to a VM wrapper, which is responsible for getting things set up to call into C++ code. These bits of code are called trampolines, I guess because you bounce off of them to get to your final destination.
+
+[08:37:06.0176] <iain>
+IONFLAGS=codegen prints out *all* the code we generate, so you get a big pile of runtime startup code before we ever start compiling baseline/Ion code  
+
+[08:40:37.0690] <iain>
+Now that I'm writing this out, I guess it wouldn't be too hard to make IONFLAGS=codegen only print out non-runtime code, and maybe add IONFLAGS=all-codegen for cases where we actually want to see trampoline code
+
+[08:41:39.0038] <debadree25>
+> <@iain:mozilla.org> Now that I'm writing this out, I guess it wouldn't be too hard to make IONFLAGS=codegen only print out non-runtime code, and maybe add IONFLAGS=all-codegen for cases where we actually want to see trampoline code
+
+i guess i can just search for the new LIRs i created most 99% they would be the one causing it
+
+[08:44:08.0052] <iain>
+If you know which function you are interested in, you can search for the filename:linenumber:column (eg `home/iain/src/perf.js:37:5` in my example above)
+
+[13:04:09.0521] <debadree25>
+> <@iain:mozilla.org> If you know which function you are interested in, you can search for the filename:linenumber:column (eg `home/iain/src/perf.js:37:5` in my example above)
+
+hmm tried this able to see LIR=<lir op> everywhere just my LIROp is no where to be found :-( is it possible that code generation fails silently?
+
+[13:10:09.0355] <iain>
+debadree25: You can use `IONFLAGS=scripts` to see which scripts are being Ion compiled, and IONFLAGS=logs + [iongraph](https://searchfox.org/mozilla-central/source/js/src/devtools/iongraph/README.md) to dump out a visualization of what Ion is doing
+
+
+2024-08-26
+[05:27:21.0819] <romgrk>
+hello, I'm benchmarking hashing functions in JS and I've found SM to be substantially slower than V8 and JSC. I've been using `gjs` as a runtime, is there any chance gjs itself is slowing down the benchmark?
+
+[05:28:45.0569] <nchevobbe [on PTO - back on August 26]>
+we have some regressions on DevTools perf test (https://treeherder.mozilla.org/perfherder/alerts?id=1760&hideDwnToInv=0), and in the pushlog, https://hg.mozilla.org/integration/autoland/rev/4f1411f1beb61bdc40b858a03cfe82c2ea56288f seems like a good candidate. I don't have access to the bug, so I'm not sure what it's about, but maybe iain / jandem have an idea ? (`source-map.allGeneratedPositionsFor.DAMP` doesn't involve the whole browser, it's only testing our sourcemap library, so it's usually a good indicator that the regression occured in spidermonkey)
+
+[05:37:21.0429] <jandem>
+nchevobbe: mind filing a bug for this? I think the problem is that devtools is using dynamic scope chains that behave like `with`, and name lookups will now be a bit slower
+
+[05:38:47.0331] <nchevobbe>
+sure, here it is https://bugzilla.mozilla.org/show_bug.cgi?id=1914895
+
+[05:40:00.0054] <nchevobbe>
+what's dynamic scope chain by the way?
+
+[05:48:50.0492] <jandem>
+it's related to the perf issue here: https://bugzilla.mozilla.org/show_bug.cgi?id=793345
+
+[05:50:20.0375] <jandem>
+ * that's related to the perf issue here: https://bugzilla.mozilla.org/show\_bug.cgi?id=793345
+
+[05:50:38.0793] <jandem>
+I commented on the bug. I'm not sure if this is the problem but it could be
+
+[05:51:02.0667] <nchevobbe>
+oh, I wouldn't expect the sourcemap test to use the Debugger API, but I don't know this code very well
+
+[05:51:46.0584] <jandem>
+yeah I just wanted to say, maybe the underlying issue is that we're using weird environment chains where we shouldn't..
+
+[05:52:34.0451] <nchevobbe>
+okay, thanks for your input. I'll also double check that the regression are indeed introduced by the SM patch
+
+[06:01:53.0084] <jandem>
+romgrk: the fastest way to check if it's related to GJS is to put the JS code in an HTML file and measure it in Firefox
+
+[10:09:58.0140] <bvisness>
+do we run mips and risc-v builds in try? or is that just not part of the sm-all preset that I'm using
+
+[10:12:35.0467] <arai>
+afaik, we don't run them
+
+[10:16:27.0733] <iain>
+We don't run them in try. mips32 is dead as a doornail and just waiting for somebody to find time to delete it. Mips64, loong64 and risc-v are all supported by external contributors. If you write a patch that requires per-architecture work and it's easy to write the patches for our unsupported architectures, you can go ahead and do so, but if you don't then an external contributor will come along pretty quickly and write a patch to do so.
+
+[10:18:00.0711] <iain>
+For example, anba landed bug 1913413, and then four days later bug 1914537 showed up in my review queue.
+
+[10:39:40.0877] <debadree25>
+what happened to that nice bot which read bug numbers and sent the bug link
+
+[11:00:41.0367] <iain>
+Hmm, that's an interesting question. sfink, were you in charge of botzilla?
+
+[11:02:44.0158] <sfink>
+no, that's bbouvier's. But I thought there was another bot doing that now.
+
+[11:06:42.0565] <sfink>
+but the last one I see here *was* done by botzilla. Aw, what happened to it?
+
+[11:19:27.0902] <sfink>
+(I'm asking bnjbvr.)
+
+[12:00:21.0954] <sfink>
+jonco: for the Worker iGC scheduling, I need to be able to set the budget for the initial GC slice. On the mainthread, I did this by adding a callback for computing the schedule. I can use the same mechanism on the Worker, but it's kind of gross (no more so than the mainthread, but still).
+
+[12:02:08.0485] <sfink>
+I was thinking maybe I should extend GCOptions to have a "FastStart" bit, which would yield immediately after preparing the GC. Then I could use existing APIs to kick the GC off, and then set a budget for the first slice using the other existing APIs.
+
+[12:03:57.0705] <sfink>
+This would require handling GCOptions as more than a set of 3 discrete values, but it seems easy enough; I have a patch for that. It would also require passing GCOptions into eg `JS_MaybeGC()`. Which shouldn't be too bad, but it's starting to feel like I should check with you to see if you need to tell me I'm overengineering again. ;-)
+
+
+2024-08-27
+[01:33:19.0657] <jonco>
+> <@sfink:mozilla.org> I was thinking maybe I should extend GCOptions to have a "FastStart" bit, which would yield immediately after preparing the GC. Then I could use existing APIs to kick the GC off, and then set a budget for the first slice using the other existing APIs.
+
+If you're kicking the GC off yourself then can't you pass a budget in? If the engine starts the GC then there does need to be a mechanism to set this - a callback seems fine for this though.
+
+[01:36:35.0426] <jonco>
+Most of the time the initial slice will be very short in an incremental GC because we start clearing the mark bits on a background thread and then yield to the mutator, unless that completes instantaneously from the POV of the main thread.
+
+[07:42:33.0467] <sfink>
+I was looking at this for the eager `JS_MaybeGC` -> `GCRuntime::maybeGC` -> `gcIfRequestedImpl` path. It's currently using the callback mechanism. Though as you point out, there are still internal GCs, some of which go through the interrupt. Hm... so it sounds like the callback is necessary, and passing in either a FastStart option or a budget would still only get some of the GCs, so why bother.
+
+[07:42:34.0787] <sfink>
+ok, thanks
+
+[08:09:20.0750] <mgaudet>
+Since Bug 1904429 landed builds with JS_JIT_SPEW enabled should have access to MOZ_LOG now. What this means is that you can dynamically turn on logging in the browser via `about:logging`, logging to file or to profiler. 
+
+[08:10:33.0419] <mgaudet>
+Now, it appears Nightly builds -don't- have JS_JIT_SPEW enabled; but I'm planning on decoupling the logging from JS_JIT_SPEW. There's a different macro, JS_LOG, that can be used directly for this purpose, with the goal of this being enabled all the way to release
+
+[08:11:05.0482] <mgaudet>
+I'm posting here because I know there's been some curiosity about this happening ( Ryan Hunt specifically was curious about this in Dublin) 
+
+[08:11:51.0014] <mgaudet>
+Here's an example profile with BaselineBailouts:5 set as the logging in about:logging (done on a local build) 
+
+[08:13:34.0725] <mgaudet>
+(Oh yes, usage note: the JitSpew logging is all done at the  [debug level](https://searchfox.org/mozilla-central/source/mozglue/misc/LoggingCore.h#31), so you have to set the channel level to 4+ ) 
+
+[08:16:21.0601] <mgaudet>
+Oh, and we have a simple but functional shell logger enabled too -- making this better is definitely an open project, but `MOZ_LOG` should be able to enable logging on the shell. We just dump to [stderr](https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#382-388) but probably sufficient in the short term
+
+[08:17:25.0025] <mgaudet>
+Here's a simple patch example of how to use JS_LOG: https://phabricator.services.mozilla.com/D217874
+
+[08:18:02.0336] <sfink>
+Nice! Thank you for this. I've been using the logging for Gecko stuff, and it's been very convenient. I assume these log messages will end up in the profile as well? (Which is noisy, but can be useful.)
+
+[08:20:02.0067] <mgaudet>
+ Yep. It's functionally identical to the gecko logging stuff -- all the same upsides,  all the same downsides, with the slight exception that at least for now, the builds where the SM logging stuff is enabled differ from where gecko logging is enabled (Everywhere right now actually) 
+
+[09:41:15.0809] <gerard-majax>
+perf report comparing forkserver on/off when running a microbenchmark: https://bugzilla.mozilla.org/show_bug.cgi?id=1912262
+
+[09:41:35.0721] <gerard-majax>
+I'm wondering if those JIT-related stacks I see on the right (forkserver on) could mean something?
+
+[09:41:44.0474] <gerard-majax>
+we're tracking weird perf regression
+
+[09:42:03.0265] <gerard-majax>
+(same build opt on both run, same benchmark, only pref flip)
+
+[09:55:26.0117] <gerard-majax>
+`javascript.options.baselinejit=false` does not look to change anything so maybe it's just noise
+
+[10:19:32.0209] <iain>
+gerard-majax: I don't understand from looking at the bug which JIT-related stacks you're talking about. Which comment should I be looking at?
+
+[10:19:55.0364] <gerard-majax>
+it was supposed to be the screenshot ...
+
+[10:20:07.0738] <gerard-majax>
+https://bugzilla.mozilla.org/attachment.cgi?id=9421046
+
+[10:24:04.0128] <iain>
+And what does the second screenshot show?
+
+[10:25:29.0914] <gerard-majax>
+left is non forkserver, right is with forkserver
+
+[10:26:08.0707] <iain>
+In the " jit Bad (right) vs Good (left)" screenshot?
+
+[10:27:17.0365] <gerard-majax>
+that's the link i re-shared yes
+
+[10:28:54.0414] <iain>
+Oh, sorry, thought you had linked the other screenshot
+
+[10:30:31.0500] <iain>
+Trying to make sure I'm following: the forkserver is a change to how we start up processes. With the forkserver enabled, we're seeing more cache misses in some DOM code.
+
+[10:31:25.0423] <gerard-majax>
+that's the best we have so far to diagnose the regression yes
+
+[10:31:37.0980] <iain>
+If you run a benchmark that targets that DOM code and profile cache misses, the version with the fork server enabled sees more cache misses in JIT code than without the fork server
+
+[10:32:20.0045] <iain>
+Is that specifically "cache misses inside dom::BindToTree"?
+
+[10:32:30.0260] <iain>
+As in, is BindToTree calling into the JIT?
+
+[10:33:35.0362] <gerard-majax>
+rather js code from jit calling it
+
+[10:34:06.0789] <gerard-majax>
+I was looking at the BindToTree to try and get something that may explain and i saw the difference of the stacks, I'm wondering if it's meaningful or just noise
+
+[10:34:08.0186] <iain>
+Do these profiles have callers at the top, or callees?
+
+[10:34:19.0943] <gerard-majax>
+callees
+
+[10:35:26.0163] <iain>
+So the difference is that the JIT code calling into BindToTree is having cache misses with the fork server enabled, but not with the fork server disabled?
+
+[10:35:49.0035] <gerard-majax>
+no
+
+[10:35:52.0630] <iain>
+I assume that you have to call through JS either way
+
+[10:36:18.0131] <gerard-majax>
+the difference is that i see jit-related stacks when forkserver is enabled and i dont when it's not
+
+[10:38:17.0184] <iain>
+What do you see instead? You presumably still have to run JS, so even if you don't see `MaybeEnterJIT` you should still see `RunScript`
+
+[10:39:15.0249] <gerard-majax>
+iain: I see what is on the left
+
+[10:39:29.0888] <gerard-majax>
+the code that runs is here https://bugzilla.mozilla.org/attachment.cgi?id=9421049
+
+[10:40:05.0687] <iain>
+I'm pretty sure that all the un-symbolicated stack frames there are running jitcode.
+
+[10:41:25.0509] <iain>
+If you build with `--enable-perf` and follow [the instructions here](https://gist.github.com/mstange/a8a0943f16f388e3ddc9e726d68c436a), we will dump out information for `perf` so that it knows how to profile JIT code, which will give you better information. 
+
+[10:44:39.0089] <gerard-majax>
+iain: is `javascript.options.baselinejit=false` enough to verify if it's related to jit?
+
+[10:47:01.0216] <iain>
+Related to JIT how?
+
+[10:48:08.0763] <iain>
+This testcase is running JS code. We have several tiers of execution for running JS (C++ interpreter, baseline interpreter, baseline compiler, Ion compiler). Setting baselinejit to false will disable the baseline compiler and the Ion compiler.
+
+[10:48:28.0080] <iain>
+Which means that the code has to run in the C++ compiler and/or the baseline interpreter.
+
+[10:48:43.0134] <iain>
+The baseline interpreter is JIT code in the sense that we generate it at runtime
+
+[10:49:31.0418] <iain>
+You can disable it with `javascript.options.baselineInterpreter=false` if you think that's somehow relevant
+
+[10:50:20.0505] <iain>
+The more tiers you disable, the slower the code will run
+
+[10:51:27.0234] <iain>
+ * Which means that the code has to run in the C++ <str>compiler</str> interpreter and/or the baseline interpreter.
+
+[10:51:41.0210] <iain>
+ * Which means that the code has to run in the C++ <del>compiler</del> interpreter and/or the baseline interpreter.
+
+[10:53:24.0269] <iain>
+In the profile on the left, can you expand the stacks with unsymbolicated `0x1178b37ed27d` any further? I expect that those are JIT frames corresponding to recursive calls to `create_tree` in your benchmark. 
+
+[10:59:40.0255] <gerard-majax>
+no they were not expandable
+
+[11:06:36.0011] <iain>
+Okay. So it looks to me like the main difference here is just that the profiler is successfully unwinding through the JIT frames in the profile on the right, but is getting stuck / giving up in the profile on the left. In all the places where you see stacks of `0x1178b37ed27d` in the profile on the left, you can assume that the caller of that stack looks a lot like the equivalent stack on the right: a call to MaybeEnterJIT with roughly the same callers. 
+
+[11:08:13.0777] <iain>
+I don't know why the profiler does a better job with the forkserver enabled.
+
+[11:08:39.0606] <iain>
+But I don't see any evidence here that JS is meaningfully involved in your performance problem.
+
+[12:44:10.0142] <debadree25>
+regarding the comment [here](https://searchfox.org/mozilla-central/source/js/src/jit/MIROps.yaml#130) call what? VM call?
+
+[13:15:16.0505] <iain>
+Calls into C++, roughly. The consumer is [this code](https://searchfox.org/mozilla-central/source/js/src/jit/LICM.cpp#261-265) in the register allocator. We want to know if it's worth trying to hoist floating point constants out of the loop, or whether they are going to be spilled/filled at the call anyway.
+
+[13:16:14.0456] <iain>
+Broadly speaking, if you think that your op is going to do a call more often than not, then you should set the flag.
+
+[13:33:27.0406] <debadree25>
+oh i see! got it! thank you!
+
+
+2024-08-28
+[23:42:09.0505] <debadree25>
+> <@iain:mozilla.org> debadree25: You can use `IONFLAGS=scripts` to see which scripts are being Ion compiled, and IONFLAGS=logs + [iongraph](https://searchfox.org/mozilla-central/source/js/src/devtools/iongraph/README.md) to dump out a visualization of what Ion is doing
+
+in the graph generated by iongraph i see something like `resumepoint 72 71 70 69 68 67 66 65 64` what do these mean? as in instructions numbered <the numbers given> can resume from here?
+
+[23:46:34.0944] <iain>
+They are the numbers of the instructions that the resume point captures. When we resume in baseline interpreter, the value of the first instruction will be at the top of the stack, and the last value is at the bottom of the stack. (Note that "the stack" here also includes locals, `this`, the environment chain, and so on.) 
+
+[23:49:22.0349] <iain>
+When we bail out we tear apart the Ion stack frame and rebuild it into a baseline interpreter frame (or potentially multiple blinterp frames, if inlining is involved). A resume point tells us where to find all the values that will be in the blinterp frame if we bail out at that point.
+
+[00:00:14.0891] <debadree25>
+so its like a pointer to the stack values
+
+[01:26:30.0951] <gerard-majax>
+> <@iain:mozilla.org> But I don't see any evidence here that JS is meaningfully involved in your performance problem.
+
+thanks, that's enough for me :)
+
+[08:47:29.0452] <jonco>
+sfink: ping
+
+[09:19:49.0446] <jon4t4n>
+Is there a way of re-requesting a review from only one person in Phabricator? Does removing and re-adding them do the trick?
+
+[09:27:43.0137] <sfink>
+It depends on whether it's accepted or not. If it's accepted, then do "Plan Changes" and if there are other reviewers you no longer need, remove them. If it's not yet accepted (Needs Review), then you can remove the reviewer and re-add them as a blocking reviewer.
+
+[09:27:53.0206] <sfink>
+or at least, I think that's the way it works. I'm not certain.
+
+[14:14:48.0345] <yury>
+What is happening with promises reactions(?) during js::DestroyContext() ? Everything just disappears or there was some finalization phase before?
+
+[14:22:29.0830] <iain>
+We run a shutdown GC [here](https://searchfox.org/mozilla-central/source/js/src/vm/Runtime.cpp#256) that might clean them up?
+
+[14:38:37.0604] <yury>
+> <@iain:mozilla.org> We run a shutdown GC [here](https://searchfox.org/mozilla-central/source/js/src/vm/Runtime.cpp#256) that might clean them up?
+
+Okay, so looks like PromiseObject has no finalizers, nothing will invoke any (chain) reaction
+
+[14:43:58.0954] <iain>
+What do you want to have happen?
+
+[15:01:33.0100] <yury>
+> <@iain:mozilla.org> What do you want to have happen?
+
+More what I don't want to. Trying to figure out if I can have promise and still have debugger attached to it, during shutdown
+
+[15:04:47.0788] <yury>
+> <@iain:mozilla.org> What do you want to have happen?
+
+ * More what I don't want to. Trying to figure out if I can have promise and still have debugger attached to its realm, during shutdown
+
+[15:14:24.0233] <iain>
+yury: [This code](https://searchfox.org/mozilla-central/source/js/src/debugger/Debugger.cpp#4080-4091) (and [this code](https://searchfox.org/mozilla-central/source/js/src/debugger/Debugger.cpp#5149-5169) that it calls?) seems like it might be relevant. We call it during the sweep phase before we've finalized anything to detach the debugger from the global. 
+
+
+2024-08-29
+[08:45:42.0433] <yury>
+Can I use WeakRefObject? [smdoc needed?] I just need weak reference in one of the internal slots of my other NativeObject
+
+[09:52:05.0999] <mccr8>
+v8 zero-day from May is now public if anybody is curious. Patch title is "Using FunctionParsingScope for parsing class static blocks" https://issues.chromium.org/issues/341663589
+
+[09:52:36.0601] <nbp>
+is there a flag in the macro assembler to know whether we are generating wasm code?
+
+[09:57:04.0343] <yury>
+> <@nbp:mozilla.org> is there a flag in the macro assembler to know whether we are generating wasm code?
+
+normally `IsCompilingWasm()` used in code generator (and I see some usages in masm)
+
+
+2024-08-30
+[17:22:05.0751] <sfink>
+Who can review StructuredClone.cpp?
+
+[17:22:09.0993] <botzilla>
+sfink x34, iain x7, spidermonkey-reviewers x4: /js/src/vm/StructuredClone.cpp
+
+[17:22:17.0654] <iain>
+Oh no
+
+[17:22:18.0458] <sfink>
+sorry, iain
+
+[17:22:52.0983] <iain>
+I punted this bug to you specifically because I didn't know what was going on
+
+[17:24:26.0927] <sfink>
+yes, you did say that in the bug comment. I'm not really sure who might be more familiar with structured cloning at this point.
+
+[17:24:28.0042] <iain>
+But yeah, I can review
+
+[02:19:29.0201] <nbp>
+mgaudet: you know the saying goes: “if it works, don't fix it”
+
+[02:19:35.0581] <nbp>
+ * mgaudet: you know how the saying goes: “if it works, don't fix it”
+
+[05:59:19.0582] <sebbu>
+but that's how you end up with quick&dirty code still in production 50 years later, and nobody to fix/maintain/evolve it when the needs evolved, and you can't afford a service interruption
+
+[06:15:10.0927] <nbp>
+The best is when you discover something that does not work as expected, but there is another bug which makes it appear as-if it always worked perfectly.
+
+[06:27:03.0219] <sebbu>
+or that the service is mainly used for a side effect (or something that is allowed while it shouldn't) instead of the main usecase, and when you want to fix or improve things, it'ld break 99% users usecases (different that the intended usecase of the product/service)
+
+[10:52:30.0599] <iain>
+[This](https://www.steveblackburn.org/pubs/papers/g1-vee-2020.pdf) is a fairly well-written description/reimplementation of the G1 garbage collector (used in the HotSpot JVM). Interesting to see where it's similar to our implementation and where it's different.
+
+[11:40:54.0368] <debadree25>
+does the baseline jit do no optimisation passes like ion? only collects info and generates the lowered form of the bytecodes?
+
+[11:44:51.0111] <iain>
+It does almost no optimization. It's a single-pass template JIT: we see an op, we generate code for that op, we move on. Pretty much the only "optimization" it does is that it keeps track of a virtual stack (where each value on the stack currently lives) so it can sometimes keep values in registers between ops.
+
+[11:45:09.0162] <iain>
+The goal is to generate code quickly, not to generate quick code.
+
+[11:46:03.0184] <iain>
+The wasm baseline compiler is an even more extreme version of this. I think the best summary is in [this blogpost by Andy Wingo](https://wingolog.org/archives/2020/03/25/firefoxs-low-latency-webassembly-compiler); search for "no noodling".
+
+[11:47:03.0464] <debadree25>
+> <@iain:mozilla.org> The wasm baseline compiler is an even more extreme version of this. I think the best summary is in [this blogpost by Andy Wingo](https://wingolog.org/archives/2020/03/25/firefoxs-low-latency-webassembly-compiler); search for "no noodling".
+
+thank you reading this! 
+
+[14:43:05.0881] <nils.bars>
+Maybe this matters for your testing pipeline: https://github.com/googleprojectzero/fuzzilli/issues/443
+
+[15:34:23.0226] <sfink>
+decoder: ^
+

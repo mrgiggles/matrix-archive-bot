@@ -1,0 +1,2123 @@
+2025-02-01
+[19:31:52.0772] <mayankleoboy1>
+Some small improvement (or trend) of ~1.5% on [Embenchen wasm-misc-optimizing compile](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=mozilla-central,3405706,1,13&timerange=5184000&zoom=1733174187987,1738407273946,795.8533333333331,841.7066666666666) around 22jan-23jan. The most relevant bugs *look to be*  Bug 1940985 / Bug 1942456
+
+[19:31:54.0774] <botzilla>
+https://bugzil.la/1940985 — VERIFIED (jandem) — Optimize uses check in BacktrackingAllocator::minimalBundle
+
+[19:31:55.0034] <botzilla>
+https://bugzil.la/1942456 — RESOLVED (jandem) — Many pages spend  12%-14% of taskcontroller in InsertSortedList in regalloc
+
+[00:38:38.0497] <jandem>
+they both fixed code to not be quadratic so it's possible they improved performance a bit
+
+
+2025-02-03
+[07:12:03.0925] <josh-cena>
+Hello, I intend to document Error.captureStackTrace on MDN. I noticed that SM doesn't seem to support Error.stackTraceLimit while the other two engines both do, is that right? Are there plans to make this supported too?
+
+[07:35:08.0356] <arai>
+is `stackTraceLimit` a part of any proposal?
+
+[07:36:53.0652] <jandem>
+I think it's also non-standard. They also have `Error.prepareStackTrace` according to https://v8.dev/docs/stack-trace-api
+
+[07:42:04.0959] <arai>
+Okay, so at least we don't support it.  and there seems to be no bug filed so far.
+
+[08:47:57.0792] <mgaudet>
+josh-cena: Correct. I do not currently plan to support those
+
+[10:31:57.0974] <davidj361>
+Will the defined function not show up in the compartment?
+```c++
+if (!DefineFunctions(ctx, mainGlobal)) {
+...
+JS::RootedObject global(ctx, PocBoilerplate::createCompartmentGlobal(ctx, mainGlobal));
+```
+Where I'm calling the defined function in global?
+
+
+[10:40:38.0660] <davidj361>
+I suppose not because they're split apart conceptually as a security membrane
+
+[10:40:55.0804] <davidj361>
+however it gave me the assumption it's a child of the main global
+
+[10:41:05.0124] <davidj361>
+ * however it gave me the assumption it's a child of the main global which copies over some stuff
+
+[10:55:57.0792] <iain>
+Yeah, there's no hierarchy of globals. They're all independent.
+
+[14:00:52.0349] <davidj361>
+How would I go about measuring how much memory something takes up from `JS_NewObjectWithGivenProto`? I cannot measure via top statistics like resident set size because the runtime allocates differently. Would it be possible to make the runtime increase memory precisely enough to measure this?
+
+[14:01:20.0754] <davidj361>
+Also I believe creating compartments takes more memory too. Strangely enough even if that global falls off the stack, the memory keeps increasing.
+
+[14:01:29.0468] <davidj361>
+ * Also I believe creating compartments takes more memory too. Strangely enough even if that global falls off the stack, the memory keeps increasing even when JS_GC is called.
+
+[14:10:59.0308] <iain>
+Memory tracking is complicated in a GC. You could consider looking into the [UbiNode interface](https://searchfox.org/mozilla-central/source/js/public/UbiNode.h) for building heap analysis tools
+
+[14:14:03.0157] <mccr8>
+In bug 1463569, I added code to use the UbiNode stuff to annotate GC heap dumps with the size of individual objects. You can combine that with a dominator tree analysis to kind of figure out how much stuff things are taking. It is not easy to set that all up.
+
+[14:14:04.0656] <botzilla>
+https://bugzil.la/1463569 — RESOLVED (mccr8) — Tooling for investigating content process chrome JS memory usage
+
+[15:15:52.0069] <josh-cena>
+> <@mgaudet:mozilla.org> josh-cena: Correct. I do not currently plan to support those
+
+There's an interesting gradient of support here. V8 supports all 3 APIs. JSC supports 2 of them while SM supports only one. If for interoperability sake I would imagine at least stackTraceLimit should be implemented, but I guess its absence doesn't cause an error anyway?
+
+
+2025-02-04
+[06:58:38.0898] <yulia>
+The most recent build causes problems for me for testing multiple versions of the browser, has anyone else noticed this?
+
+[06:58:57.0760] <yulia>
+it seems like some new state is shared, i have the builds going into their own directories
+
+[07:00:41.0800] <jandem>
+what kind of problem are you seeing?
+
+[07:01:12.0388] <yulia>
+for example one browser will render just fine, the other will have a collapsed UI
+
+[07:04:03.0055] <yulia>
+This is after clobbering both builds
+
+
+[08:14:16.0712] <mgaudet>
+Yeah, because its absence is reasonably compatible I plan to skip it. Having said that, I'll be presenting [captureStackTrace](https://github.com/mgaudet/proposal-error-capturestacktrace/) in the next TC39 meeting  and that could well come up and be a topic of discussion. There's not a lot of appetite right now for standardizing error stuff, but I feel it's important to at least try here 
+
+[10:08:00.0196] <yulia>
+I think i found the issue, something weird with hg graft
+
+[15:54:44.0615] <smaug>
+mccr8: happen to recall what js-non-window means in memory reports?
+
+[15:55:05.0260] <smaug>
+When would that be rather high for a process dealing with a normal website
+
+[15:56:24.0551] <mccr8>
+I dunno. It would be things like chrome JS or maybe web extensions
+
+[15:56:53.0968] <mccr8>
+Hmm yeah I see expanded principals under non-window
+
+[15:58:10.0895] <smaug>
+several zones even
+
+[15:58:47.0342] <smaug>
+jesup: do you know if the leak is reproduceable ?
+
+
+2025-02-05
+[16:06:09.0248] <smaug>
+Something to do with https://www.youtube.com/feed/subscriptions
+
+[16:22:59.0001] <jesup>
+smaug: I think the original reporter on reddit can.  I tried and couldn't generate the leak that continued past gc/cc; always dropped to 350-500MB after a short bit (via about:processes)
+
+[16:24:05.0077] <smaug>
+jesup: I think we'd need cc/gc logs when the memory use isn't crazy high yet, but when there are already those js-non-window zones in memory log
+
+[16:24:30.0032] <smaug>
+I didn't see any unusual addons in the log
+
+[16:24:34.0718] <mccr8>
+Is there any more detail about what the memory is under js-non-window? Like under a zone? 
+
+[16:24:53.0716] <mccr8>
+With no information here I'd blame a goofy YouTube download addon doing something bad
+
+[16:26:24.0805] <smaug>
+* I didn't see any unusual addons in the memory report
+
+[16:26:59.0545] <smaug>
+* jesup: I think we'd need cc/gc logs when the memory use isn't crazy high yet, but when there are already those js-non-window zones in memory report
+
+[16:29:44.0627] <smaug>
+│  │  ├────142.62 MB (07.18%) -- zone(0x7fd60eabb100)
+│  │  │    ├──113.86 MB (05.73%) -- realm(https://www.youtube.com/feed/subscriptions)
+│  │  │    │  ├──107.39 MB (05.40%) -- classes
+│  │  │    │  │  ├───35.47 MB (01.78%) -- class(Function)/objects
+│  │  │    │  │  │   ├──33.34 MB (01.68%) ── gc-heap
+│  │  │    │  │  │   └───2.13 MB (00.11%) ── malloc-heap/slots
+│  │  │    │  │  ├───27.28 MB (01.37%) -- class(Call)/objects
+│  │  │    │  │  │   ├──27.07 MB (01.36%) ── gc-heap
+│  │  │    │  │  │   └───0.21 MB (00.01%) ── malloc-heap/slots
+│  │  │    │  │  ├───24.45 MB (01.23%) ++ (21 tiny)
+│  │  │    │  │  └───20.20 MB (01.02%) ++ class(Object)/objects
+│  │  │    │  └────6.46 MB (00.33%) ++ (3 tiny)
+│  │  │    └───28.77 MB (01.45%) ++ (14 tiny)
+
+[16:29:57.0908] <smaug>
+That isn't too useful
+
+[16:30:13.0176] <smaug>
+Several somewhat similar zones
+
+[16:31:29.0622] <smaug>
+oh, wait, hmm "[Expanded Principal [https://www.youtube.com/feed/subscriptions, moz-extension://e66083de-4154-468c-8dd1-d13036383bc3/]], Content Script "Web Compatibility Interventions""
+
+[16:31:47.0463] <smaug>
+I think Web Compat Interventions is leaking
+
+[16:31:57.0825] <smaug>
+twisniewski: ^
+
+[16:32:32.0628] <smaug>
+(very much a guess still)
+
+[16:33:16.0066] <twisniewski>
+oof. this is our current youtube-related intervention: https://searchfox.org/mozilla-central/source/browser/extensions/webcompat/injections/js/bug1842437-www.youtube.com-performance-now-precision.js#8
+
+[16:33:59.0086] <twisniewski>
+if you can go into about:compat and disable it, then reload the tab and retry, we can at least confirm whether the leak goes away.
+
+[16:34:19.0468] <smaug>
+well, _I_ haven't reproduced anything 🙂 
+
+[16:36:08.0760] <smaug>
+twisniewski: and I think I am wrong here. There are still too many "https://www.youtube.com/feed/subscriptions" zones. Something else is creating the zones for those
+
+[16:37:06.0183] <twisniewski>
+ok, keep me posted. we try to not introduce leaks, but there's never any guarantee
+
+[16:37:41.0379] <smaug>
+that performance.now() intervention has been there for quite some time
+
+[16:37:50.0635] <twisniewski>
+yes
+
+[18:24:14.0934] <jesup>
+That report was from my very generic test profile, with me spamming reload and then hitting Measure in my about:memory tab
+
+[18:26:07.0967] <jesup>
+I'll investigate more; this was me signed into youtube in a generic test profile, running a local opt build.  Spamming reload, and taking memory profiles before it could drop back down to 500ish MB
+
+[18:26:23.0572] <jesup>
+I'll try to find the reddit thread as well
+
+[09:26:15.0945] <netskink>
+hello, I am working on a port of spidermonkey to zos.  I'm curious, I have an x86_64/Linux build of RELEASE_52 at the moment working.  However, when I examine the build log, I see weird things.
+
+1.  ./mach build shows filenames without context.  For instance, here are five header files mentioned but it does not say why.  Are they being referrenced?  Are they being generated?  See screenshot below:
+
+[09:28:01.0393] <iain>
+I believe those are being auto-generated. selfhosted.out.h is, at least.
+
+[09:28:52.0562] <mccr8>
+Yeah, any random file name getting dumped out during build is probably indicating that the file is being generated there.
+
+[09:34:10.0848] <netskink>
+2. Here is a build line for a source file. The last bit of text in that line is what appears to be a filename being compiled.  However at the end of the build, I generate a list of files -- excluding the .hg, .cargo, and obj dir.  When I examine this list of files or simply search the build tree/dir, I don't see a file with this name.  See screenshot.
+
+[09:35:00.0997] <netskink>
+hmm, many thanks iain and mccr8 .  These are genrated files, but deleted aftewords?  Is there a mechnism to keep the files around after the build is completed?
+
+[09:35:49.0745] <netskink>
+3. In one release,I am pretty sure I saw a --verbose flag that worked.  I don't have that option for ./mach configure or ./mach build.  Is there an option to enable verbose?
+
+[09:37:43.0693] <netskink>
+4. What is the tie-in between what avaialbe options such as --disable-tests to configure and the source? I just google and randomly attempt to find working options.  I did find a file...can't remember at the moment the fname, but it had if defined for HAVE_DTRACE and I vound an option for --disable-dtrace in one particular build release.
+
+[09:37:49.0787] <iain>
+I can't speak to 52, but currently if I look in the objdir where my build lives, I see (eg) obj-opt/js/src/selfhosted.out.h
+
+[09:39:39.0863] <netskink>
+I'll attempt to capture build output on filesystem in between clobber, configure and build.  Currently I only examine obj-x86_64-pc-linux-gnu.  I currently don't have a obj-opt or any obj* dir except for the obj-x86_64-pc-linux-gnu
+
+[09:40:36.0490] <iain>
+Yeah, the name of the obj-dir is arbitrary
+
+[09:41:25.0828] <netskink>
+Is there a way to preserve the generated files?
+
+[09:43:53.0167] <iain>
+Are you using ./mach build? Can you post your mozconfig?
+
+[09:44:06.0077] <netskink>
+yes, i am using ./mach build
+
+[09:44:14.0900] <netskink>
+sure i can post my mozconfig
+
+[09:44:18.0744] <netskink>
+one moment
+
+[09:46:03.0693] <mgaudet>
+for 52, I wonder if you'd be best erved by generatiing a source package, -then- using that as the basis to port. avoiding all mach stuff in general: https://searchfox.org/mozilla-central/source/js/src/Makefile.in#116-133 
+
+[09:49:34.0839] <netskink>
+My thoughts were to get a build on x86_64 linux, migrate all the files to zos and use either gmake or gn.  When I learned the mach switched from python3.8 to python2.7 upon doing 52, i abandoned using mach on zos.  I'm not certain python2.7 exists for z/os.  However, what you are saying might useful.  Even trying to get a python2.7 on zos working might be something possible.  Perhaps its exists, but at the moment I have never used it and its not installed.
+
+[09:53:04.0727] <netskink>
+Just did a quick check , zos is weird in that system admins install packages.  So we have 3.12 and nothing for 2.7.   I'll ask around and see if I can find a python and attempt to get it installed.
+
+[09:54:26.0958] <mgaudet>
+As someone who has installed OSS software on zOS: I really, honestly, wish you luck. It's often possible, just -hard- 
+
+[09:54:37.0252] <iain>
+Yeah, it looks like since you didn't specify MOZ_OBJDIR, obj-x86_64-pc-linux-gnu is [picked by default](https://searchfox.org/mozilla-central/source/docs/setup/configuring_build_options.rst#68-72). Generated files should be created there. Not sure why they're being deleted afterwards.
+
+[09:54:59.0788] <mgaudet>
+(I lived for a long time with an incredibly old vim because I couldn't be bothered to do all the work to build it)
+
+[09:56:18.0608] <iain>
+IIRC my version of emacs when I worked at IBM was compiled in 1998
+
+[09:57:07.0664] <netskink>
+Yes, USS has its ups and down.  I work with IBM on the zopen git repo and I use their vim amongst other things.
+
+[09:57:42.0437] <iain>
+Are we still using python 2 in more recent releases? I was under the vague impression that we'd finished the 2->3 migration
+
+[10:00:40.0249] <iain>
+In general I think we're going to have better answers if you're building a version of SM that is less than 8 years old
+
+[10:04:00.0120] <netskink>
+Yes, I understand. However, its my understanding that 52 is the best bet for porting to zos.  ie does not have rust - I don't know of a rust compiler for zos.  I don't see asm being used.  I don't want to have to convert x86_64 assembly to IBM HAL.  It doesn't support JIT, or at least it appears not. Less code to port is better.
+
+[10:04:39.0421] <iain>
+I don't think there's any Rust code inside SM, actually
+
+[10:05:52.0137] <ptomato>
+I'm not sure where this Rust code is, but for recent versions several Rust packages are fetched and compiled when you build SM
+
+[10:05:55.0442] <ptomato>
+maybe it's for cbindgen?
+
+[10:06:01.0552] <iain>
+Hmm, maybe
+
+[10:06:11.0912] <netskink>
+When i was build sm rel 130 and 135 i saw the rustc compiler running.  I also counted the number of .rs files and they were present. perhaps it was in the tree but not used for the src/js directory.
+
+[10:07:10.0729] <iain>
+Or rather: there's definitely some rust code inside SM (see js/src/rust), but I don't think any of it is necessary to build the shell
+
+[10:08:06.0801] <iain>
+I guess ICU4X will eventually become the default
+
+[10:08:09.0026] <netskink>
+hmm, I don't know.  I just went with smaller is better approach but perhaps that is nto a good goal.
+
+[10:09:55.0581] <ptomato>
+> <@mgaudet:mozilla.org> for 52, I wonder if you'd be best erved by generatiing a source package, -then- using that as the basis to port. avoiding all mach stuff in general: https://searchfox.org/mozilla-central/source/js/src/Makefile.in#116-133
+
+GNOME has unofficial source packages from certain 52.x releases onwards: https://download.gnome.org/teams/releng/tarballs-needing-help/mozjs/ (ones with `gnome` in the version number have additional backports applied, though)
+
+[10:15:13.0966] <netskink>
+many thanks ptomato mgaudet iain , I've noted all three of these urls.  I'll examine these potential paths.  Thanks!
+
+[10:28:50.0272] <mgaudet>
+What's the status of performance-testing-with-devtools-open: Once upon a time I got the impression that this was a bad idea. Is it still? 
+
+[10:33:14.0322] <Ryan Hunt>
+> <@mgaudet:mozilla.org> What's the status of performance-testing-with-devtools-open: Once upon a time I got the impression that this was a bad idea. Is it still? 
+
+At least for wasm, make sure you don’t open the debugger tab of dev tools because it will disable optimizing wasm code
+
+[10:36:12.0380] <netskink>
+hmm, i stand corrected. my find files was ignoreing .hg, .cargo and obj-x86_64-pc-linux-gnu.  Each file list I generated after clobber, configure and build were identical.  I am in process of generating a new list of files including the obj-x86_64-pc-linux-gnu dir.  I bet this time, I will find these generated files.
+
+[13:12:29.0967] <smaug>
+jesup: mccr8 I _think_ those mystery zones are actually window objects
+
+[13:12:48.0321] <smaug>
+oh, are they unlinked Windows
+
+[13:13:19.0520] <smaug>
+Is that possible because of https://searchfox.org/mozilla-central/rev/94f8fc2185ca48c98020beeff129c4d89a776af9/dom/base/nsGlobalWindowInner.cpp#1489
+
+[13:13:26.0838] <mccr8>
+Somebody pointed me at this bug about YouTube memory being high.  Dunno if that is related. https://bugzilla.mozilla.org/show_bug.cgi?id=1945363
+
+[13:16:18.0201] <smaug>
+Could be
+
+[13:17:03.0123] <smaug>
+Anyhow, I think the windowid handling is possibly a reason why there are js-non-window realms in the memory report
+
+[13:17:07.0336] <smaug>
+Those are actually windows
+
+[13:17:30.0077] <smaug>
+That isn't the cause for the leak, it just makes the memory reports look a bit surprising
+
+[13:19:04.0047] <smaug>
+I've tried to reproduce the leak jesup told about, no luck. Well, no luck with any sorts of leaks with youtube. I did reloading and loading subscriptions page and resizing the window and opening and closing devtools etc.
+
+[13:32:41.0357] <smaug>
+Memory report in bug 1945363 looks quite different.  There top level active window has tons of JS 
+
+[13:32:43.0610] <botzilla>
+https://bugzil.la/1945363 — UNCONFIRMED (nobody) — Very high memory usage (4GB) on YouTube
+
+[13:33:25.0085] <smaug>
+(which hints more about a site leak)
+
+[13:33:37.0907] <smaug>
+(or something related to addons)
+
+[13:54:22.0704] <jesup>
+The reddit report I was trying to reproduce was https://www.reddit.com/r/firefox/comments/1ifth2n/comment/mathyr0/
+
+[14:20:54.0622] <mccr8>
+The reporter in 1945363 was able to repro without addons
+
+
+2025-02-06
+[12:06:09.0006] <jesup>
+So, wasn't trying to repro, but this profile looks bad: https://share.firefox.dev/3EoPTSa
+
+[12:07:19.0847] <jesup>
+Memory report: ^
+
+[12:17:45.0565] <jesup>
+smaug: I'm getting a verbose  CC log
+
+[12:18:07.0671] <smaug>
+hopefully also GC. But great
+
+[12:18:13.0821] <jesup>
+I'm afraid it will include a LOT of other processes, but they should be much simpler
+
+[12:18:15.0652] <jesup>
+yes
+
+[12:18:25.0499] <smaug>
+GC/CC logs are per process
+
+[12:18:58.0942] <smaug>
+well, they are even per a thread of a process
+
+[12:19:10.0398] <jesup>
+I noticed that (usually) clicking on a video's menu '...' was taking 5-10 seconds to open
+
+[12:19:25.0879] <jesup>
+It had been sitting idle for a day or two
+
+[12:19:53.0738] <smaug>
+jesup: oh, you mean you actually reproduce this?
+
+[12:20:07.0127] <smaug>
+* jesup: oh, you mean you actually reproduced the leak?
+
+[12:20:47.0592] <jesup>
+I wasn't intending to; I seem to have reproduced _a_ leak/GC/CC hang
+
+[12:22:05.0310] <jesup>
+https://drive.google.com/file/d/1MzvCSp2Y_1MWiy0HBZdaF0j3K1ovsa5K/view?usp=sharing
+Note: 1GB compressed
+
+[12:22:09.0124] <smaug>
+that youtube.txt is different than the complain on reddit.  I guess that youtube.txt is the one mccr8 was looking at
+
+[12:22:15.0234] <jesup>
+12GB uncompressed
+
+[12:22:25.0295] <jesup>
+yes, I believe so
+
+[12:22:30.0569] <smaug>
+How large is the relevant youtube log?
+
+[12:22:54.0301] <smaug>
+Hopefully not 12GB, since I certainly can't analyze anything that big
+
+[12:23:49.0950] <jesup>
+Let me grab just the one you need
+
+[12:24:44.0650] <jesup>
+Looks like it's just incomplete-cc-edges.26220.1738872492 - 4.4GB
+
+[12:25:46.0378] <smaug>
+yeah, that is just too large 
+
+[12:26:30.0918] <smaug>
+Try concise?
+
+[12:26:41.0509] <smaug>
+Maybe that would tell something useful
+
+[12:34:37.0651] <jesup>
+Looks like incomplete-gc-edges is 5.1GB, incomplete-cc-edges is 3.6GB for youtube.  Took forever for them to appear...   
+
+[12:35:05.0352] <jesup>
+so CC-edges for concise is only 600MB smaller than verbose
+
+[12:35:42.0285] <jesup>
+(I'm constantly surprised when I saw "only" with reference to a good fraction of a GB)
+
+[12:42:20.0146] <jesup>
+https://drive.google.com/file/d/1H0Rv_wvHZeoBxyBXGDqVb387k8FWgD7K/view?usp=sharing
+
+[12:42:36.0240] <smaug>
+jesup: anything special you did with youtube? 
+
+[12:42:41.0732] <jesup>
+probably still too big, but... that has gc and cc in it
+
+[12:43:29.0369] <jesup>
+No.   In another tab (likely a different process) I'd watched a number of videos over the last few days.   In this one I think I'd watch ed a single video.  I had closed the other tab already
+
+[12:43:52.0246] <jesup>
+This was sitting for at least most of a day on the homepage, logged in
+
+[12:45:19.0307] <jesup>
+history for the tab implies I watched 3 videos in that tab
+
+[12:45:31.0189] <smaug>
+I think there are at least two youtube tabs 
+
+[12:45:39.0634] <smaug>
+using the same process
+
+[12:47:38.0592] <jesup>
+I don't see another loaded youtube tab... I have some unloaded ones (verified by hovering the tabs; no pid)
+
+[12:49:51.0530] <smaug>
+It would be always interesting to check how Chrome behaves, in case it is a site leak... But I guess better try to reproduce in FF. (The resize leak which youtube had happened equally badly in Chrome).
+
+[12:50:50.0400] <jesup>
+definitely only 1 loaded.  about:tabs (glandium) shows me last-accessed time for each tab.  All youtube tabs other than the one in 26220 were last accessed >3 weeks ago - and the 3 week one isn't loaded either.
+
+[12:51:53.0512] <smaug>
+oh, wait, I missed something in the report
+
+[12:51:59.0768] <smaug>
+it is a ghost
+
+[13:28:46.0086] <smaug>
+Hmm, is there a leak on Youtube side (too?). I'm testing it in Chrome, and it started a bit over 300MB while playing the first video, and after loading couple of more videos it was 750MB. And now 920MB, wait, 1.<del>1</del>2GB
+
+[13:32:58.0101] <smaug>
+* Hmm, is there a leak on Youtube side (too?). I'm testing it in Chrome, and it started a bit over 300MB while playing the first video, and after loading couple of more videos it was 750MB. And now 920MB, wait, 1.<del>1</del>3GB
+
+[13:41:04.0440] <jesup>
+Ouch
+
+[13:41:38.0466] <jesup>
+This may be new; I'd think we'd have noticed if this was happening before
+
+[14:04:08.0060] <jesup>
+I just noticed you said Chrome...
+
+[14:05:02.0791] <jesup>
+I could reload that tab, and see what happens going forward.  I've been avoiding disrupting it in case there's more data to gather
+
+[14:14:01.0504] <smaug>
+It would be great to have CC/GC logs in such case when there is a ghost window or weird zone and the memory usage isn't too high
+
+
+2025-02-07
+[05:37:10.0521] <Tarek>
+is `javascript.options.ion` the right switch to completely deactivate ION background compilation and keep the base compilation only?
+
+[05:57:07.0411] <nbp>
+This will disable Ion completely, and no background compilation would be scheduled.
+
+[05:58:05.0812] <Tarek>
+ok thanks
+
+[05:58:45.0401] <nbp>
+Otherwise there is `javascript.options.ion.offthread_compilation`.
+
+[06:39:17.0964] <jandem>
+Tarek: are you asking for JS or Wasm? for Wasm there's `javascript.options.wasm_optimizingjit`
+
+[06:39:52.0479] <Tarek>
+jandem: I want to disable the compilation of the wasm by ion
+
+[06:40:29.0096] <jandem>
+in that case use the wasm pref. `javascript.options.ion` is for JS code
+
+[06:41:19.0724] <Tarek>
+ok thanks !
+
+[09:14:28.0631] <jaborandi>
+hello, i'm  trying to figure out how information for stack trace is obtained/populated (for bugs #1755284 and #1748135)
+i would think it'd be trivial, but, after spending a lot of time with gdb and source code, perhaps because of my lack of understanding of some essential things about how VM works, i seem to be going in circles
+is there someone who can point me in the right direction?
+
+[09:16:28.0843] <jaborandi>
+* hello, i'm  trying to figure out how information for stack trace is obtained/populated (for bugs #1755284 and #1748135)
+i would think it'd be trivial, but, after spending a lot of time with gdb and source code, perhaps because of my lack of understanding of some essential things about how VM works, i seem to be going in circles
+i almost start to feel like stack frames are always there or something and never get created))
+is there someone who can point me in the right direction?
+
+[09:30:32.0771] <iain>
+jaborandi: Is [this](https://searchfox.org/mozilla-central/source/js/src/jsexn.cpp#224-227) what you're looking for?
+
+[09:46:39.0701] <mgaudet>
+jaborandi: https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#1049 is actually probably closer to where you want to start looking 
+
+[09:46:58.0167] <mgaudet>
+(edge cases to consider also: What if `name` is installed as a getter? 
+
+[09:46:59.0850] <mgaudet>
+)
+
+[09:47:31.0772] <mgaudet>
+jaborandi: Here's the actual formatting code: https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#1019-1034 
+
+[09:48:40.0677] <mgaudet>
+It seems like we actually capture the name during stack walking: https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#466 
+
+[09:52:31.0768] <mgaudet>
+which tracking backwards seems to happen https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#1859, https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#186,206  
+
+https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#1548,1557
+
+https://searchfox.org/mozilla-central/source/js/src/vm/FrameIter.cpp#566-576 
+
+That last one would probably be roughly where I'd insert the "GetProperty" (maybe after a LookupPropertyPure)
+
+[09:52:51.0335] <mgaudet>
+Not committing to taking the patch, but that's the rough shape where I'd be looking if I wer eyou 
+
+[09:52:57.0465] <mgaudet>
+* Not committing to taking the patch, but that's the rough shape where I'd be looking if I were you 
+
+[09:55:11.0521] <mgaudet>
+(sorry, implicit in this is, "what if it's a getter, what if it throws, what if it tries to capture the stack while you're already capturing a stack, etc") 
+
+[10:30:33.0477] <jaborandi>
+and JS_GetProperty will trigger getter no matter what? is there a way to obtain the value suppressing getter?
+
+[10:30:57.0893] <mgaudet>
+Yep. GetPropertyPure
+
+[10:31:32.0102] <mgaudet>
+Pure is SpiderMonkey-ism for "I can do this operation without triggering unexpected code execution" 
+
+[10:33:33.0370] <mgaudet>
+Normally in spidermonkey a function like GetProperty returning false means something went wrong, and we threw an exception -- however, in  the Pure case it means "I can't do that Hal, not without violating the promise of being Pure you asked me to adhere to" 
+
+[10:46:53.0064] <nbp>
+`Result<bool>`?
+
+[11:44:43.0748] <jaborandi>
+the .name property is set for A LOT of system/internal mozilla javascript  functions... i wonder why there're so many FrameIter::maybeFunctionDisplayAtom() calls when there's no tracing/debugging going on (just on browser startup)?
+
+[11:45:25.0895] <jaborandi>
+so VM does create stack frames all the time just in case or something?
+
+[11:46:11.0291] <jaborandi>
+mgaudet thank you a lot for help i should go to sleep, i'll continue tomorrow
+
+[12:19:27.0437] <davidj361>
+> <@mccr8:mozilla.org> In bug 1463569, I added code to use the UbiNode stuff to annotate GC heap dumps with the size of individual objects. You can combine that with a dominator tree analysis to kind of figure out how much stuff things are taking. It is not easy to set that all up.
+
+you mean this? https://hg.mozilla.org/integration/autoland/rev/8fed1a9805c5
+is this already in esr102? since it says milestone 68?
+
+[12:23:23.0532] <davidj361>
+> <@mccr8:mozilla.org> In bug 1463569, I added code to use the UbiNode stuff to annotate GC heap dumps with the size of individual objects. You can combine that with a dominator tree analysis to kind of figure out how much stuff things are taking. It is not easy to set that all up.
+
+ * you mean this? https://hg.mozilla.org/integration/autoland/rev/8fed1a9805c5
+is this already in esr102 since it says milestone 68?
+
+[12:23:25.0109] <botzilla>
+https://bugzil.la/1463569 — RESOLVED (mccr8) — Tooling for investigating content process chrome JS memory usage
+
+[12:23:37.0951] <davidj361>
+ * you mean this? <https://hg.mozilla.org/integration/autoland/rev/8fed1a9805c5>
+is this already in esr102 since it says milestone 68?
+
+[12:24:59.0928] <davidj361>
+nevermind, i see it
+
+[12:32:34.0405] <mgaudet>
+I mean, we'll call that any time anyone creates an error object; but it's sort of hard to say what's 'excessive'. 
+
+Are you seeing lots even on shell startup? 
+
+There's a fair number of call paths: https://searchfox.org/mozilla-central/query/default?q=calls-to%3A%27js%3A%3AFrameIter%3A%3AmaybeFunctionDisplayAtom%27%20depth%3A4
+
+[12:33:20.0382] <iain>
+IIRC we also capture a stack trace when we create a promise in case we ... need to throw an error in the future? I'm fuzzy on the details.
+
+[12:35:18.0972] <mgaudet>
+Mmm also true if async stack capture is turned on. Not 100% sure what our configuration default is
+
+[12:39:47.0849] <yulia | out of office until Feb 13>
+Stupid question: where do i find gecko log? https://treeherder.mozilla.org/logviewer?job_id=493821083&repo=try&lineNumber=1496
+
+[12:41:12.0925] <iain>
+That looks very much like a CI problem, not a you problem
+
+[13:18:49.0096] <mgaudet>
+It did retrigger to failure a few times; next step I'd check the logcat log (in the artifacts panel) 
+
+[13:18:50.0889] <mgaudet>
+https://firefoxci.taskcluster-artifacts.net/JWd7kva1RFaJNNZYOpuDBQ/2/public/build/blobber_upload_dir/logcat-emulator-5554.log
+
+[13:20:15.0320] <mgaudet>
+Yeah, looks like a crash: 
+
+[13:20:20.0692] <mgaudet>
+```
+02-07 19:18:46.697  3091  3127 D ServiceAllocator: org.mozilla.gecko.process.GeckoChildProcessServices$tab26 updateBindings: BACKGROUND priority, 0 importance, 2 successful binds, 0 failed binds, 0 successful unbinds
+02-07 19:18:47.679  3135  3135 I ServiceChildProcess: onCreate
+02-07 19:18:47.823  3135  3135 D GeckoThread: State changed to LAUNCHED
+02-07 19:18:47.831  3135  3157 I GeckoThread: preparing to run Gecko
+02-07 19:18:48.285  3091  3161 D ProfileInstaller: Installing profile for org.mozilla.geckoview.test_runner
+--------- beginning of crash
+02-07 19:18:49.651  3091  3106 F libc    : Fatal signal 11 (SIGSEGV), code 1, fault addr 0x0 in tid 3106 (Gecko)
+02-07 19:18:49.636  3091  3091 I Gecko   : type=1400 audit(0.0:11): avc: denied { remove_name } for name="lock" dev="vdc" ino=56330 scontext=u:r:untrusted_app:s0:c512,c768 tcontext=u:object_r:shell_data_file:s0 tclass=dir permissive=1
+02-07 19:18:49.636  3091  3091 I Gecko   : type=1400 audit(0.0:12): avc: denied { unlink } for name="lock" dev="vdc" ino=56330 scontext=u:r:untrusted_app:s0:c512,c768 tcontext=u:object_r:shell_data_file:s0:c512,c768 tclass=lnk_file permissive=1
+02-07 19:18:49.659  1288  1288 W         : debuggerd: handling request: pid=3091 uid=10062 gid=10062 tid=3106
+02-07 19:18:49.824  3173  3173 E DEBUG   : unexpected waitpid response: n=3106, status=00000b00
+02-07 19:18:49.824  3173  3173 E         : debuggerd: timed out waiting for signal
+02-07 19:18:49.858  1667  1707 W InputDispatcher: channel '3ef142a org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity (server)' ~ Consumer closed input channel or an error occurred.  events=0x9
+02-07 19:18:49.858  1667  1707 E InputDispatcher: channel '3ef142a org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity (server)' ~ Channel is unrecoverably broken and will be disposed!
+02-07 19:18:49.865  1667  2182 D GraphicsStats: Buffer count: 3
+02-07 19:18:49.872  3173  3173 E         : debuggerd: ptrace detach from 3106 failed: No such process
+02-07 19:18:49.874  3173  3173 E         : debuggerd: failed to kill process 3091: No such process
+02-07 19:18:49.884  1667  2075 I ActivityManager: Process org.mozilla.geckoview.test_runner (pid 3091) has died
+02-07 19:18:49.884  1667  2075 D ActivityManager: cleanUpApplicationRecord -- 3091
+02-07 19:18:49.893  1288  1288 W         : debuggerd: resuming target 3091
+02-07 19:18:49.911  1667  2075 W ActivityManager: Force removing ActivityRecord{3746a7d u0 org.mozilla.geckoview.test_runner/.TestRunnerActivity t2}: app died, no saved state
+02-07 19:18:49.925  1667  1679 I WindowManager: WIN DEATH: Window{29580ce u0 SurfaceView - org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity}
+02-07 19:18:49.938  1667  1679 I WindowManager: Destroying surface Surface(name=SurfaceView - org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity) called by com.android.server.wm.WindowStateAnimator.destroySurface:2014 com.android.server.wm.WindowStateAnimator.destroySurfaceLocked:881 com.android.server.wm.WindowState.removeLocked:1449 com.android.server.wm.WindowManagerService.removeWindowInnerLocked:2478 com.android.server.wm.WindowManagerService.removeWindowLocked:2436 com.android.server.wm.WindowState$DeathRecipient.binderDied:1780 android.os.BinderProxy.sendDeathNotice:688 <bottom of call stack> 
+02-07 19:18:49.963  3135  3135 I ServiceChildProcess: Destroying GeckoServiceChildProcess
+02-07 19:18:49.989  3135  3135 I art     : System.exit called, status: 0
+02-07 19:18:49.990  3135  3135 I AndroidRuntime: VM exiting with result code 0, cleanup skipped.
+02-07 19:18:49.998  1667  1685 I BootReceiver: Copying /data/tombstones/tombstone_00 to DropBox (SYSTEM_TOMBSTONE)
+02-07 19:18:50.035  1667  2075 W InputDispatcher: Attempted to unregister already unregistered input channel '3ef142a org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity (server)'
+02-07 19:18:50.036  1667  2075 I WindowManager: Destroying surface Surface(name=org.mozilla.geckoview.test_runner/org.mozilla.geckoview.test_runner.TestRunnerActivity) called by com.android.server.wm.WindowStateAnimator.destroySurface:2014 com.android.server.wm.WindowStateAnimator.destroySurfaceLocked:881 com.android.server.wm.WindowState.removeLocked:1449 com.android.server.wm.WindowManagerService.removeWindowInnerLocked:2478 com.android.server.wm.WindowManagerService.removeWindowLocked:2436 com.android.server.wm.WindowManagerService.removeWindowLocked:2305 com.android.server.wm.AppWindowToken.removeAllWindows:530 com.android.server.wm.AppWindowToken.removeAppFromTaskLocked:326 
+02-07 19:18:50.070  1337  1337 I Zygote  : Process 3091 exited cleanly (11)
+```
+
+[13:20:39.0755] <mgaudet>
+null pointer dereference
+
+[13:23:42.0377] <mgaudet>
+I cannot unfortunately tell you much more; I could potentially try running this locally, but I also suspect that this is in the class of "infinite papercuts" tcampbell has been running into,  where we should file bugs to improve this
+
+[13:35:27.0722] <tcampbell>
+This indicates the firefox binary is just broken. Since similar tasks that run at 64-bit, I'd start looking at linux32 and see if you can reproduce there. My money is on a bug in your code that only hits with on 32-bit platforms (some dumb pointer issue)
+
+[13:36:45.0924] <yulia | out of office until Feb 13>
+thanks for the help!
+
+[13:39:00.0184] <tcampbell>
+I scheduled a linux32 Bpgo/run task on your job that hopefully fails but with better errros
+
+[14:39:41.0606] <yulia | out of office until Feb 13>
+yeah i see the issue, should be easy to fix
+
+
+2025-02-08
+[16:46:23.0083] <tcampbell>
+Looks like https://bugzilla.mozilla.org/show_bug.cgi?id=1938349 covers the bad reporting experience
+
+[02:47:13.0592] <jaborandi>
+oh my gosh it just works.
+thank you sooo much for your help!
+
+[02:54:43.0433] <jaborandi>
+"Not committing to taking the patch" of course. i'll submit the patch for the evaluation later (haven't used the related tools yet, and need to take a break for work... now that I can debug my javascript)))
+
+[07:40:53.0241] <mgaudet>
+> <@jaborandi:mozilla.org> oh my gosh it just works.
+> thank you sooo much for your help!
+
+So happy to hear it. 
+
+If you have the time to reverse engineer how prefs work, we might be able to mitigate potential web impact via a preference. 
+
+[07:42:32.0072] <mgaudet>
+(See https://searchfox.org/mozilla-central/search?q=JS%3A%3Aprefs&path=&case=false&regexp=false and StaticPrefList.yaml)
+
+[10:48:22.0387] <jaborandi>
+sure i'll try to do that, there's even a manual in /js/public/Prefs.h comments
+
+
+2025-02-10
+[08:12:01.0199] <sefeng>
+have we though about introducing a max callstack error, similar to Chrome's `RangeError: Maximum call stack size exceeded`? 
+
+[08:12:09.0438] <sefeng>
+* have we thought about introducing a max callstack error, similar to Chrome's `RangeError: Maximum call stack size exceeded`?
+
+[08:14:35.0017] <jandem>
+sefeng: we also throw an exception if we run out of stack space, `InternalError: too much recursion`
+
+[08:17:52.0335] <jandem>
+engines have different limits for this though. Also depends on the compilation tier and type of thread (dom worker vs main thread)
+
+[08:21:08.0687] <sefeng>
+so apparently Chrome throws for https://codepen.io/sefeng/pen/dPybrGV, but we don't 
+
+[08:21:31.0234] <sefeng>
+and the difference seems to cause real webcompat issues https://bugzilla.mozilla.org/show_bug.cgi?id=1928948#c16
+
+[08:26:29.0481] <sefeng>
+er, reading Raul's comment again, it sounds like Chrome also got stuck for the site..so maybe there isn't a real compat issue for this script 
+
+[08:28:54.0266] <jandem>
+maybe a difference in the event handling or focus code? we would also throw a JS exception if we kept calling both functions recursively
+
+[08:33:12.0427] <sefeng>
+hmm okay..for this particular bug, I am just going to label it as a site bug given Chrome also experiences the hang. Sorry about the noise! 
+
+[10:03:26.0267] <mgaudet>
+nbp: Hey, came across https://bugzilla.mozilla.org/show_bug.cgi?id=1940070 which looks landable, but hasn't landed yet. Is this just part of a larger epic? 
+
+[10:08:57.0550] <nbp>
+mgaudet: Yes, this is part of a long set of tasks which were accept but are not really accepted …
+
+[10:09:52.0649] <nbp>
+* <del>mgaudet: Yes, this is part of a long set of tasks which were accept but are not really accepted …</del>
+Oops … this applies to other patches which are pending but not this one.
+
+[10:10:46.0659] <nbp>
+Thanks for the ping … I should get back to it in a month :P
+
+[12:13:41.0296] <mgaudet>
+Perhaps a bugzilla reminder :) 
+
+
+2025-02-11
+[10:06:36.0913] <nbp>
+What this used to be a valid keyword … why haven't I heard about it before? 😞
+
+https://bugzilla.mozilla.org/buglist.cgi?query_format=advanced&keywords=clownshoes&keywords_type=allwords
+
+[10:06:45.0592] <nbp>
+* What, this used to be a valid keyword … why haven't I heard about it before? 😞
+
+https://bugzilla.mozilla.org/buglist.cgi?query\_format=advanced&keywords=clownshoes&keywords\_type=allwords
+
+[10:06:56.0202] <nbp>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1477206
+
+
+2025-02-12
+[07:23:41.0141] <davidj361>
+> <@davidj361:matrix.org> Also I believe creating compartments takes more memory too. Strangely enough even if that global falls off the stack, the memory keeps increasing even when JS_GC is called.
+
+I'm very confused, why is it that with each compartment falling off the scope the memory increases regardless if `JS_GC()` is called after?
+https://paste.mozilla.org/KRRcDhai#L235
+
+[07:29:50.0783] <jandem>
+davidj361: you could use [these APIs](https://searchfox.org/mozilla-central/rev/5e7382bf8bbb88d8260c72990cfea9b626d9b307/js/public/MemoryMetrics.h#928-932) to print the number of realms/compartments
+
+[07:31:27.0426] <davidj361>
+Am I supposed to manually destroy the compartment via a call?
+
+[08:07:51.0208] <davidj361>
+> <@jandem:mozilla.org> davidj361: you could use [these APIs](https://searchfox.org/mozilla-central/rev/5e7382bf8bbb88d8260c72990cfea9b626d9b307/js/public/MemoryMetrics.h#928-932) to print the number of realms/compartments
+
+I'm seeing the below with: https://paste.mozilla.org/jifdnQUp
+```
+==before GC==
+SystemCompartmentCount: 0
+UserCompartmentCount: 2
+SystemRealmCount: 0
+UserRealmCount: 2
+!!after GC!!998
+SystemCompartmentCount: 0
+UserCompartmentCount: 1
+SystemRealmCount: 0
+UserRealmCount: 1
+iteration: 999
+```
+Seems like the compartments do get deleted. So why is the memory increasing?
+
+[08:08:50.0827] <davidj361>
+> <@jandem:mozilla.org> davidj361: you could use [these APIs](https://searchfox.org/mozilla-central/rev/5e7382bf8bbb88d8260c72990cfea9b626d9b307/js/public/MemoryMetrics.h#928-932) to print the number of realms/compartments
+
+ * I'm seeing the below with: https://paste.mozilla.org/jifdnQUp
+
+```
+==before GC==
+SystemCompartmentCount: 0
+UserCompartmentCount: 2
+SystemRealmCount: 0
+UserRealmCount: 2
+!!after GC!!998
+SystemCompartmentCount: 0
+UserCompartmentCount: 1
+SystemRealmCount: 0
+UserRealmCount: 1
+iteration: 999
+```
+
+Seems like the compartments do get deleted. So why is the memory usage increasing?
+
+[08:09:55.0842] <jandem>
+no, the compartment will be destroyed automatically (when all its realms/objects are dead)
+
+[08:11:33.0836] <jandem>
+davidj361: what's the total memory increase after all these iterations?
+
+[08:13:32.0349] <davidj361>
+In the CSV file, it would show after like 207 iterations of creating and destroying compartments that memory usage would go up from `21291008` bytes to `21618688` bytes with increasing trends every arbitrary # of iterations
+
+[08:15:55.0714] <davidj361>
+Taken from getting proc stat's resident set size * page size
+
+[08:17:08.0835] <davidj361>
+ * Taken from getting proc stat's resident set size \* page size in Linux
+
+[08:19:14.0033] <jandem>
+davidj361: maybe you could try doing a shrinking GC at the end (something like [this](https://searchfox.org/mozilla-central/rev/5e7382bf8bbb88d8260c72990cfea9b626d9b307/js/xpconnect/src/XPCComponents.cpp#1630-1631))
+
+[08:19:49.0866] <jandem>
+* davidj361: maybe you could try doing a shrinking GC at the end (something like [this](https://searchfox.org/mozilla-central/rev/5e7382bf8bbb88d8260c72990cfea9b626d9b307/js/xpconnect/src/XPCComponents.cpp#1630-1631)) to see if that releases more memory
+
+[08:20:30.0924] <davidj361>
+I'm just mainly wondering if I'm doing something incredibly incorrect where I have a memory leak
+
+[08:20:45.0685] <davidj361>
+ * I'm just mainly wondering if I'm doing something incredibly incorrect where I have a memory leak with utilizing compartments
+
+[08:21:28.0208] <jandem>
+I don't think so. The number of realms would go up if you were leaking globals
+
+[08:25:04.0991] <davidj361>
+Maybe it's just too slow in actually releasing memory? It's single threaded so not sure how i could give it time to release memory
+
+[08:26:58.0829] <jandem>
+a 'shrinking gc' might release a bit more memory..
+
+
+2025-02-13
+[17:07:16.0262] <Redfire>
+Does SM have an equivalent to v8's fast calls? Or is it just using `JSTypedMethodJitInfo`
+
+[17:08:01.0666] <iain>
+What are v8's fast calls?
+
+[17:08:27.0469] <iain>
+* Redfire: What are v8's fast calls?
+
+[17:09:42.0233] <Redfire>
+https://v8.github.io/api/head/v8-fast-api-calls_8h.html
+Basically optimised calls for JS -> C++
+
+[17:09:43.0785] <iain>
+[This sort of thing](https://www.yagiz.co/using-v8-fast-api-in-node-js-core/)?
+
+[17:23:07.0467] <iain>
+We have some of the underlying primitives (the no-GC restrictions map on pretty closely to the restrictions on callWithABI, which is the faster-but-more-limited way to call out of JIT code into C++), but we don't really have a framework for calling embedder-defined functions that way.
+
+[17:24:06.0776] <iain>
+I would not expect a huge performance improvement from doing that, unless the function you're calling is very small 
+
+[21:43:35.0919] <glandium>
+What rust code would be involved in jit-test/tests/resist-fingerprinting/math-fdlibm-sincostan.js ?
+
+[22:18:29.0093] <jandem>
+glandium: afaik no rust code for the test itself, but parsing it would maybe use encoding_rs?
+
+[22:24:51.0797] <glandium>
+jandem: what do you mean parsing it?
+
+[22:26:38.0419] <jandem>
+glandium: when parsing the test file we sometimes have to convert strings between latin1 / ascii / char16_t / utf8 and I think some of those conversions now go through encoding_rs. Hard to say how much of that is used here though
+
+[22:26:52.0138] <jandem>
+are you seeing a failure on just this test?
+
+[22:27:28.0580] <glandium>
+jandem: https://treeherder.mozilla.org/jobs?repo=autoland&resultStatus=testfailed%2Cbusted%2Cexception%2Cretry%2Cusercancel&revision=e66bc1e8bbab0e76e6843fff72bc98ab282efe60&selectedTaskRun=f-gHaTeSQ0GTuV_3xcjbmA.0
+
+[22:28:00.0727] <glandium>
+This is when upgrading the rust compiler
+
+[22:29:47.0043] <jandem>
+hm. It's failing this check: https://searchfox.org/mozilla-central/source/js/src/jit-test/tests/resist-fingerprinting/math-fdlibm-sincostan.js#64-65
+
+[22:30:13.0971] <glandium>
+thus why I was baffled that rust was involved
+
+[22:31:04.0203] <jandem>
+it's also just the TSan build. I wonder if that uses a different implementation of those functions, but that shouldn't be affected by your rust update..
+
+[22:31:27.0261] <glandium>
+the tsan build uses a different version of the rust compiler compared to other builds
+
+[22:31:49.0244] <glandium>
+but I'm still struggling to see how rust can be involved
+
+[22:32:13.0490] <glandium>
+there isn't even cross-language lto (I could see that messing things up)
+
+[22:33:19.0330] <glandium>
+kind of a tangent, should these tests be individual assertEqs to have better errors?
+
+[22:34:08.0758] <glandium>
+actually, wait a second, they're the same as those above that are individual assertEqs... WTF?
+
+[22:34:39.0335] <glandium>
+a, g.Math vs Math ?
+
+[22:35:23.0682] <glandium>
+* ah, g.Math vs Math ?
+
+[22:35:52.0070] <jandem>
+yeah the `g.Math` versions would always go through fdlibm because of how we create that global
+
+[22:37:01.0383] <jandem>
+in the JS shell we shouldn't use our own fdlibm code by default for sin/cos/tan: https://searchfox.org/mozilla-central/rev/cea3da705c188be09bd1e0721ebd0436e19150f7/js/src/shell/js.cpp#12942-12943
+
+[22:38:58.0571] <jandem>
+so either that's broken and we use fdlibm, or the std::sin/cos/tan functions now use fdlibm with tsan, but I don't see how the rust update would affect that
+
+[22:41:29.0055] <jandem>
+I can download the build and look into this
+
+[22:53:36.0945] <glandium>
+that would be super useful
+
+[23:05:19.0532] <jandem>
+glandium: the tsan build calls `compiler_builtins::math::sin::sin`. That looks like a rust thing?
+
+[23:06:40.0950] <jandem>
+our code calls `std::sin` from <cmath>
+
+[23:06:54.0798] <glandium>
+ooooh
+
+[23:07:41.0426] <glandium>
+conflicts between clang-rt and rust's compiler_builtins hit again
+
+[23:08:33.0251] <glandium>
+thanks, that was enlightening
+
+[23:28:23.0639] <glandium>
+jandem: just to double check, did you identify sin specifically as causing the problem, or is it the first difference in behavior you observed, independently of the outcome?
+
+[23:30:52.0483] <jandem>
+glandium: I picked a random call out of all sin/cos/tan calls in the test. I also see small differences for cos and tan though
+
+[23:31:18.0265] <glandium>
+Ok, found the commit that fixes it in rust https://github.com/rust-lang/compiler-builtins/commit/0fab77e8d72cf232af4977642b52544f0e4ab521
+
+[23:32:50.0549] <jandem>
+ah nice
+
+[00:47:14.0234] <glandium>
+or maybe not, but I found something that fixed it
+
+
+2025-02-14
+[03:01:18.0161] <jonco>
+Does anyone use the shell --telemetry-dir option that nbp added in bug 1582804? I'd like to add a shell function to get recent telemetry from JS.
+
+[03:04:25.0069] <nbp>
+Probably not, I do not use it anymore myself.
+
+[03:04:41.0115] <nbp>
+* Probably no one, I do not use it anymore myself.
+
+[03:05:16.0749] <nbp>
+On the other hand this was definitely handy to get JS parser info out of the shell
+
+[03:09:35.0723] <nbp>
+If you need me to review this patch I can.
+
+[03:09:57.0273] <nbp>
+However, I do not know how this would play with Glean.
+
+[03:40:59.0551] <jonco>
+Thanks. The glean integration happens in xpconnect so this shouldn't be a problem for the shell.
+
+[08:50:59.0419] <nbp>
+Is the tenured space ever moved (especially JitCode pointers)?
+
+[09:21:36.0727] <iain>
+nbp: The table [here](https://searchfox.org/mozilla-central/source/js/src/gc/AllocKind.h#60-97) defines which AllocKinds are movable
+
+[09:22:06.0063] <iain>
+JitCode can't be allocated in the nursery and can't be compacted, so it's not movable
+
+[09:22:30.0789] <iain>
+Basically atoms, symbols, and jitcode don't move, and everything else does
+
+[09:24:27.0256] <nbp>
+Thanks, perfect!
+
+[09:25:38.0699] <nbp>
+/me loves `// clang-format off`
+
+
+2025-02-16
+[12:35:07.0892] <jdm>
+Can calling JS::ResolvePromise or JS::RejectPromise trigger a GC?
+
+[15:55:29.0146] <arai>
+`JS::ResolvePromise` can call arbitrary JS function
+
+[15:55:36.0620] <arai>
+* `JS::ResolvePromise` can call arbitrary JS function and it can GC
+
+
+2025-02-17
+[01:27:06.0865] <Ms2ger>
+/me waves at jdm 
+
+[10:00:57.0022] <debadree25>
+i had a question regarding the implementation of the [TypeofEq bytecode](https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#426) i am trying to understand why its implemented with IC isnt it possible to directly load the value [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.cpp#4645) for ex and check the type? or i guess having the guards is more faster or something else maybe 😅😅 
+
+[11:06:27.0187] <iain>
+debadree25: There are 8+ different options for typeof (See [here](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#18159-18162) for an example of where we don't generate an IC.) Using ICs means that we check for the cases that we're actually seeing first. We also have an optimization that uses the entry counts on baseline ICs to pick the best order to generate the checks in Ion.
+
+[11:08:36.0503] <iain>
+Although now that I'm thinking about it, we could consider using the type tag to index into a static table of strings. But we'd need special handling for doubles (because they don't have a tag in the same way) and objects (because we have to distinguish "object" and "function"), so there's still some messiness.
+
+[11:19:24.0760] <debadree25>
+understood thank you so much for explaining!
+
+
+2025-02-18
+[06:31:30.0344] <padenot>
+Ryan Hunt: I've taken https://bugzilla.mozilla.org/show_bug.cgi?id=1943467, and ran 50 iterations of our translation benchmark (which is translating a bit of Don Quixote from spanish to english) w/ and w/o your patch, and it's measurably faster
+
+[06:31:48.0964] <padenot>
+https://gist.github.com/padenot/016b16cc22e4206225643ad15076d34e, scroll down past the code for the analysis
+
+[06:32:45.0272] <padenot>
+not a world of a difference, but we do know that the proportion spent inside intgemm vs. the total WASM program doing the translation isn't very big. We expect bigger wins when doing other kinds of workloads. but it does improve things, and is statistically significant
+
+[06:34:09.0623] <padenot>
+so I guess what I'm saying is good job and please land or something
+
+[07:02:50.0313] <jandem>
+Ms2ger++ https://blogs.igalia.com/compilers/2025/02/18/sharing-spidermonkey-tests-with-the-world/
+
+[07:03:26.0804] <Ms2ger>
+I guess my karma died with firebot a long time ago
+
+[08:32:43.0927] <Ryan Hunt>
+Oh good to know, I wasn't sure if you all had measured any improvement. I will try to figure out a way to land those changes
+
+[08:33:28.0971] <padenot>
+perf.compare and such cannot detect an improvement, but my new stats code can, with significance
+
+[08:34:19.0386] <padenot>
+I'm working with tarek to get other real-life benches where your fast-path will be more important (e.g. more calls to builtins, and those builtin are doing smaller tasks)
+
+[15:47:22.0412] <jcranmer>
+I have an ES spec question:
+does JS/ES mandate support for denormal values (i.e., prohibit denormal flushing)?
+my first thought on looking at §6.1.6.1 is that the answer is yes, in that it consistently mandates support for IEEE 754-2019
+but then §21.1.2.9 says
+
+[15:48:17.0131] <jcranmer>
+* I have an ES spec question:
+does JS/ES mandate support for denormal values (i.e., prohibit denormal flushing)?
+my first thought on looking at §6.1.6.1 is that the answer is yes, in that it consistently mandates support for IEEE 754-2019
+but then §21.1.2.9 says
+> If an implementation does not support denormalized values, the value of Number.MIN_VALUE must be the smallest non-zero positive value that can actually be represented by the implementation.
+
+that suggests the answer could be 'no', but that's the only indication I see that it could be 'no', which seems way too oblique a reference to license such an interpretation
+
+[15:49:06.0200] <jcranmer>
+(I'm trying to collate what various language standards say with respect to floating-point semantics, and I want to be certain I don't misrepresent JS here)
+
+[15:51:39.0371] <jcranmer>
+also, I don't see tests covering denormal values in the JS test suite
+
+[15:52:15.0183] <jcranmer>
+(the closest I've got to anything is bug 194034)
+
+[15:52:26.0719] <jcranmer>
+* (the closest I've got to anything is bug 1940434)
+
+
+2025-02-19
+[07:48:10.0791] <smaug>
+jonco: are proxies allocated from the nursery?
+
+[07:48:51.0829] <jonco>
+smaug: we support this yes
+
+[07:49:13.0084] <jonco>
+I don't remember how it's actually determined off the top of my head...
+
+[07:49:33.0583] <smaug>
+I wonder what happens here https://searchfox.org/mozilla-central/rev/0d1f8ff61fe506646fe3898ef727817b4436ab32/dom/bindings/BindingUtils.h#2929,2939
+
+[07:50:47.0847] <smaug>
+aha, something here https://searchfox.org/mozilla-central/source/js/src/vm/ProxyObject.cpp#109-117
+
+[07:50:49.0420] <jonco>
+You can derive from NurseryAllocableProxyHandler or override BaseProxyHandler::canNurseryAllocate
+
+[07:51:55.0753] <smaug>
+ok, thanks. I'll play with this a bit. Just thinking to use nursery allocation for Document. I did play with this at some point, but trying again.
+
+[07:52:16.0822] <smaug>
+Using DOMParser can create tons of very short living documents
+
+[07:52:21.0559] <jonco>
+Ok cool :)
+
+
+2025-02-20
+[04:47:34.0950] <jonco>
+FYI I did some investigation of how clang compiles atomics on ARM wrote it up in bug 1949418
+
+[06:27:51.0533] <padenot>
+Ryan Hunt: I've done more research on your patch set that aims at speeding up calls from WASM -> C++ kernels. I see that it lowers the time from wasm -> C++ from about 1 to 2us to 350 to 750ns. In addition, I can tell you that in real life (say, translating a web page, or summaring it, etc.), the C++ kernels execution duration are frequently in the 1us range (extremely high and frequent numbers of very small calls), but can also be dozens of ms (e.g. operating on very large matrices). The overall effectiveness of your optimization then depends on the repartition of the duration of those calls. In all cases, we're seeing that it's always beneficial and never a regression, regardless of the workload we throw at it. I'm working on a doc that will explain all of this with methodologies and profiles and stats etc.
+
+[06:36:17.0901] <Ryan Hunt>
+> <@padenot:mozilla.org> Ryan Hunt: I've done more research on your patch set that aims at speeding up calls from WASM -> C++ kernels. I see that it lowers the time from wasm -> C++ from about 1 to 2us to 350 to 750ns. In addition, I can tell you that in real life (say, translating a web page, or summaring it, etc.), the C++ kernels execution duration are frequently in the 1us range (extremely high and frequent numbers of very small calls), but can also be dozens of ms (e.g. operating on very large matrices). The overall effectiveness of your optimization then depends on the repartition of the duration of those calls. In all cases, we're seeing that it's always beneficial and never a regression, regardless of the workload we throw at it. I'm working on a doc that will explain all of this with methodologies and profiles and stats etc.
+
+Nice, good to know. The patch was a bit of a hack, so I’ll need to rewrite it to be able to land. I should be able to work on it soon though
+
+[06:38:30.0133] <padenot>
+Ryan Hunt: a hack maybe, but it was extremely helpful to understand whether being able to replace very specific key math operation by super super optimized kernel written in asm or clever simd with vector size much greater than what WASM has (or even more specialized stuff such as imm8) would be beneficial, and it seems like it is, thanks to the lower overhead your stuff brings
+
+[06:38:49.0767] <padenot>
+the alternative being "not bothering" or "ditching wasm and go full native"
+
+[06:39:18.0929] <padenot>
+* the alternatives being "not bothering" or "ditching wasm and go full native"
+
+[07:51:09.0494] <padenot>
+Do we have something to nicely inspect the WASM output by a compiler, à la godbolt ?
+
+[07:52:04.0022] <Ryan Hunt>
+There is a shell builtin ‘wasmDis’ which takes a function or a module to disassemble
+
+[07:53:15.0215] <Ryan Hunt>
+Apparently the wasmtime engine is just integrated into godbolt, I’m sort of jealous. It’d be nice to have that
+
+[07:54:10.0466] <padenot>
+how would I load my little `.wasm` in the shell to disass it ?
+
+[07:55:00.0573] <padenot>
+I have this function that's doing math, and clang -O3 does wonders with it on x86_64 march=native, and it doesn't seem to bad either with emscripten -O3, it must be using SIMD, I wanted to verify what happens in practice
+
+[07:55:51.0815] <padenot>
+* I have this function that's doing math, and clang -O3 does wonders with it on x86\_64 march=native, and it doesn't seem too bad either with emscripten -O3, it must be using SIMD, I wanted to verify what happens in practice
+
+[08:17:19.0239] <jandem>
+padenot: something like this should work: `let bin = os.file.readFile("/path/to/file.wasm", 'binary'); wasmDis(new WebAssembly.Module(bin));`
+
+[08:18:07.0017] <padenot>
+hm I need to build the shell I guess
+
+[08:21:17.0540] <jandem>
+for that you can use a mozconfig with `ac_add_options --enable-application=js` to build just the JS shell. Disassembler support requires `ac_add_options --enable-jitspew` probably
+
+[08:21:37.0187] <padenot>
+thanks, doing that
+
+[08:21:40.0287] <jandem>
+* for that you can use a mozconfig with `ac_add_options --enable-application=js` to build just the JS shell. Disassembler support requires `ac_add_options --enable-jitspew` probably (this is the default for debug builds)
+
+[08:25:54.0212] <jandem>
+use a `--disable-debug` build because debug builds emit extra code for 'assertions'
+
+[08:26:47.0174] <jandem>
+you can switch between wasm compilers with the `--wasm-compiler=baseline` or `optimizing` shell flag
+
+[08:27:12.0757] <padenot>
+yeah I'm doing perf work so I'm `--enable-profiling --disable-debug --enable-opt`
+
+
+2025-02-21
+[16:00:48.0701] <smaug>
+Ryan Hunt: FWIW, I can always invite more Mozillians to WHATNOT
+
+[16:01:30.0473] <Ryan Hunt>
+Oh nice thanks, I wasn’t sure the best way to go about that
+
+[16:02:26.0366] <smaug>
+Asking in the meeting spec issue is fine too, but in case someone doesn't want to share email address there, just ping me
+
+[16:12:22.0255] <smaug>
+Ryan Hunt: it isn't super clear to me what is asked in https://github.com/whatwg/html/issues/11031 What sorts of changes would be needed to HTML spec (or other WhatWG specs)?  Add the implementation from https://github.com/WebAssembly/js-string-builtins/blob/main/proposals/js-string-builtins/Overview.md#using-builtins ? 
+
+[16:13:28.0503] <Ryan Hunt>
+smaug: there’s some backstory, but I’m AFK right now. Will respond tomorrow
+
+[03:03:51.0623] <Tarek>
+Ryan Hunt: padenot for wasm I am not sure what's the proper way to compare the resulting compiled code.  I have tried to load the wat file in https://godbolt.org/ but I don't really know how to use that tool with WASM. 
+
+What I am trying to do right now is to extract for a given function what the compiler decided to do for a given function. From the test we worked on with Paul, using -O3 with clang resulted in C++ in a nice and fast simd usage. I am trying to find out how the very same function ends up in WASM, and if emcc ends up using some wasm simd operations, and if so, how that compares to the one in native. 
+
+That'll drive my work in : now that we now the wasm builtin overhead is stable between 500ns and 1000ns with Ryan's patch, is it worth deporting a function? e.g. how good is the wasm version etc
+
+[03:04:22.0795] <Tarek>
+* Ryan Hunt: padenot for wasm I am not sure what's the proper way to compare the resulting compiled code.  I have tried to load the wat file in https://godbolt.org/ but I don't really know how to use that tool with WASM.
+
+What I am trying to do right now is to extract for a given function what the compiler decided to do for a given function. From the test we worked on with Paul, using -O3 with clang resulted in C++ in a nice and fast simd usage. I am trying to find out how the very same function ends up in WASM, and if emcc ends up using some wasm simd operations, and if so, how that compares to the one in native.
+
+That'll drive my work in : now that we know the wasm builtin overhead is stable between 500ns and 1000ns with Ryan's patch, is it worth deporting a function? e.g. how good is the wasm version etc
+
+[04:54:48.0544] <Tarek>
+oh I missed that message
+
+[04:55:47.0970] <Tarek>
+I used
+
+```
+wasm2wat --enable-threads test_builtins.wasm -o test_builtins.wat
+```
+
+[07:42:32.0028] <Ryan Hunt>
+Yeah, if you're able to build the JS shell and manually load the wasm and use the wasmDis function, it can show you how well our compilers JIT the wasm code. Be sure to set `--wasm-compiler=ion` to ensure you're looking at optimized code
+
+[07:43:10.0493] <Ryan Hunt>
+It'd be nice to have an easier way to view the disassembly like godbolt. But we've never had the time/motivation to do it
+
+[07:44:24.0736] <padenot>
+can it really do anything substantial in this case tough, it's like a triple for loop already autovectorized by emscripten
+
+[07:45:19.0187] <padenot>
+looking the WAT shows that it's quite reasonable. The native c++ version of the same function (also autovectorized) beats WASM by about 2x
+
+[07:45:57.0772] <padenot>
+https://github.com/tarekziade/test-wasm/blob/main/main.cpp#L27-L39 is the function
+
+[07:46:10.0077] <yury>
+if compiled right, llvm can do autovectorization for wasm (using wasmsimd)
+
+[07:46:35.0269] <padenot>
+yes we've verified that we have simd instruction in the wasm program, that works well
+
+[07:47:47.0968] <padenot>
+clang++ + -O3 + -march=native is able to do more tricks, so we might look into getting a custom kernel not relying on auto-vectorization, e.g. something using AVX and saturating all the registers
+
+[07:48:36.0260] <padenot>
+since the overhead of calling into those native builtin is reduced, that become quite an appealing option, even for "small" matrix operations
+
+[07:49:35.0835] <yury>
+yep, that's why we introduced builtins, for kernel-like operations/stuff it is better to have and using natively available accelerators 
+
+[07:50:23.0776] <padenot>
+we hadn't measured the duration of most of those builtins operations though, it isn't unusual to have the overhead of the call comparable to the duration of the builtin
+
+[07:50:28.0037] <yury>
+it does not make sense to use builtins for short-running operations
+
+[07:51:03.0792] <padenot>
+yeah, but with ryan's patch dividing the call overhead by 2 to 4 it becomes viable in more cases
+
+[07:52:33.0085] <yury>
+* yep, that's why we introduced builtins, for kernel-like operations/stuff, it is better to have and use natively available accelerators 
+
+[07:53:42.0105] <yury>
+my expectations that you will have at most 10-100 such calls, what is yours?
+
+[07:53:58.0309] <yury>
+* my expectations that you will have at most 10-100 such calls per 1 second, what is yours?
+
+[07:54:17.0080] <padenot>
+I don't have expectations
+
+[07:54:24.0320] <padenot>
+because we could run any AI model
+
+[07:54:29.0822] <padenot>
+and those can do while things
+
+[07:54:36.0540] <padenot>
+* and those can do wild things
+
+
+2025-02-22
+[18:16:04.0769] <Redfire>
+In esr128, how do you check import attributes? (Specifically `type: "json"`)
+
+[18:18:04.0791] <Redfire>
+`GetModuleRequestType` was added sometime after ESR128
+
+[20:38:33.0418] <arai>
+iiuc, it's not yet available at that point
+
+[21:33:06.0931] <Redfire>
+Then why's there a `CompileJsonModule` 🥲
+
+[21:42:12.0439] <arai>
+things are gradually implemented, and it was still work in progress (at least not yet integrated to browser) at that point.  the JSON module bug itself is still open
+
+
+2025-02-24
+[08:09:07.0673] <Ryan Hunt>
+smaug: Hi, sorry forgot to get back to you. The issue to discuss at WHATNOT is about the intersection of the wasm js-string-builtins proposal and wasm esm-integration proposal. Specifically this issue [1]. The short story is that js-string-builtins added a special namespace for importing JS builtin objects into a wasm module such as `wasm:js-string`. This works with a opt-in flag in the wasm compilation methods. With esm-integration, this shows up in the esm module system and there were some concerns we’re adding a ‘wasm’ scheme without wide review. I think it also touches on some of the builtin-module controversy stuff, but IMO has a much more limited scope and different motivation.
+
+[1] https://github.com/WebAssembly/esm-integration/pull/95
+
+[08:11:50.0031] <smaug>
+Ryan Hunt: aha, so this is only about js modules and what can be imported etc
+
+[08:13:22.0698] <smaug>
+(I thought builtin-modules aren't a thing anymore. They were hip-and-cool for some time and were going to be "shipping in all the browsers in months" 🙂  But maybe builtins are back in discussions?)
+
+[08:15:41.0468] <Ryan Hunt>
+yeah, it's really just about giving wasm the ability to import some some special builtins that JS already has access to through the global. wasm doesn't have a global though, it only has imports and so we need to find a way to make it work there. And the special builtins are supposed to remain limited in scope to just JS primitives like strings, not all of the web API's.
+
+[08:16:17.0489] <Ryan Hunt>
+so there's some overlap from the old builtin-module discussions, but IMO it is different
+
+[08:26:17.0217] <mayankleoboy1>
+will de-compressing wasm stuff on nightly take advantage of bug 1910796?
+
+[08:27:03.0530] <mayankleoboy1>
+* will de-compressing wasm stuff on nightly take advantage of bug 1910796?
+I have seen many profiles where zlib takes multiple seconds procssing large-ish WASM files.
+
+[08:59:40.0234] <Ryan Hunt>
+I'm not sure. I guess it depends on whether the zlib replacement is faster than zlib. From skimming that bug, I would guess it's done just for security hardening reasons. I think there are faster and better compression algorithms nowadays like zstd. We would've liked to use zstd for compressing our compiled wasm modules for caching, but we don't have a zstd encoder in the tree right now (at least when I checked)
+
+[09:01:34.0613] <padenot>
+Ryan Hunt: there will be one next time you look, most likely
+
+[09:01:46.0113] <mayankleoboy1>
+Isnt something being workwd for zstd? 
+
+[09:02:00.0676] <Ryan Hunt>
+that'd be wonderful
+
+[09:02:08.0507] <padenot>
+the storage folks and others need it, I made lots of benchmarks for them and they also did some, and it was kind of a no brainer
+
+[09:02:29.0386] <mayankleoboy1>
+* Isnt something being workwd for zstd?
+Edit: jinx 
+
+[09:02:59.0469] <padenot>
+also it supports good crc builtin, so it's nice for that use case, but we also want it for `CompressionStream`/`DecompressionStream`
+
+[09:03:09.0271] <padenot>
+(WhatWG Stream objects)
+
+[09:04:10.0759] <padenot>
+for now only `DecompressionStream` has been implemented and is about to land, `ChromeOnly`, the Translation folks need to use it to lower translation model download size + lower IO + boot the translation model faster
+
+[09:07:12.0169] <padenot>
+but we're in a "who needs it first imports it first type of situation"
+
+[09:19:31.0095] <nbp>
+Is there any good tricks to know on how to debug builtins? like setting a breakpoint or printing to the console?
+
+[09:19:40.0409] <iain>
+What kind of builtins?
+
+[09:20:15.0512] <nbp>
+`String_replace`, it ends up calling the `StringReplaceString` instead of the `Regexp[@@replace@@]`
+
+[09:20:27.0003] <nbp>
+* `String_replace`, it ends up calling the `StringReplaceString` instead of the `Regexp[@@replace@@]`, within Ion
+
+[09:21:09.0092] <nbp>
+I isolate the patch to a change I made on how JitCode pointers are baked in the data section instead of the executable code.
+
+[09:21:22.0802] <nbp>
+* I isolated the patch to a change I made on how JitCode pointers are baked in the data section instead of the executable code.
+
+[09:21:39.0938] <nbp>
+And this sounds so far fetched that I have no clue what might be going wrong.
+
+[09:21:41.0141] <iain>
+My first instinct would be to record it in rr, set a breakpoint in StringReplaceString, and then step backwards into the caller to see what's up
+
+[09:22:01.0594] <nbp>
+how would you set the breakpoint?
+
+[09:22:16.0520] <nbp>
+* <del>how would you set the breakpoint?</del>
+
+[09:23:25.0296] <iain>
+Oh, I was thinking you could just set it in `intrinsic_StringReplaceString`
+
+[09:23:39.0287] <iain>
+But maybe it's being inlined?
+
+[09:24:50.0416] <iain>
+Oh, that looks like it still does a VM call
+
+[09:24:56.0661] <nbp>
+No this is fine, this is just figuring out what's going on between all the ICs chains and the continuations.
+
+[09:25:55.0365] <nbp>
+At least I can reproduce it on this intel computer.
+
+[09:26:34.0668] <nbp>
+the AMD thread ripper can rarely re-run any rr traces.
+
+[09:26:49.0169] <iain>
+I wrote an [rr plugin called jitsrc](https://searchfox.org/mozilla-central/source/js/src/gdb/mozilla/jitsrc.py) that, given the address of a JIT-generated instruction, will walk backwards to figure out where it was generated (skipping past eg the memcpy into executable memory). It's very much "works on my machine on non-optimized code", but it might be useful to you.
+
+[09:27:43.0738] <iain>
+I use it frequently when looking at assembly to figure out who generated a particular bit of code (eg "am I still in the VM wrapper, or am I back in Ion?")
+
+[09:28:41.0881] <mgaudet>
+Including after you run the `zen_workaround.py` in the rr source tree? (with that I have a ~100% replay success rate) 
+
+[09:28:57.0495] <mgaudet>
+Oh, there's also one boot param that might be important. Lemme dig that out 
+
+[09:30:28.0365] <mgaudet>
+`/etc/default/grub` should have `GRUB_CMDLINE_LINUX_DEFAULT="clearcpuid=304 no5lvl nousershstk" ` included (or similarly passed to your kernel however you'd like) 
+
+[09:31:01.0093] <nbp>
+mgaudet: Thanks I will look into it if I have no fallback.
+
+[09:31:49.0602] <mgaudet>
+I've still not yet gotten zen_workaround to stick or run on resume, and it does need to be re-set after sleep 
+
+[09:37:01.0161] <sfink>
+I have about a 90% success rate on threadripper, with zen_workaround active. I seem to have lost all of my kernel cmdline changes, unless `processor.max_cstate=5` is for rr. (But I'm bad and never suspend/sleep.)
+
+[09:39:52.0466] <mgaudet>
+so clearcpuid would be valuable because it disables avx-512. This is good for pernosco. On intel you can use `--no-avx512`, but apparently AMD doesn't support trapping on CPUID which is how that works, and so said option doesn't function on AMD 
+
+[09:41:01.0475] <sfink>
+and one of my ways of running `rr record` also sets `NSS_DISABLE_HW_SHA=1`
+
+[09:42:39.0291] <sfink>
+ah, good to know. I guess I rarely submit to pernosco, and have to rediscover how to do it every time. (I mostly use pernosco through automated try server reproductions.)
+
+[09:43:50.0362] <padenot>
+interestingly I have 100% success rate on rr and pernosco and I just followed the documentation and run a recent ridiculous AMD
+
+[09:43:56.0103] <nbp>
+Sounds like we could give some compiler option to disable avx512 when we are compiling SpiderMonkey for rr.
+
+[09:44:10.0281] <padenot>
+doesn't help because glibc etc. will use avx512
+
+[09:45:09.0915] <padenot>
+happy to help people get their setup working, esp. in european time zones, it's a game changer
+
+[09:50:08.0100] <mayankleoboy1>
+IIRC from reading some changelogs of zlib-ng (on which zlib-rs is based) is that zlib-ng is 2x-3x faster than usual zlib 
+
+[09:57:15.0153] <padenot>
+would it be possible to know precisely which asm instruction are executed from e.g. a bit of wasm or js, possibly jitted to various degrees, to a C++ function of my choice? Like all the instructions. maybe using a bit of python like iain did above
+
+[09:57:41.0177] <padenot>
+* would it be possible to know precisely which asm instructions are executed from e.g. a bit of wasm or js, possibly jitted to various degrees, to a C++ function of my choice? Like all the instructions. maybe using a bit of python like iain did above
+
+[09:58:10.0053] <padenot>
+this is still in the context in speeding up wasm -> C++ calls for inference + validating that the way I gather my measurements are correct
+
+[10:01:37.0083] <nbp>
+samply dump all JIT-ed functions IIRC
+
+[10:02:31.0258] <padenot>
+it it symbolicated enough? I guess I could work from e.g. a WASM instruction or function name, or a js function name, it doesn't have to be effortless either
+
+[10:04:40.0818] <nbp>
+I think we have the trampolines, but Wasm might be calling directly into C++, given they have the same ABI.
+
+[10:05:29.0114] <padenot>
+Ryan Hunt has a patch that can make it a lot faster, but I'd like to check what the rest of the microseconds are
+
+[10:06:31.0795] <padenot>
+maybe just break on the C++ function and eyeball the asm backwards would be a way ?
+
+[10:06:43.0747] <nbp>
+with probably some code surrounding it for managing the JitActivations.
+
+[10:14:45.0970] <iain>
+Ryan just landed some patches (bug 1943696) that should give samply the information it needs to accurately symbolicate wasm jitcode.
+
+[10:14:53.0119] <nbp>
+```
+   0x00007fa80af1bd70:	5b                 	pop    %rbx
+   0x00007fa80af1bd71:	59                 	pop    %rcx
+   0x00007fa80af1bd72:	53                 	push   %rbx
+=> 0x00007fa80af1bd73:	51                 	push   %rcx
+```
+Seriously, we could do an `xhcg rbx, rcx` on x86
+
+[10:15:01.0630] <nbp>
+* ```
+   0x00007fa80af1bd70:	5b                 	pop    %rbx
+   0x00007fa80af1bd71:	59                 	pop    %rcx
+   0x00007fa80af1bd72:	53                 	push   %rbx
+=> 0x00007fa80af1bd73:	51                 	push   %rcx
+```
+
+Seriously, we could do an `xhcg rbx, rcx` on x86 (JSOP_SWAP)
+
+[10:15:35.0146] <nbp>
+Wait … pop first?
+
+[10:16:38.0856] <iain>
+Yeah, it's [swapping values on the stack](https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#3510-3517)
+
+[10:17:08.0270] <iain>
+Is this the baseline interpreter?
+
+[10:18:16.0780] <nbp>
+yes.
+
+[10:18:43.0676] <nbp>
+I thought we had the last 2 elements of the stacks in registers.
+
+[10:19:53.0951] <iain>
+No, everything is always synced in the baseline interpreter
+
+[10:20:54.0493] <nbp>
+oh, that's baseline vs baseline interpreter, ok.
+
+[10:25:59.0497] <iain>
+We can keep [up to two values in registers](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineFrameInfo.cpp#224-236) in the baseline compiler, yeah
+
+[14:39:46.0054] <thinker>
+I just create a bug about the overhead of CallbackObject. It costs 500+ms in the case of youtube. I need your comments.
+https://bugzilla.mozilla.org/show_bug.cgi?id=1950238
+
+[14:41:29.0158] <iain>
+thinker: Oh, interesting! Can you attach a profile?
+
+[14:44:26.0912] <thinker>
+https://share.firefox.dev/3QxUFQk
+
+[14:48:31.0097] <thinker>
+is CallbackObject created for every Javascript callback passing to native code?
+
+[14:52:20.0854] <mgaudet>
+thinker: Curious, what's the value of `javascript.options.asyncstack_capture_debuggee_only` in your profile?
+
+[14:53:53.0173] <mgaudet>
+(Also, is devtools open?) 
+
+[14:54:00.0177] <thinker>
+It is true. Is it the default value?
+
+[14:54:09.0624] <mgaudet>
+AFAICT yes, it's the default 
+
+[14:54:30.0148] <mgaudet>
+Given that pref, if devtools is not open, I'm surprised that we're capturing the stack? 
+
+[14:54:48.0406] <iain>
+It looks to me like [this invocation of RootedCallback](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/CustomElementRegistryBinding.cpp#1210) is triggering [this code](https://searchfox.org/mozilla-central/source/dom/bindings/CallbackObject.cpp#98-120) to capture the stack
+
+[14:55:33.0421] <iain>
+(Because of [this code](https://searchfox.org/mozilla-central/source/dom/bindings/CallbackObject.h#634-642) in the RootedCallback destructor)
+
+[14:56:34.0120] <mgaudet>
+Right, but https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#4961-4971 suggests that should only really be happening if devtools is open 
+
+[14:57:31.0233] <iain>
+Ah, good point
+
+[14:58:00.0085] <mgaudet>
+So if devtools isn't open, then maybe we have a regression of Bug 1601179 somehow? 
+
+[14:58:39.0139] <mgaudet>
+I'll leave a comment to that effect in the bug, and ni? a.rai, who may know the current state of this better than I
+
+[14:59:34.0085] <thinker>
+Yes! I think you solve my problem. 
+
+[14:59:47.0488] <mgaudet>
+Oh, DevTools was open? 
+
+[15:00:22.0112] <thinker>
+yes
+
+[15:00:29.0347] <mgaudet>
+That would do it then :) 
+
+[15:00:55.0738] <mgaudet>
+All that code should not run if devtools is closed, so hopefully everything will speed up. 
+
+[15:01:19.0037] <mgaudet>
+I wonder if profiles should highlight those frames and be like "yo, if this is here and devtools was open, try again without?" 
+
+[15:01:46.0225] <thinker>
+That would be good :)
+
+
+2025-02-25
+[02:04:13.0147] <mayankleoboy1>
+FWIW, wasm is already using zlib-rs, but it isnt any/much faster: https://share.firefox.dev/3F3Qrgx
+
+[06:29:11.0471] <sefeng>
+arai: I have another [unrooted failure](https://treeherder.mozilla.org/jobs?repo=autoland&duplicate_jobs=visible&group_state=expanded&resultStatus=pending%2Crunning%2Csuccess%2Ctestfailed%2Cbusted%2Cexception%2Crunnable&searchStr=linux%2Cx64%2Cdebug%2Chazard-linux64-haz%2Fdebug%2Ch&revision=f5357c6c558088e4d28f89f2bf87bf6f05a7c5b5&selectedTaskRun=eFNRndX6Tou-Z7hVA2rPLg.0), should I also do the JS::Rooted thing? 
+
+[06:32:16.0845] <arai>
+I don't think adding root is the right thing there
+
+[06:32:31.0718] <arai>
+we should check what's considered to be a GC function
+
+[06:34:00.0415] <arai>
+if there's any real GC function, it could be a real problem
+
+[06:34:36.0280] <sefeng>
+I am not familiar with the GC stuff, what should I be looking at?
+
+[06:34:43.0767] <arai>
+if there's just a function pointer or something that the hazard analysis considers "GC function", and if it's not actually GC function, you can add some annotation
+
+[06:35:08.0844] <arai>
+the gcFunction file in artifact contains the analysis result
+
+[06:36:05.0518] <arai>
+```
+GC Function: _ZN7mozilla23FinalizeHostDefinedDataEPN2JS9GCContextEP8JSObject$void mozilla::FinalizeHostDefinedData(JS::GCContext*, JSObject*)
+    uint32 mozilla::dom::WebTaskSchedulingState::Release()
+    uint64 nsCycleCollectingAutoRefCnt::decr(void*, nsCycleCollectionParticipant*, uint8*)
+    NS_CycleCollectorSuspect3
+    nsCycleCollector.cpp:void SuspectAfterShutdown(void*, nsCycleCollectionParticipant*, nsCycleCollectingAutoRefCnt*, uint8*)
+    nsCycleCollector.cpp:void ToParticipant(void*, nsCycleCollectionParticipant**)
+    nsCycleCollector.cpp:void ToParticipant(nsISupports*, nsXPCOMCycleCollectionParticipant**)
+    uint32 CallQueryInterface(nsISupports*, nsXPCOMCycleCollectionParticipant**) [with T = nsISupports; DestinationType = nsXPCOMCycleCollectionParticipant]
+    nsISupports.QueryInterface:0
+    (js-code)
+    (GC)
+```
+
+
+[06:39:32.0100] <arai>
+so, it's related to how cycle collection works, which I'm not really good at
+
+[06:39:51.0376] <arai>
+let me check other finalizers
+
+[06:44:13.0447] <arai>
+for the failure itself, I think you can workaround by moving `JS_SetReservedSlot(objSelf, SCHEDULING_STATE_SLOT, JS::UndefinedValue());` call before the `Release` call
+
+[06:44:44.0682] <arai>
+but I'm not sure if the finalizer can perform the above QueryInterface (especially if it can cause random QueryInterface)
+
+[06:45:08.0588] <arai>
+sfink: ^ can I have your input here?
+
+[06:47:27.0070] <arai>
+Also, if cycle-collected thing needs some finalization there, you could look into how the binding does similar thing.  e.g. [mozilla::dom::XPathResult_Binding::_finalize](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/XPathResultBinding.cpp#376-389)
+
+[06:54:09.0678] <sefeng>
+okay, thanks arai. I'll wait to see what Steve says. (the XPathResult thing also manually deallocates memory, not sure how much I should follow it...)  
+
+[06:56:05.0717] <arai>
+according to the gcFunction txt, [mozilla::dom::RemoteObjectProxy::finalize](https://searchfox.org/mozilla-central/rev/2a69486ab1df00b1ea8ecd14027e2cc6c0415ed0/dom/bindings/RemoteObjectProxy.h#145-149) also does Release on cycle-collected things immediately.  I do see `NS_CycleCollectorSuspect3` call there in the same way as above
+
+[07:46:52.0358] <mgaudet>
+Opened https://github.com/firefox-devtools/profiler/issues/5383 about Thinker's issue
+
+[07:48:03.0286] <julienw>
+could that be at firefox level rather? :)
+
+[07:48:33.0669] <julienw>
+"I've seen you left a devtools window open in this background tab for 6 hours and this starts to lock some memory, would you want to close it?"
+
+[07:49:10.0966] <julienw>
+I feel like that doing that at the profiler level is both a bit late and more difficult (because it lacks context)
+
+[07:49:52.0923] <mgaudet>
+I think there's different use cases for both; if someone is looking at a profile and is shocked something is slow, suggesting a resolution seems totally reasonable 
+
+[07:50:16.0298] <mgaudet>
+but also, general "hey, we noticed this wierd thing about your state, you can fix it" also seems good :D 
+
+[08:12:35.0198] <padenot>
+I have quite good results with that and samply. I ported over markus' docs in https://phabricator.services.mozilla.com/D239537, it's easy to use and I can sample at like 10kHz with wasm function names and all that
+
+[08:13:19.0296] <padenot>
+my wasm program isn't overly complicated though, it's like just a couple functions calling each other, but still it's nice
+
+[08:14:25.0660] <mstange>
+padenot: can you share some profiles?
+
+[08:14:50.0154] <padenot>
+yeah I'm making the second one right now, I'm comparing with and without an optimization Ryan Hunt has been doing
+
+[08:15:21.0740] <padenot>
+one is https://share.firefox.dev/4h3hGFj (this is with his patch as per the title)
+
+[08:15:47.0119] <padenot>
+c++ is similar but not quite exactly https://github.com/tarekziade/test-wasm/blob/main/main.cpp, I have local modifications
+
+[08:16:18.0049] <padenot>
+that goes through emscripten, and compares a WASM + SIMD function to the same function inside Firefox, in C++, imported
+
+[08:16:54.0810] <padenot>
+we have a perf test running this a lot, and we're attempting to reason about call overhead vs. SIMD opportunities in C++ vs. WASM and all this
+
+[08:18:38.0369] <padenot>
+so (and this is when spidermonkey folks can intervene), I've been inverting call stack and checking what takes time "before" my C++ kernel, which is `js::intgemm::DequantizeLinear`
+
+[08:19:04.0499] <padenot>
+DOM worker PID 39358
+
+[08:22:24.0470] <mstange>
+thanks for sharing!
+
+[08:23:08.0434] <mstange>
+compilation spends a long time emitting branch instructions, it seems
+
+[08:23:52.0819] <padenot>
+what I'm not confident about is our WASM tiers
+
+[08:24:08.0701] <padenot>
+well a lot of other things, but that is one thing
+
+[08:24:28.0522] <mstange>
+the `0x33d98b94345f` frame makes me think that the jitdump information is missing information about some trampoline
+
+[08:25:16.0554] <padenot>
+I know ryan's patch is a WIP, I'll let him comment on that
+
+[08:25:59.0396] <padenot>
+but generally, how can I get into the "best" wasm compilation possible, does that influence how fast I can call into those C++ functions, or not, what goes
+
+[08:26:34.0594] <padenot>
+it's likely that we'll end up caching the compiled WASM modules so we can pay some prices to get good output
+
+[09:00:07.0506] <Ryan Hunt>
+I think you're probably right. I don't think my jitdump patches annotated the trampoline functions
+
+[09:00:50.0472] <Ryan Hunt>
+if you can set flags, then do --wasm-compiler=ion and that will disable all tiering (so startup will be slower) but all code will be generated with the highest quality.
+
+[09:01:38.0808] <padenot>
+I can do whatever you tell me to do
+
+[09:01:52.0236] <padenot>
+that goes where, this flag? I'm running this in Firefox
+
+[09:02:42.0951] <Ryan Hunt>
+I don't think using ion for all wasm compilation will greatly affect how quickly wasm can call into C++. the only thing I think it could really do is do a slightly better job with register shuffles when passing args by registers.
+
+[09:02:50.0721] <Ryan Hunt>
+but that's just a guess
+
+[09:03:41.0185] <padenot>
+"typically", those functions will take like 4-5 pointers + size and will do a triple for loop with loots of maths on big arrays like this: https://github.com/tarekziade/test-wasm/blob/main/main.cpp#L27-L29
+
+[09:04:05.0786] <Ryan Hunt>
+in that case enable the `javascript.options.wasm_optimizingjit` pref and disable the `javascript.options.wasm_baselinejit` pref
+
+[09:04:36.0468] <padenot>
+but sometimes the C++ kernels are so fast and the arrays not big enough that we saw overhead in the function call, but I don't think a couple registers will make a great deal of changes either
+
+[10:15:10.0845] <sfink>
+there shouldn't be any GCs within finalization, but I'm not actually sure what would happen if something tried. For this case, I agree with arai -- if you swap those two lines, that particular hazard will go away.
+
+[10:16:49.0738] <sfink>
+there may be a way to prove that the QI won't happen or won't run JS code or something, and teach that to the analysis (or `AutoSuppressGCAnalysis` if that's too hard), but there's a decent chance the analysis will figure out some other way. The CC stuff is kind of a game of whack-a-mole.
+
+[10:17:27.0854] <sfink>
+side note: "// Finalizer for instances of FinalizeHostDefinedData." -> "// Finalizer for instances of HostDefinedData."
+
+[11:54:19.0016] <sefeng>
+thanks for the help! 
+
+
+2025-02-26
+[06:52:47.0663] <davidj361>
+When using UbiNode to analyze memory usage it it just:
+```
+ExtensionUtils.jsm (30136 bytes)
+------------------------------
+| script ExtensionUtils.jsm:436 (2344 bytes)
+
+| NSVO ExtensionUtils.jsm (2240 bytes)
+
+| script ExtensionUtils.jsm:379 (1920 bytes)
+|-- Function promiseObserved/< (1168 bytes)
+|---- script ExtensionUtils.jsm:380 (1000 bytes)
+```
+
+Or can you see how many instances there are of things and how much memory it uses?
+
+[06:59:17.0216] <padenot>
+sfink: is https://bugzilla.mozilla.org/show_bug.cgi?id=1924272 ready to land ?
+
+[07:00:28.0694] <sfink>
+I have a "final" try push running for it right now. With the number of times I've bounced that stack, I'm being very conservative this time.
+
+[07:00:41.0382] <padenot>
+yeah I feel you
+
+[07:00:47.0560] <padenot>
+quite a journey this one
+
+[07:01:04.0620] <padenot>
+I'll import your stack on the meantime, I need some markers
+
+[08:03:54.0097] <Bas>
+There's a presentation in the WebPerf WG about an 'explicit compile hints' thing, does anyone here know about that?
+
+[08:08:18.0099] <iain>
+Bas: Is it [this](https://docs.google.com/document/d/1UaBxrtBwOLxsC22RdZQszFQHXeJSVOx2F5AuqyRTOG4/edit?tab=t.0#heading=h.esbfulx6egzl)?
+
+[08:09:25.0638] <iain>
+We have a standards-position [here](https://github.com/mozilla/standards-positions/issues/780)
+
+[08:09:47.0085] <iain>
+There's a similar wasm proposal [here](https://github.com/WebAssembly/compilation-hints/blob/main/proposals/compilation-hints/Overview.md)
+
+[08:10:47.0551] <Bas>
+Thank you!
+
+[08:22:11.0637] <Bas>
+iain: So they're proposing it in Webperf WG now.
+
+[08:33:16.0299] <Bas>
+Are we strongly opposed to this happening here? It doesn't feel ideal for this to be pushed through an alternate venue, but I'd like to understand how big we feel the potential harm to the web is?
+
+[09:28:44.0332] <iain>
+Bas: As I understand it, the reason it's not going through TC39 is because it doesn't have any semantic effects on JS. See the comments [here](https://github.com/WebKit/standards-positions/issues/172#issuecomment-1524825130) and [here](https://github.com/WebKit/standards-positions/issues/172#issuecomment-1531596456). 
+
+[09:30:02.0705] <iain>
+Our main concern (which I think Apple also [shares](https://github.com/WebKit/standards-positions/issues/172#issuecomment-2397092269)) is that we don't want these hints to be tuned for Chrome specifically
+
+[09:30:19.0718] <iain>
+So we've been pushing for descriptive/quantitative hints over prescriptive hints
+
+[09:30:40.0811] <iain>
+eg "This function will always execute at pageload" vs "eagerly compile this function"
+
+[09:32:42.0791] <iain>
+This isn't just a cross-browser issue; it also seems like it should be in Chrome's best interest to avoid having hints that are tuned too precisely for eg Chrome 134.
+
+[09:34:02.0641] <iain>
+I think we would prefer having this go through a standards process instead of watching Google YOLO it
+
+[09:34:11.0762] <iain>
+I expect the end result would be better for everyone, including Google
+
+[09:35:26.0944] <iain>
+I don't think we're inherently opposed to the entire concept, so long as it's done well
+
+[09:39:35.0236] <Bas>
+I think that's what they do now right? (With the '# allFunctionsCalledOnLoad')
+
+[09:40:03.0974] <iain>
+Yeah, I believe that was in response to Yulia's initial feedback
+
+[09:40:17.0116] <Bas>
+There was also some discussion on making this first party only in the WG.
+
+[12:32:08.0743] <glandium>
+Thoughts on https://bugzilla.mozilla.org/show_bug.cgi?id=1950296#c2 ? (also a review of the attached patch would be welcome)
+
+[12:45:13.0254] <mgaudet>
+I'm fine with the patch, but agree, some experimentation with zstd would make sense, in a separate bug) 
+
+[12:45:15.0965] <mgaudet>
+* I'm fine with the patch, but agree, some experimentation with zstd would make sense, in a separate bug.
+
+
+2025-02-27
+[21:58:23.0305] <mayankleoboy1>
+[2.2% improvement](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&selected=3405706,1964561738&series=mozilla-central,3409931,1,13&series=mozilla-central,3744731,1,13&series=mozilla-central,3405706,1,13&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1735438038673,1740662612075,780.2666666666665,847.2733333333332) on WASM-embenchen-misc-optimizong-compile 
+with a possibly [regression](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=mozilla-central,3409931,1,13&series=mozilla-central,3744731,1,13&series=mozilla-central,3405706,1,13&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1735438038303,1740662683810,118.57777777777778,139.1822222222222) on Baseline-compile 
+
+[22:10:46.0637] <mayankleoboy1>
+* [2.2% improvement](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&selected=3405706,1964561738&series=mozilla-central,3409931,1,13&series=mozilla-central,3744731,1,13&series=mozilla-central,3405706,1,13&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1735438038673,1740662612075,780.2666666666665,847.2733333333332) on WASM-embenchen-misc-optimizong-compile
+with a possible corresponding [regression](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=mozilla-central,3409931,1,13&series=mozilla-central,3744731,1,13&series=mozilla-central,3405706,1,13&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1735438038303,1740662683810,118.57777777777778,139.1822222222222) on Baseline-compile
+
+[00:44:08.0728] <padenot>
+mgaudet: I have lots of scripts to measure compression speed/ratio per level for all typical compression formats if you want to try it on a corpus of js source file. It then plots compression ratio against speed against compression level against compression format
+
+[00:51:43.0025] <padenot>
+in our experiments on translation AI model, and also random stuff that would go into indexeddb (the storage team is interested in using it), it usually crushes the competition in all dimensions. source and some results for AI models at https://github.com/padenot/translation-model-compression-bench
+
+[00:57:30.0551] <padenot>
+I should add zlib-based stuff
+
+[00:59:45.0033] <padenot>
+* in our experiments on translation AI model, and also random stuff that would go into indexeddb (the storage team is interested in using it), zstd usually crushes the competition in all dimensions. source and some results for AI models at https://github.com/padenot/translation-model-compression-bench
+
+[06:20:01.0848] <debadree25>
+Is it not possible to do something like `GET_UINT16(handler.pc())` inside BaselineBaselineInterpreterCodeGen? like for over [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.cpp#1877-1887) the Complier version directly gets the value but the interpreter edition needs to push it to a register, my problem statement is basically i would be using the operand to decide on what instructions to emit but it seems like inside baseline interpreter the operand is not directly accessible? is there a way? 😅😅
+
+[06:21:57.0114] <jandem>
+yeah for the baseline interpreter you'll have to use `LoadUint16Operand` to load the value into a register and then use `masm.branch32...` or so to handle all cases
+
+[06:22:34.0331] <jandem>
+generating similar code to how you implement it in `vm/Interpreter.cpp`
+
+[06:24:12.0144] <jandem>
+how many cases are there? another option would be to call a c++ function using `callVM` or `callWithABI`
+
+[06:25:17.0596] <debadree25>
+rn 4 cases (int32, bool, null and undefined) just for protoyping
+
+[06:29:43.0886] <jandem>
+you'd have to either do a call to a C++ function or handle the cases inline like this: https://paste.mozilla.org/RhMfiPuU
+
+[06:33:07.0172] <debadree25>
+understood, thank you!
+
+[07:53:40.0229] <mgaudet>
+Whoops. I was so sure I had hit the button to land the "Ship captureStackTrace" but yesterday, but alas, it looks like I didn't and now we're in soft freeze. 🤦
+
+[11:25:41.0157] <debadree25>
+say i have a uint16 value on whose lower 8 bits i have stored some number now i can get this payload by doing | 0x00FF and load that to a reg but that wounldnt be quite correct since that wouldnt be correct sign handling, is there a masm. fn to do this sign extend/correction?
+
+[11:27:45.0709] <iain>
+debadree25: Not sure I follow. You have loaded 16 bits into a register, and you want only the lowest 8 bits?
+
+[11:28:27.0608] <iain>
+In that case I would think `masm.and32(Imm32(0xff), reg)` would work
+
+[11:29:02.0056] <debadree25>
+i have a uint16 operand for the a bytecode -> the bottom 8 bits of the operand are carrying a payload trying to extract that
+
+[11:30:14.0037] <iain>
+Is the payload a uint8_t or an int8_t?
+
+[11:30:25.0046] <iain>
+If it's uint8_t, then the `and` should work
+
+[11:31:06.0270] <iain>
+I assume this is for the baseline interpreter?
+
+[11:34:07.0436] <debadree25>
+yes 
+
+[11:34:14.0353] <debadree25>
+int8_t
+
+[11:35:24.0593] <iain>
+masm.move8SignExtend is probably the right approach, then
+
+[11:36:33.0718] <debadree25>
+oh perfect thank you!
+
+[11:37:40.0372] <sfink>
+what does it even mean to extract a negative payload from a uint16_t? I guess it's a uint16_t encoding of a <something, int8_t> pair, so it's not really a uint16_t in the first place?
+
+[11:38:38.0003] <iain>
+That's my understanding of the question
+
+[11:39:25.0159] <sfink>
+(though in that case it seems like the mask with 0xff would be correct, but I guess it depends on the encoding process)
+
+[11:41:10.0855] <iain>
+If you want to use it as eg an offset, then having a register containing 0xff will give you offset 255 where you presumably want -1.
+
+[11:41:26.0209] <iain>
+Sign-extending will give you 0xffff_ffff_ffff_ffff
+
+[11:41:45.0794] <sfink>
+I thought the output here is an int8_t, not an int32_t
+
+[11:43:16.0047] <sfink>
+oh, I see. It needs to be in a (full-width) register
+
+[11:44:17.0658] <iain>
+Yeah, I think the difference between int8_t and int32_t is mostly relevant when stored in memory. When working with registers, you generally want the value to be full-width regardless of its "type"
+
+[11:45:25.0316] <sfink>
+yeah, movsbl / move8SignExtend makes sense then
+
+[13:56:59.0966] <tcampbell>
+Interestingly enough, the self-hosted serialized stencil and the source js are basically the same size (256kB)
+
+[13:59:39.0319] <mgaudet>
+The curse of BinAST strikes again
+
+[14:36:10.0590] <glandium>
+fun fact: I was looking at Base Content JS (awsy) to see how it went after my regression fix... and it regressed again shortly I landed my fix... https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=autoland,5141316,1,4&timerange=1209600&zoom=1739494008270,1740701874908,1537466.6666666665,1547701.3333333328
+
+[14:38:12.0051] <glandium>
+and it looks like it comes from https://treeherder.mozilla.org/jobs?repo=autoland&group_state=expanded&searchStr=macos%2C14.70%2Cx64%2Cshippable%2Copt%2Care%2Cwe%2Cslim%2Cyet%2Ctests%2Cby%2Ctaskcluster%2Ctest-macosx1470-64-shippable%2Fopt-awsy-base%2Cab&revision=d71cbebcb1694e672ada91221aa085e6cfd83c2f
+
+[14:39:35.0885] <glandium>
+twisniewski: ^
+
+[14:40:15.0168] <mccr8>
+Base content is pretty sensitive, so adding more JS can make some random hashtable move to the next bucket size and cause regressions.
+
+[14:42:44.0836] <twisniewski>
+that must be it, because i'm not doing anything new that i haven't done with other webcompat fixes there.
+
+[14:50:47.0660] <mccr8>
+It might be nice to know what our content process memory overhead in total was for all of these interventions and maybe address that, but I wouldn't worry too much about a single change like this.
+
+[15:17:32.0061] <twisniewski>
+but note that we will be adding more and more of these interventions, so if we suspect that will be a problem over time, we should explore sooner rather than later
+
+[15:52:04.0494] <glandium>
+maybe to an awsy comparison of current autoland vs. all interventions removed
+
+[15:52:15.0897] <glandium>
+* maybe do an awsy comparison of current autoland vs. all interventions removed
+
+[15:52:50.0718] <glandium>
+* @twisniewski maybe do an awsy comparison of current autoland vs. all interventions removed
+
+[15:53:06.0033] <glandium>
+* twisniewski:  maybe do an awsy comparison of current autoland vs. all interventions removed
+
+[15:54:36.0832] <mccr8>
+awsy base not awsy. 😄
+
+[15:54:46.0665] <twisniewski>
+sure, when i have a moment. i'm pretty swamped atm
+
+[15:55:57.0108] <twisniewski>
+(if someone else wants to try in the meantime, you can empty out [this script](https://searchfox.org/mozilla-central/source/browser/extensions/webcompat/run.js) in a local build to compare)
+
+[15:56:37.0792] <glandium>
+easy enough
+
+[15:56:45.0585] <twisniewski>
+* (if someone else wants to try in the meantime, you can empty out [this script](https://searchfox.org/mozilla-central/source/browser/extensions/webcompat/run.js) in a local build to compare, which will effectively prevent any interventions in that build from being enabled)
+
+
+2025-02-28
+[19:18:31.0186] <mayankleoboy1>
+Heap-unclaasified should also improve by atleast a couple of percent. 
+
+[19:48:56.0689] <glandium>
+https://perf.compare/compare-results?baseRev=bff5b6362a4b0278888baca391990b808d52bf0a&baseRepo=try&newRev=4e8255977f4b8af65bb632d8237dea2af0167f37&newRepo=try&framework=4
+
+[21:48:51.0258] <mayankleoboy1>
+The base and "no intervention" are switched around" which confused me for a sec. 
+
+[21:49:50.0454] <mayankleoboy1>
+* The base and "no intervention" are switched around which confused me for a sec. 
+
+[04:30:44.0735] <bvisness>
+iain will be giving a talk at HYTRADBOI in a few hours: https://www.hytradboi.com/2025/
+
+[04:43:24.0028] <mayankleoboy1>
+Will there be a recording? 
+
+[04:51:19.0338] <bvisness>
+should be - the entire conference is airing prerecorded videos anyway
+
+[08:57:45.0088] <mgaudet>
+https://www.hytradboi.com/2025/0a4d08fd-149e-4174-a752-20e9c4d965c5-a-quick-ramp-up-on-ramping-up-quickly
+
+[08:57:54.0591] <mgaudet>
+Iain's Video talk now available :) 
+
+[09:30:12.0247] <mayankleoboy1>
+This is a good video. It is entertaining and informative. The voice-over narration sounds professional. Script is tight. The animations/slides are well coordinated.
+PS: you should consider making more videos and putting on the usual platforms.
+
+[09:33:42.0360] <mayankleoboy1>
+PPS: Liked the reference to Kafka right in the beginning.
+
+[10:33:13.0848] <iain>
+I'm glad it seems professional. I wrote half the talk in a hotel room with a sleeping baby strapped to my chest, then recorded it frantically on Tuesday with my notes covering half the screen hoping that the places I'd written "click" were all correct.
+
+[10:33:18.0326] <iain>
+I had a lot of fun making it, though.
+
+[10:34:03.0302] <mstange>
+The slides are really well done
+
+[11:50:15.0366] <Bryan Thrall [:bthrall]>
+That talk is a great introduction to the SpiderMonkey JITs
+

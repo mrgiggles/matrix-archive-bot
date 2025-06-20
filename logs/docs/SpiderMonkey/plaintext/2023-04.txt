@@ -1,0 +1,2588 @@
+2023-04-04
+[16:08:41.0725] <Tim>
+mgaudet: I submitted https://phabricator.services.mozilla.com/D174699 to unflag change-array-by-copy -- one thing I wasn't sure about was whether to set the pref to true in the test config files that explicitly set it to false ( https://searchfox.org/mozilla-central/search?q=javascript.options.experimental.enable_change_array_by_copy&path=&case=false&regexp=false turns up four files aside from StaticPrefList.yaml ). I opted to not touch those
+
+[16:18:48.0372] <mccr8>
+> <@tjc:igalia.com> mgaudet: I submitted https://phabricator.services.mozilla.com/D174699 to unflag change-array-by-copy -- one thing I wasn't sure about was whether to set the pref to true in the test config files that explicitly set it to false ( https://searchfox.org/mozilla-central/search?q=javascript.options.experimental.enable_change_array_by_copy&path=&case=false&regexp=false turns up four files aside from StaticPrefList.yaml ). I opted to not touch those
+
+It seems like a bad idea to have non-default values for any prefs in the XPConnect tests (which are used to test a lot of interactions between C++ and JS), but I don't know why those prefs are being set in the first place.
+
+[16:19:35.0922] <mccr8>
+Probably also for the devtools tests if those are supposed to be actual devtools features people are going to want to use in the browser.
+
+[16:22:19.0930] <Tim>
+> <@mccr8:mozilla.org> It seems like a bad idea to have non-default values for any prefs in the XPConnect tests (which are used to test a lot of interactions between C++ and JS), but I don't know why those prefs are being set in the first place.
+
+Yeah, that makes sense. Maybe someone here would know why they’re being set…
+
+[16:25:01.0252] <mccr8>
+Ah, the devtools one is setting it to true. You'll want to leave that one alone so the tests don't break when things leave beta.
+
+
+2023-04-05
+[17:08:29.0894] <jrmuizel>
+anybody have any guesses what the CTI acronym in JSC means? e.g. "Required for call to CTI thunk"
+
+[17:08:48.0978] <jrmuizel>
+or `emitCTIThunkPrologue()`
+
+[17:16:19.0320] <arai>
+compile-time something?
+
+[17:16:52.0388] <iain>
+jrmuizel: Don't know what it stands for, but based on [this comment](https://searchfox.org/wubkat/source/Source/JavaScriptCore/dfg/DFGSpeculativeJIT.cpp#208) it might be their jit call ABI
+
+[19:19:02.0449] <mstange>
+The first mention is in this merge of squirrelfish extreme: https://github.com/WebKit/WebKit/blob/9b948e40c37ad6b4402d737f1a7639889e23c597/JavaScriptCore/ChangeLog#L1641
+
+[19:20:17.0364] <mstange>
+Neither [CTI.h](https://github.com/WebKit/WebKit/blob/9b948e40c37ad6b4402d737f1a7639889e23c597/JavaScriptCore/VM/CTI.h) nor [CTI.cpp](https://github.com/WebKit/WebKit/blob/9b948e40c37ad6b4402d737f1a7639889e23c597/JavaScriptCore/VM/CTI.cpp) say what it stands for
+
+[19:21:18.0453] <iain>
+It's context-threaded interpreter
+
+[19:21:26.0140] <iain>
+See point 3 here: https://webkit.org/blog/214/introducing-squirrelfish-extreme/
+
+[19:38:30.0525] <iain>
+Reading the paper they link, it's basically describing a compilation strategy falling somewhere between our baseline interpreter and baseline compiler
+
+[19:39:17.0774] <iain>
+But in the context of the JSC codebase, I think you could mentally substitute "JIT" and not be too far off
+
+[09:59:36.0834] <caleb.distributive>
+hey Im embedding spidermonkey, is there a way in the API to check if two objects are the same object? (like same memory address, not just same properties or whatever)
+
+[10:07:44.0249] <iain>
+caleb.distributive: Object equality is identity in JS, so [anything that compares two objects](https://searchfox.org/mozilla-central/source/js/public/Equality.h#28) will let you know if they are the same object 
+
+[10:09:08.0498] <iain>
+(That is, `{x: 1} == {x: 1}` evaluates to false, because they are distinct objects)
+
+[10:09:23.0456] <caleb.distributive>
+perfect! thanks
+
+
+2023-04-06
+[23:27:51.0234] <l11d>
+I thought about adding a version of probabilistic heap checking (PHC) to spidermonkey allocations and would like to inquire whether the current plan for implementing could work out. When the nursery gets instantiated, one additional NurseryChunk gets allocated, called PHC-Chunk. If an allocation is served via the PHC-Chunk it is placed at the end of a page and the next page is mapped as NO_ACCESS. OOB accesses should crash due to touching the NO_ACCESS page. After collecting the nursery (which includes the PHC-Chunk), the pages which held allocations can be marked inaccessible. Any further access to them should indicate an UAF issue in the JS Engine. Now to the last part, deciding whether an allocation should be placed into the PHC-Chunk in the first place: In order to not interfere with the allocation fast paths, the PHC allocations are only served when reaching `moveToNextChunkAndAllocate`.
+Would this implementation sketch violate any invariants? If no, I'll give the implementation a shot and see whether it triggers during fuzzing.
+
+[02:52:39.0233] <nbp>
+^ sfink might be able to answer.
+
+[06:24:38.0379] <liam_g>
+How can I copy raw data to a JSStructuredCloneData object?
+
+[08:36:36.0106] <sfink>
+l11d: it sounds like it would work. Normally the nursery is bump-allocated, so you'll have to make sure the new object is allocated at the right spot (just before the end). But do you know about the CheckNursery zeal mode? It makes a linked list of canaries [after every nursery allocation](https://searchfox.org/mozilla-central/rev/9e3413f54ed6c9165b5659558091d766d34a731f/js/src/gc/Nursery.cpp#540-542), and during a collection it [checks to make sure no feathers are ruffled](https://searchfox.org/mozilla-central/rev/9e3413f54ed6c9165b5659558091d766d34a731f/js/src/gc/Nursery.cpp#1180-1185). The failure won't happen immediately on a write, and it only checks writes not reads (though I would hope that usually reading the canary magic value and using it for something would cause visible problems?)
+
+[08:45:34.0301] <l11d>
+I didn't know about this zeal mode in particular but the fuzzers set a random zeal mode between 1 and 24. so a couple of them should actually use CheckNursery. with the magic byte in place OOB writes should definitively be detectable, reads depending on the subsequent use. UAFs maybe, depending on whether they hit a canary or not. considering that the idea might be viable I'll give it a try
+
+[08:45:57.0534] <sfink>
+liam_g: there's no super-clean way to do it, but there is some testing infrastructure that [does it](https://searchfox.org/mozilla-central/rev/9e3413f54ed6c9165b5659558091d766d34a731f/js/src/builtin/TestingFunctions.cpp#4827-4834). The API is complicated enough for me to never remember it exactly, but from skimming the code it looks like you create a `JSStructuredCloneData` and use `AppendBytes` to stick your data in. Then read it out with `JS_ReadStructuredClone`.
+
+[08:48:51.0580] <sfink>
+l11d: it wouldn't get it *right* up against the end, but I'm wondering if you could just mark the final page of every nursery chunk as NO_ACCESS (and decrement the usable size by a page).
+
+[08:51:05.0292] <sfink>
+I guess you could combine that with your idea: mark the final page of nursery chunks as NO_ACCESS. Shrink the usable size by a page + max size of an allocation. Then in `moveToNextChunkAndAllocate`, allocate the final object right up against the end. (So that final object will end up the old chunk rather than the new.)
+
+[08:53:16.0752] <liam_g>
+> <@sfink:mozilla.org> liam_g: there's no super-clean way to do it, but there is some testing infrastructure that [does it](https://searchfox.org/mozilla-central/rev/9e3413f54ed6c9165b5659558091d766d34a731f/js/src/builtin/TestingFunctions.cpp#4827-4834). The API is complicated enough for me to never remember it exactly, but from skimming the code it looks like you create a `JSStructuredCloneData` and use `AppendBytes` to stick your data in. Then read it out with `JS_ReadStructuredClone`.
+
+Oh yeah, I'd totally missed the AppendBytes() function. Still seems like the size is 0 after running this though. Do i have to do Init() first?
+
+[08:54:19.0722] <sfink>
+it seems like you can pass in 0 to `Init`
+
+[08:55:34.0366] <sfink>
+hm, but then would you need to `AllocateBytes` before doing `AppendBytes`? How does this all work...
+
+[08:56:39.0269] <sfink>
+I don't think you do?
+
+[09:01:19.0280] <sfink>
+/me disappears into a meeting
+
+[09:38:23.0818] <nbp>
+sfink: is the nursery backed by LifoAlloc?
+
+[09:38:39.0930] <sfink>
+no, straight from mmap
+
+[09:40:38.0054] <nbp>
+LifoAlloc has plenty of mechanism in place to add red-zones, which are handled by valgrind and various compiler sanitizers.
+
+[09:41:47.0774] <sfink>
+we may end up switching to a single contiguous nursery region, which might change things.
+
+[09:42:00.0198] <sfink>
+hm, but I wonder if it would be useful to back it with LifoAlloc.
+
+[09:42:10.0422] <sfink>
+anyway, in another mtg, will think about it later
+
+[09:44:03.0087] <nbp>
+l11d: Maybe using LifoAlloc as a replacement for allocation can work for drafting what you want, given that LifoAlloc already provide such instrumentation.
+
+[09:59:28.0506] <mgaudet|sick>
+Funny Story: If you watch the page loads for AWSY, you'll realize that they seem to reflect the internet circa April 2011 --- it's an amazing time capsule
+
+[10:01:20.0678] <mccr8>
+> <@mgaudet:mozilla.org> Funny Story: If you watch the page loads for AWSY, you'll realize that they seem to reflect the internet circa April 2011 --- it's an amazing time capsule
+
+This might mean you are using the tp5 pageset instead of tp6. We use tp6 in automation.
+
+[10:02:11.0152] <mccr8>
+The defaults might not be for tp6 unfortunately. At some point I really need to dredge out the tp5 stuff.
+
+[10:02:35.0620] <mgaudet|sick>
+./mach awsy-test is what I am running
+
+[10:03:16.0862] <mccr8>
+Yeah you should use --tp6. Without anything, I think you end up with tp5 which is not what we run in automation.
+
+[10:18:54.0406] <liam_g>
+> <@lgoodacre:matrix.org> Oh yeah, I'd totally missed the AppendBytes() function. Still seems like the size is 0 after running this though. Do i have to do Init() first?
+
+Thanks, it's working now 
+
+[12:27:20.0914] <jrmuizel>
+can someone remind what the thresholds for going from interp -> blinterp -> baseline are?
+
+[12:34:18.0039] <iain>
+jrmuizel: [10/100/1500](https://searchfox.org/mozilla-central/source/js/src/jit/JitOptions.cpp#166,171,191)
+
+[12:34:43.0832] <jrmuizel>
+iain: so it is not dependent on the size of the function?
+
+[12:35:33.0556] <jrmuizel>
+V8's seems to be
+
+[12:36:38.0371] <iain>
+There are [tweaks for baseline-to-ion](https://searchfox.org/mozilla-central/source/js/src/jit/IonOptimizationLevels.cpp#62-103)
+
+[12:37:22.0154] <iain>
+But the blinterp-to-baseline threshold is baked into the blinterp code
+
+[12:39:21.0852] <iain>
+JSC has an even wilder set of heuristics
+
+[12:39:38.0282] <iain>
+"The scaling factor is defined as follows:
+(0.825914 + 0.061504 * sqrt(S + 1.02406)) * pow(2, R) * M / (M - U)"
+
+[12:40:02.0923] <iain>
+(In the "execution counting" section [here](https://webkit.org/blog/10308/speculation-in-javascriptcore/))
+
+[12:41:27.0524] <iain>
+Our theory has been that performance should be relatively insensitive to marginal changes in warmup thresholds, so we save time overall by keeping things simple. Longer-form version of the argument [here](https://bugzilla.mozilla.org/show_bug.cgi?id=1808448#c3)
+
+[12:49:42.0597] <jrmuizel>
+iain: thanks that's helpful
+
+[12:50:09.0885] <iain>
+It's certainly possible that our theory on this is wrong, of course
+
+[12:50:58.0033] <jrmuizel>
+iain: TodoMVC is an interesting situation because the number of items matches our blinterp-to-baseline threshold
+
+[12:51:22.0043] <iain>
+True
+
+[12:51:45.0316] <jrmuizel>
+it'd be interesting to see what impact increasing the the threshold from 100 to 101 would be
+
+[12:52:24.0591] <iain>
+There are shell options to tweak all these thresholds
+
+[12:52:44.0688] <iain>
+`--blinterp-warmup-threshold` / `--baseline-warmup-threshold` / `--ion-warmup-threshold` 
+
+[13:05:18.0488] <jrmuizel>
+iain: `--baseline-eager` improves the updated angular test by 20%
+
+[13:06:15.0967] <jrmuizel>
+it seems the lower the `baseline-warmup-threashold` the faster
+
+[13:06:28.0835] <iain>
+Yeah, we've got lots of evidence that some tests in speedometer really benefit from eager baseline compilation. The problem is that other stuff (not just pageload, but also other sp3 tests like tiptap) regresses when we do that.
+
+[13:06:43.0302] <jrmuizel>
+do we understand why?
+
+[13:08:59.0600] <iain>
+Pageload is easy to understand
+
+[13:09:27.0946] <iain>
+There's generally a lot going on, and profiles are generally pretty flat
+
+[13:11:00.0038] <iain>
+More broadly: compiling early is good if you run the optimized code often enough to pay off the cost of compilation. It is bad if you don't. Some benchmarks have more cold code than others.
+
+[13:12:45.0098] <iain>
+I am currently leaning towards the conclusion that something like the hints infrastructure that Denis is currently working on is the best solution, because it lets us make fairly informed guesses about which functions are going to get hot before they actually do
+
+[13:13:11.0547] <iain>
+But obviously it doesn't help on code we've never seen before
+
+[13:13:29.0195] <iain>
+In theory we could try different heuristics to identify code that should be eagerly compiled
+
+[13:13:46.0915] <iain>
+Like the eager baseline patch that I should really consider polishing and landing
+
+[13:14:29.0715] <iain>
+But there's a runtime cost to evaluating those heuristics
+
+[13:15:00.0616] <iain>
+And also some worries about overfitting to the code you happen to be looking at while tuning in a way that doesn't generalize into the future
+
+[13:17:43.0392] <jrmuizel>
+yeah fair
+
+[13:20:04.0387] <iain>
+jrmuizel: But if while looking at profiles you happen to notice any particular patterns of functions that warm up slowly and should be compiled more aggressively, we can run experiments
+
+[13:21:04.0546] <jrmuizel>
+yeah
+
+
+2023-04-07
+[20:33:29.0821] <luyahan>
+I am gdb asm.js/testBug1301191.js on riscv64 and beak on js/src/shell/js.cpp:11223, and print "p cx->zone()", result is "$1 = (JS::Zone *) 0x0"
+
+[20:33:34.0971] <luyahan>
+Is it normal?
+
+[22:18:42.0866] <luyahan>
+ * I am gdb asm.js/testBug1301191.js on riscv64 and beak on js/src/shell/js.cpp:11223. Then print "p cx->zone()", result is "$1 = (JS::Zone \*) 0x0"
+
+[02:06:49.0926] <luyahan>
+ * I am gdb asm.js/testBug1301191.js on riscv64 and break on js/src/shell/js.cpp:11223. Then print "p cx->zone()", result is "$1 = (JS::Zone \*) 0x0"
+
+[02:07:04.0471] <jandem>
+if I'm looking at the same line, yeah that's expected. We don't have an active zone at that point
+
+[02:16:07.0664] <luyahan>
+```
+
+[02:16:21.0592] <luyahan>
+ * ```
+Thread 1 received signal SIGSEGV, Segmentation fault.
+JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+111       bool isAtomsZone() const { return kind_ == AtomsZone; }
+(gdb) bt
+#0  JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+#1  0x00000040023b7e40 in JSLinearString::newValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, chars=..., length=40, heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType-inl.h:283
+#2  0x00000040023b7da4 in js::NewStringCopyNDontDeflateNonStaticValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1674
+#3  0x00000040023b8316 in js::NewStringCopyNDontDeflate<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1694
+#4  0x00000040023b864a in js::NewStringCopyN<(js::AllowGC)1, unsigned char> (cx=0x4008030100, s=0x400801b600 "Can't open self-hosted stencil XDR file.", 
+    n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1733
+#5  0x00000040023ab402 in js::NewStringCopyUTF8N (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1807
+#6  0x0000004001d59530 in js::NewStringCopyUTF8Z (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.h:1541
+#7  0x00000040025af88a in JS_NewStringCopyUTF8Z (cx=0x4008030100, s=...) at /home/luyahan/source/gecko/js/src/jsapi.cpp:2985
+#8  0x00000040025b4f2c in JSErrorBase::newMessageString (this=0x40063bc850, cx=0x4008030100) at /home/luyahan/source/gecko/js/src/jsapi.cpp:3861
+#9  0x00000040025bca02 in js::ErrorToException (cx=0x4008030100, reportp=0x40063bc850, callback=0x40020783e0 <js::GetErrorMessage(void*, unsigned int)>, 
+    userRef=0x0) at /home/luyahan/source/gecko/js/src/jsexn.cpp:321
+#10 0x000000400207d584 in ReportError (cx=0x4008030100, reportp=0x40063bc850, callback=0x0, userRef=0x0)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:149
+#11 0x000000400207dbe8 in js::ReportErrorVA (cx=0x4008030100, isWarning=js::IsWarning::No, 
+    format=0x4000314c60 "Can't open self-hosted stencil XDR file.", argumentsType=js::ArgumentsAreUTF8, ap=0x40063bc900)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:553
+#12 0x00000040025b3dda in JS_ReportErrorUTF8 (cx=0x4008030100, format=0x4000314c60 "Can't open self-hosted stencil XDR file.")
+    at /home/luyahan/source/gecko/js/src/jsapi.cpp:3592
+#13 0x0000004001cf0c72 in WriteSelfHostedXDRFile (cx=0x4008030100, buffer=...) at /home/luyahan/source/gecko/js/src/shell/js.cpp:10972
+#14 0x0000004002338f08 in JSRuntime::initSelfHostingStencil (this=0x4008023000, cx=0x4008030100, xdrCache=..., 
+    xdrWriter=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/SelfHosting.cpp:2493
+#15 0x00000040020e3c04 in JS::InitSelfHostedCode (cx=0x4008030100, cache=..., 
+    writer=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/Initialization.cpp:220
+#16 0x0000004001cecf12 in main (argc=19, argv=0x40063bd3b8) at /home/luyahan/source/gecko/js/src/shell/js.cpp:11223
+```
+
+[02:16:31.0056] <luyahan>
+ * ```
+Thread 1 received signal SIGSEGV, Segmentation fault.
+JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+111       bool isAtomsZone() const { return kind_ == AtomsZone; }
+(gdb) bt
+#0  JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+#1  0x00000040023b7e40 in JSLinearString::newValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, chars=..., length=40, heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType-inl.h:283
+#2  0x00000040023b7da4 in js::NewStringCopyNDontDeflateNonStaticValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1674
+#3  0x00000040023b8316 in js::NewStringCopyNDontDeflate<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1694
+#4  0x00000040023b864a in js::NewStringCopyN<(js::AllowGC)1, unsigned char> (cx=0x4008030100, s=0x400801b600 "Can't open self-hosted stencil XDR file.", 
+    n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1733
+#5  0x00000040023ab402 in js::NewStringCopyUTF8N (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1807
+#6  0x0000004001d59530 in js::NewStringCopyUTF8Z (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.h:1541
+#7  0x00000040025af88a in JS_NewStringCopyUTF8Z (cx=0x4008030100, s=...) at /home/luyahan/source/gecko/js/src/jsapi.cpp:2985
+#8  0x00000040025b4f2c in JSErrorBase::newMessageString (this=0x40063bc850, cx=0x4008030100) at /home/luyahan/source/gecko/js/src/jsapi.cpp:3861
+#9  0x00000040025bca02 in js::ErrorToException (cx=0x4008030100, reportp=0x40063bc850, callback=0x40020783e0 <js::GetErrorMessage(void*, unsigned int)>, 
+    userRef=0x0) at /home/luyahan/source/gecko/js/src/jsexn.cpp:321
+#10 0x000000400207d584 in ReportError (cx=0x4008030100, reportp=0x40063bc850, callback=0x0, userRef=0x0)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:149
+#11 0x000000400207dbe8 in js::ReportErrorVA (cx=0x4008030100, isWarning=js::IsWarning::No, 
+    format=0x4000314c60 "Can't open self-hosted stencil XDR file.", argumentsType=js::ArgumentsAreUTF8, ap=0x40063bc900)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:553
+#12 0x00000040025b3dda in JS_ReportErrorUTF8 (cx=0x4008030100, format=0x4000314c60 "Can't open self-hosted stencil XDR file.")
+    at /home/luyahan/source/gecko/js/src/jsapi.cpp:3592
+#13 0x0000004001cf0c72 in WriteSelfHostedXDRFile (cx=0x4008030100, buffer=...) at /home/luyahan/source/gecko/js/src/shell/js.cpp:10972
+#14 0x0000004002338f08 in JSRuntime::initSelfHostingStencil (this=0x4008023000, cx=0x4008030100, xdrCache=..., 
+    xdrWriter=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/SelfHosting.cpp:2493
+#15 0x00000040020e3c04 in JS::InitSelfHostedCode (cx=0x4008030100, cache=..., 
+    writer=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/Initialization.cpp:220
+#16 0x0000004001cecf12 in main (argc=19, argv=0x40063bd3b8) at /home/luyahan/source/gecko/js/src/shell/js.cpp:11223
+```d
+
+[02:16:40.0446] <luyahan>
+ * ````
+Thread 1 received signal SIGSEGV, Segmentation fault.
+JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+111       bool isAtomsZone() const { return kind_ == AtomsZone; }
+(gdb) bt
+#0  JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+#1  0x00000040023b7e40 in JSLinearString::newValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, chars=..., length=40, heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType-inl.h:283
+#2  0x00000040023b7da4 in js::NewStringCopyNDontDeflateNonStaticValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1674
+#3  0x00000040023b8316 in js::NewStringCopyNDontDeflate<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1694
+#4  0x00000040023b864a in js::NewStringCopyN<(js::AllowGC)1, unsigned char> (cx=0x4008030100, s=0x400801b600 "Can't open self-hosted stencil XDR file.", 
+    n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1733
+#5  0x00000040023ab402 in js::NewStringCopyUTF8N (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1807
+#6  0x0000004001d59530 in js::NewStringCopyUTF8Z (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.h:1541
+#7  0x00000040025af88a in JS_NewStringCopyUTF8Z (cx=0x4008030100, s=...) at /home/luyahan/source/gecko/js/src/jsapi.cpp:2985
+#8  0x00000040025b4f2c in JSErrorBase::newMessageString (this=0x40063bc850, cx=0x4008030100) at /home/luyahan/source/gecko/js/src/jsapi.cpp:3861
+#9  0x00000040025bca02 in js::ErrorToException (cx=0x4008030100, reportp=0x40063bc850, callback=0x40020783e0 <js::GetErrorMessage(void*, unsigned int)>, 
+    userRef=0x0) at /home/luyahan/source/gecko/js/src/jsexn.cpp:321
+#10 0x000000400207d584 in ReportError (cx=0x4008030100, reportp=0x40063bc850, callback=0x0, userRef=0x0)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:149
+#11 0x000000400207dbe8 in js::ReportErrorVA (cx=0x4008030100, isWarning=js::IsWarning::No, 
+    format=0x4000314c60 "Can't open self-hosted stencil XDR file.", argumentsType=js::ArgumentsAreUTF8, ap=0x40063bc900)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:553
+#12 0x00000040025b3dda in JS_ReportErrorUTF8 (cx=0x4008030100, format=0x4000314c60 "Can't open self-hosted stencil XDR file.")
+    at /home/luyahan/source/gecko/js/src/jsapi.cpp:3592
+#13 0x0000004001cf0c72 in WriteSelfHostedXDRFile (cx=0x4008030100, buffer=...) at /home/luyahan/source/gecko/js/src/shell/js.cpp:10972
+#14 0x0000004002338f08 in JSRuntime::initSelfHostingStencil (this=0x4008023000, cx=0x4008030100, xdrCache=..., 
+    xdrWriter=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/SelfHosting.cpp:2493
+#15 0x00000040020e3c04 in JS::InitSelfHostedCode (cx=0x4008030100, cache=..., 
+    writer=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/Initialization.cpp:220
+#16 0x0000004001cecf12 in main (argc=19, argv=0x40063bd3b8) at /home/luyahan/source/gecko/js/src/shell/js.cpp:11223
+```
+```
+
+[02:17:31.0917] <luyahan>
+ * ````
+Thread 1 received signal SIGSEGV, Segmentation fault.
+JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+111       bool isAtomsZone() const { return kind_ == AtomsZone; }
+(gdb) bt
+#0  JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+#1  0x00000040023b7e40 in JSLinearString::newValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, chars=..., length=40, heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType-inl.h:283
+#2  0x00000040023b7da4 in js::NewStringCopyNDontDeflateNonStaticValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1674
+#3  0x00000040023b8316 in js::NewStringCopyNDontDeflate<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1694
+#4  0x00000040023b864a in js::NewStringCopyN<(js::AllowGC)1, unsigned char> (cx=0x4008030100, s=0x400801b600 "Can't open self-hosted stencil XDR file.", 
+    n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1733
+#5  0x00000040023ab402 in js::NewStringCopyUTF8N (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1807
+#6  0x0000004001d59530 in js::NewStringCopyUTF8Z (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.h:1541
+#7  0x00000040025af88a in JS_NewStringCopyUTF8Z (cx=0x4008030100, s=...) at /home/luyahan/source/gecko/js/src/jsapi.cpp:2985
+#8  0x00000040025b4f2c in JSErrorBase::newMessageString (this=0x40063bc850, cx=0x4008030100) at /home/luyahan/source/gecko/js/src/jsapi.cpp:3861
+#9  0x00000040025bca02 in js::ErrorToException (cx=0x4008030100, reportp=0x40063bc850, callback=0x40020783e0 <js::GetErrorMessage(void*, unsigned int)>, 
+    userRef=0x0) at /home/luyahan/source/gecko/js/src/jsexn.cpp:321
+#10 0x000000400207d584 in ReportError (cx=0x4008030100, reportp=0x40063bc850, callback=0x0, userRef=0x0)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:149
+#11 0x000000400207dbe8 in js::ReportErrorVA (cx=0x4008030100, isWarning=js::IsWarning::No, 
+    format=0x4000314c60 "Can't open self-hosted stencil XDR file.", argumentsType=js::ArgumentsAreUTF8, ap=0x40063bc900)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:553
+#12 0x00000040025b3dda in JS_ReportErrorUTF8 (cx=0x4008030100, format=0x4000314c60 "Can't open self-hosted stencil XDR file.")
+    at /home/luyahan/source/gecko/js/src/jsapi.cpp:3592
+#13 0x0000004001cf0c72 in WriteSelfHostedXDRFile (cx=0x4008030100, buffer=...) at /home/luyahan/source/gecko/js/src/shell/js.cpp:10972
+#14 0x0000004002338f08 in JSRuntime::initSelfHostingStencil (this=0x4008023000, cx=0x4008030100, xdrCache=..., 
+    xdrWriter=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/SelfHosting.cpp:2493
+#15 0x00000040020e3c04 in JS::InitSelfHostedCode (cx=0x4008030100, cache=..., 
+    writer=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/Initialization.cpp:220
+#16 0x0000004001cecf12 in main (argc=19, argv=0x40063bd3b8) at /home/luyahan/source/gecko/js/src/shell/js.cpp:11223
+```
+It segmentation fault here but I can't find any AutoAllocInAtomsZone in stack info.
+
+[02:17:41.0322] <luyahan>
+ * ````
+Thread 1 received signal SIGSEGV, Segmentation fault.
+JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+111       bool isAtomsZone() const { return kind_ == AtomsZone; }
+(gdb) bt
+#0  JS::shadow::Zone::isAtomsZone (this=0x0) at /home/luyahan/source/gecko/obj-opt-riscv64-unknown-linux-gnu/dist/include/js/shadow/Zone.h:111
+#1  0x00000040023b7e40 in JSLinearString::newValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, chars=..., length=40, heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType-inl.h:283
+#2  0x00000040023b7da4 in js::NewStringCopyNDontDeflateNonStaticValidLength<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1674
+#3  0x00000040023b8316 in js::NewStringCopyNDontDeflate<(js::AllowGC)1, unsigned char> (cx=0x4008030100, 
+    s=0x400801b600 "Can't open self-hosted stencil XDR file.", n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1694
+#4  0x00000040023b864a in js::NewStringCopyN<(js::AllowGC)1, unsigned char> (cx=0x4008030100, s=0x400801b600 "Can't open self-hosted stencil XDR file.", 
+    n=40, heap=js::gc::DefaultHeap) at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1733
+#5  0x00000040023ab402 in js::NewStringCopyUTF8N (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.cpp:1807
+#6  0x0000004001d59530 in js::NewStringCopyUTF8Z (cx=0x4008030100, utf8=..., heap=js::gc::DefaultHeap)
+    at /home/luyahan/source/gecko/js/src/vm/StringType.h:1541
+#7  0x00000040025af88a in JS_NewStringCopyUTF8Z (cx=0x4008030100, s=...) at /home/luyahan/source/gecko/js/src/jsapi.cpp:2985
+#8  0x00000040025b4f2c in JSErrorBase::newMessageString (this=0x40063bc850, cx=0x4008030100) at /home/luyahan/source/gecko/js/src/jsapi.cpp:3861
+#9  0x00000040025bca02 in js::ErrorToException (cx=0x4008030100, reportp=0x40063bc850, callback=0x40020783e0 <js::GetErrorMessage(void*, unsigned int)>, 
+    userRef=0x0) at /home/luyahan/source/gecko/js/src/jsexn.cpp:321
+#10 0x000000400207d584 in ReportError (cx=0x4008030100, reportp=0x40063bc850, callback=0x0, userRef=0x0)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:149
+#11 0x000000400207dbe8 in js::ReportErrorVA (cx=0x4008030100, isWarning=js::IsWarning::No, 
+    format=0x4000314c60 "Can't open self-hosted stencil XDR file.", argumentsType=js::ArgumentsAreUTF8, ap=0x40063bc900)
+    at /home/luyahan/source/gecko/js/src/vm/ErrorReporting.cpp:553
+#12 0x00000040025b3dda in JS_ReportErrorUTF8 (cx=0x4008030100, format=0x4000314c60 "Can't open self-hosted stencil XDR file.")
+    at /home/luyahan/source/gecko/js/src/jsapi.cpp:3592
+#13 0x0000004001cf0c72 in WriteSelfHostedXDRFile (cx=0x4008030100, buffer=...) at /home/luyahan/source/gecko/js/src/shell/js.cpp:10972
+#14 0x0000004002338f08 in JSRuntime::initSelfHostingStencil (this=0x4008023000, cx=0x4008030100, xdrCache=..., 
+    xdrWriter=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/SelfHosting.cpp:2493
+#15 0x00000040020e3c04 in JS::InitSelfHostedCode (cx=0x4008030100, cache=..., 
+    writer=0x4001cf0c04 <WriteSelfHostedXDRFile(JSContext*, mozilla::Span<unsigned char const, 18446744073709551615ul>)>)
+    at /home/luyahan/source/gecko/js/src/vm/Initialization.cpp:220
+#16 0x0000004001cecf12 in main (argc=19, argv=0x40063bd3b8) at /home/luyahan/source/gecko/js/src/shell/js.cpp:11223
+```
+````
+
+[02:17:43.0666] <luyahan>
+It segmentation fault here but I can't find any AutoAllocInAtomsZone in stack info.
+
+[02:21:53.0773] <jandem>
+the error is "Can't open self-hosted stencil XDR file."
+
+[02:22:19.0894] <jandem>
+it's possible the code is wrong but we just don't have test coverage for it
+
+[02:27:36.0113] <luyahan>
+ * ```
+(gdb) p selfHostedXDRPath
+$2 = 0x40063bd7d5 "/tmp/tmp9w62cfna/shell.xdr"
+```
+
+[02:28:45.0175] <luyahan>
+ * Was it produced when build js shell?
+
+[02:30:13.0560] <luyahan>
+ I find it pass  arg `--selfhosted-xdr-path /tmp/tmp9w62cfna/shell.xdr' to js shell
+
+[02:40:19.0997] <luyahan>
+>  I find it pass  arg `--selfhosted-xdr-path /tmp/tmp9w62cfna/shell.xdr' to js shell
+
+It can't open this file because don't have right to  /tmp/tmp9w62cfna
+
+[02:40:39.0168] <luyahan>
+After I mkdir mkdir , it pass
+
+[02:45:06.0855] <jandem>
+luyahan: can you file a bug? we should fix this
+
+
+2023-04-08
+[06:38:21.0359] <Redfire>
+Any way to add a finalisation hook for the ContextPrivate
+
+[08:34:08.0924] <sfink>
+> <@redfire75369:mozilla.org> Any way to add a finalisation hook for the ContextPrivate
+
+I'm not sure what that would mean. How is that different from calling something just before calling `JS_DestroyContext`?
+
+[16:46:05.0894] <Redfire>
+Somehow... I completely didn't think about that. That makes a lot more sense.
+
+
+2023-04-09
+[16:30:12.0651] <Redfire>
+If an object is rooted multiple times, it can only be GC'ed after all the roots are unrooted right?
+
+[16:34:49.0308] <arai>
+yes.  as long as the object is reachable from root, it doesn't get GCed
+
+
+2023-04-10
+[18:23:38.0873] <luyahan>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1827160 
+
+
+2023-04-11
+[19:06:35.0869] <Redfire>
+Is there any real difference between rooting directly on the stack and being traced on the heap? I guess mostly in the performance sense?
+
+[21:02:40.0421] <sfink>
+You generally don't have much of a choice between one or the other. If you're manipulating something, you have to root it. (Well, unless you stop using it before doing anything that could possibly GC.) It doesn't matter if you can prove it'll get traced on the heap, because it's not just about liveness: you need the thing you're working with to get updated if it gets moved.
+
+[21:03:12.0389] <sfink>
+but I don't know much about the Rust embedding. Things might appear to be different there, if some of it is getting managed under the hood?
+
+[05:42:30.0681] <liam_g>
+Is there any function like `JS::IsPlainObject(JSObject*)`? I.e. an object that doesn't belong to any other class.
+
+[05:43:08.0070] <liam_g>
+ * Is there any function like `JS::IsPlainObject(JSObject*)`? I.e. a function that identifies if an object doesn't belong to any other specialized class.
+
+[05:44:05.0621] <liam_g>
+Alternatively, I could do `JS::GetClass() == &ObjectClass`. But in that case, where would I find the `ObjectClass` variable?
+
+[07:21:53.0968] <jandem>
+liam_g: jsfriendapi.h has `js::ObjectClassPtr`, but adding `JS::IsPlainObject` would be better... There's also `JS::GetBuiltinClass`, but that can also return `ESClass::Object` for proxies
+
+[07:22:43.0842] <jandem>
+ * liam_g: jsfriendapi.h has `js::ObjectClassPtr`, but adding `JS::IsPlainObject` would be better... There's also `JS::GetBuiltinClass`, but that can also return `ESClass::Object` for proxies/wrappers
+
+[07:29:59.0292] <liam_g>
+Thanks jandem, `JS::GetClass(ob) == js::ObjectClassPtr` is working well.
+
+[08:24:34.0654] <Ms2ger>
+One wonders why you'd want to ask that question, though :)
+
+[08:26:42.0617] <liam_g>
+> <@ms2ger:igalia.com> One wonders why you'd want to ask that question, though :)
+
+I have several custom JSClasses, and I want to determine if a given object does not belong to any of them.
+
+[08:30:42.0593] <Ms2ger>
+`JS::GetClass(ob) == js::ObjectClassPtr` will return false for typed arrays, for example (if I'm reading this correctly) - is that what you intend?
+
+[08:53:57.0008] <sfink>
+it'll return false for regular arrays too
+
+[08:54:33.0725] <sfink>
+(and cross-compartment wrappers to plain objects)
+
+[08:56:39.0967] <sfink>
+I think `JS::GetBuiltinClass` would fix the latter
+
+[08:58:02.0046] <Ms2ger>
+Checking against your own classes explicitly seems more robust (though if you have CCWs, you'll need to think about what you want with those)
+
+[09:25:54.0588] <liam_g>
+> <@ms2ger:igalia.com> `JS::GetClass(ob) == js::ObjectClassPtr` will return false for typed arrays, for example (if I'm reading this correctly) - is that what you intend?
+
+Yup, that's what I intend.
+
+
+2023-04-12
+[08:55:16.0678] <liam_g>
+I'm calling JS::CallArgs.computeThis() on a proxy object. The proxy object has a BaseProxyHandler called CellProxy. ComputeThis() returns an object with class Proxy, and a prototype object of the CellProxy class. Is this expected behaviour?
+
+[08:57:18.0020] <liam_g>
+I was assuming I'd get an object of the CellProxy class itself. I'm not sure whether this was the wrong assumption, or whether I've done something wrong to be getting back an object of the Proxy class.
+
+[08:59:20.0165] <jandem>
+liam_g: I think `ComputeThis` will just return the `this` object, if you passed an object
+
+[09:00:08.0752] <jandem>
+ * liam_g: I think `ComputeThis` will just return the `this` object, if you passed an object. It's used to convert primitives to object
+
+[09:01:57.0318] <liam_g>
+In my case, the "this" object is a proxy.
+
+[09:03:04.0971] <jandem>
+yeah it will return that unchanged. What kind of behavior are you looking for? unwrapping the proxy?
+
+[09:06:03.0711] <liam_g>
+In this case, all i need to do is check if the object belongs to the right class. It's failing because it belongs to the Proxy class and not the CellProxy class, as i had expected. I can unwrap the object and then check, as you suggested. But since I'm in this situation, i was wondering if it means that I've gone wrong somewhere else.
+
+[09:06:16.0864] <liam_g>
+Sorry, this is probably a bit obscure 
+
+[09:15:12.0863] <jandem>
+liam_g: something like `IsProxy(obj) && GetProxyHandler(obj) == &CellProxy` maybe?
+
+[09:18:05.0086] <liam_g>
+Yes, i have a function that does exactly that, but it's failing on the object returned by ComputeThis. To make it work, i have to do GetPrototype() and the run the prototype through the same check.  Which seems weird.
+
+[09:19:05.0137] <sfink>
+`CellProxy` is a subclass of `JSObject`?
+
+[09:19:28.0598] <sfink>
+how is that object being created? (The `this` object, the `Proxy` with a `CellProxy` prototype)
+
+[09:20:24.0779] <sfink>
+oh, you already said `CellProxy is a `BaseProxyHandler`.
+
+[09:20:34.0360] <sfink>
+ * oh, you already said `CellProxy` is a `BaseProxyHandler`.
+
+[09:23:12.0941] <sfink>
+then I'm confused. Are `Proxy` and `CellProxy` your things? They're both `BaseProxyHandler` subclasses? What is the `this` object's JSClass?
+
+[09:29:14.0165] <liam_g>
+
+To create the proxy object, I'm doing this:
+
+`````
+    static const auto cellProxy = CellProxyObject();
+    auto ops = js::ProxyOptions();
+    ops.setClass(&cellClass);
+    const auto proxy = js::NewProxyObject(cx, &cellProxy, JS::RootedValue(cx), nullptr, ops);
+`````
+
+`CellProxyObject` derives from `js::BaseProxyHandler`.
+
+
+[09:31:02.0835] <liam_g>
+CellProxy /CellProxyObject are my things. (I think I've been equivocating them above). By "Proxy" i mean the native JS class called "Proxy"
+
+[09:32:16.0696] <sfink>
+I would suggest renaming your `CellProxyObject` to `CellProxyHandler`, since `*Object` things are usually `JSObject` subclasses. (Though the proxy/proxyhandler/... stuff always confuses me, so hopefully someone will chime in if I'm saying something stupid.)
+
+[09:33:14.0956] <liam_g>
+You're right. You don't even know the half of what I've named "object" !
+
+[09:36:19.0227] <sfink>
+that looks like it should be creating an object with the default prototype. But it seems like somehow you're ending up with a `ProxyObject` with its prototype set to the return value of `js::NewProxyObject` from your code above. I can never keep track of how proxy prototypes work, or I might have an idea of where that could be happening.
+
+[09:40:37.0539] <sfink>
+personally, I'd probably find the memory location for the proxy object's shape and watch that in rr to see where it's assigned (the shape stores the prototype). But there are probably better ways.
+
+[09:45:12.0469] <liam_g>
+I don't know this type of debugging. What is rr?
+
+[09:50:43.0379] <iain>
+liam_g: https://rr-project.org/
+
+[09:54:30.0925] <davidj361>
+If I want to use private slots on binding a function to JS I need to create a class that traces my custom memory like holding a std::function right? So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/deconstruct on the c++ stack variable falling off or the context closing?
+
+[09:54:56.0135] <davidj361>
+ * If I want to use private slots on binding a function to JS I need to create a class that traces my custom memory like holding a std::function right? So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/finalize/deconstruct on the c++ stack variable falling off or the context closing?
+
+[09:55:05.0331] <davidj361>
+ * If I want to use private slots on binding a function to JS I need to create a class that traces my custom memory like holding a std::function right? So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/finalize/deconstruct on the c++ stack variable falling off scope or the context closing?
+
+[09:55:27.0017] <davidj361>
+ * I want to use private slots on binding a function to JS I need to create a class that traces my custom memory like holding a std::function right? So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/finalize/deconstruct on the c++ stack variable falling off scope or the context closing?
+
+[09:55:35.0004] <davidj361>
+ * I want to use private slots on binding a function to JS and I need to create a class that traces my custom memory like holding a std::function right? So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/finalize/deconstruct on the c++ stack variable falling off scope or the context closing?
+
+[09:55:44.0782] <davidj361>
+ * I want to use private slots on binding a function to JS and I need to create a class that traces my custom memory like holding a std::function. So would I first root my class to the same context then `js::SetFunctionNativeReserved` on the rooted class instance? Will the function then own the class instance? Or will the the class instance trace/finalize/deconstruct on the c++ stack variable falling off scope or the context closing?
+
+[09:57:45.0730] <davidj361>
+> <@jonco:mozilla.org> davidj361: yeah so what I said above doesn't apply to functions; you'd need to make your own class with a finalizer to hold the native allocation, and put a pointer to that in the JSFunction
+
+I'm referencing this
+
+[10:03:03.0840] <sfink>
+liam_g: rr is probably overkill if you're just using it for this. It's also linux-only.
+
+[10:03:16.0938] <jonco>
+davidj361: trace/finalize happens on GC and is not related to stack variables going out of scope (Rooted ensures that if a GC happens while it is in scope then it is traced as a root)
+
+[10:04:43.0442] <jonco>
+davidj361: calling SetFunctionNativeReserved on a JS extended function object can be used to add a pointer to your custom class that holds whatever you like
+
+[10:05:01.0687] <jonco>
+your class will then live at least as long as the function object
+
+[10:05:24.0248] <davidj361>
+traced as a root?
+
+[10:06:31.0191] <davidj361>
+Do I basically have to define a class like [this](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/examples/cookbook.cpp#L705)? Haven't created a JS extended function class 
+
+[10:07:03.0041] <sfink>
+liam_g: where are you calling `computeThis` from? What makes you think the prototype is what has the `CellProxy` handler rather than the `this` object? (I'm asking because you said "...and a prototype object of the CellProxy class", but `CellProxy` is not a JSClass, so I'm not sure if you meant "...and a prototype object that is also a `ProxyObject` with a handler of `CellProxyObject`" or something else.
+
+[10:13:17.0764] <davidj361>
+ * Do I basically have to define a class like [this](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/examples/cookbook.cpp#L705)? Haven't created a custom class
+
+[10:13:41.0324] <jonco>
+davidj361: you should be able to use JS_NewObject to create your custom class, you don't need all that
+
+[10:14:11.0357] <jonco>
+ * davidj361: you should be able to use JS\_NewObject to create your custom class instance, you don't need all that
+
+[10:14:51.0451] <jonco>
+you'll need a JSClass
+
+[10:14:55.0522] <davidj361>
+Why the static here? `static JSClass myClass = {"MyClass", JSCLASS_HAS_RESERVED_SLOTS(2), nullptr};`
+
+[10:15:46.0560] <davidj361>
+where most of the cookbook code has things declared as static
+
+[10:15:57.0941] <davidj361>
+ * Most of the cookbook code has things declared as static, which I haven't understood why.
+
+[10:20:41.0484] <ptomato>
+just a habit, if it doesn't need to be used outside that file
+
+[10:21:53.0698] <jonco>
+^ yeah.  It probably should be const too.
+
+[10:26:14.0832] <liam_g>
+> <@sfink:mozilla.org> liam_g: where are you calling `computeThis` from? What makes you think the prototype is what has the `CellProxy` handler rather than the `this` object? (I'm asking because you said "...and a prototype object of the CellProxy class", but `CellProxy` is not a JSClass, so I'm not sure if you meant "...and a prototype object that is also a `ProxyObject` with a handler of `CellProxyObject`" or something else.
+
+You're right, I've been getting ProxyHandler and Classes all mixed up. The object has a prototype of CellClass, which is a JSClass, not a BaseProxyHandler.
+
+[10:27:34.0633] <liam_g>
+Give me a sec and I'll try to answer your question.
+
+[10:48:08.0883] <liam_g>
+So when I create and print the object like this:
+
+`const auto proxy = js::NewProxyObject(cx, &cellProxy, JS::RootedValue(cx), nullptr, ops);
+js::DumpObject(proxy);`
+
+I get this outout:
+
+`object 254824d4d040
+  global 254824d3f030 [StandardGlobal]
+  class 7ff759603fe8 cellClass
+    handler 7ff75936a268
+  shape 254824d4a380
+  flags: maybe_has_interesting_symbol not_native
+  proto null`
+
+
+[10:48:30.0502] <liam_g>
+Then from a JSNative function like this:
+
+`static bool someFunction(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+    const auto args = JS::CallArgsFromVp(argc, vp);
+    JS::RootedObject rOb(cx);
+    args.computeThis(cx, &rOb);
+    js::DumpObject(rOb);
+    return true;
+}`
+
+I get this output:
+
+`object 38ec0304d510
+  global 38ec0303f030 [StandardGlobal]
+  class 7ffe7b6552c0 Proxy
+    handler 7ff7a4e09fe0
+    private <Object at 102db4503f80>
+  shape 38ec0305b7e0
+  flags: maybe_has_interesting_symbol not_native
+  proto <cellClass object at 38ec0304d2e0>`
+
+
+[10:48:48.0446] <liam_g>
+ * Then from a JSNative function like this:
+
+`static bool someFunction(JSContext* cx, unsigned argc, JS::Value* vp){ const auto args = JS::CallArgsFromVp(argc, vp); JS::RootedObject rOb(cx); args.computeThis(cx, &rOb); js::DumpObject(rOb); return true; }`
+
+I get this output:
+
+`object 38ec0304d510 global 38ec0303f030 [StandardGlobal] class 7ffe7b6552c0 Proxy handler 7ff7a4e09fe0 private <Object at 102db4503f80> shape 38ec0305b7e0 flags: maybe_has_interesting_symbol not_native proto <cellClass object at 38ec0304d2e0>`
+
+[10:50:15.0139] <liam_g>
+ * Then from a JSNative function like this:
+
+`static bool someFunction(JSContext* cx, unsigned argc, JS::Value* vp)
+{ 
+   const auto args = JS::CallArgsFromVp(argc, vp); JS::RootedObject rOb(cx);      a    args.computeThis(cx, &rOb);
+   js::DumpObject(rOb);
+   return true;
+}`
+
+I get this output:
+
+`object 38ec0304d510
+global 38ec0303f030 [StandardGlobal]
+class 7ffe7b6552c0 Proxy
+handler 7ff7a4e09fe0
+private <Object at 102db4503f80>
+shape 38ec0305b7e0
+flags: maybe_has_interesting_symbol not_native
+proto <cellClass object at 38ec0304d2e0>`
+
+[11:21:28.0895] <davidj361>
+> <@jonco:mozilla.org> you'll need a JSClass
+
+Meaning I'll need `JSCLASS_HAS_RESERVED_SLOTS(1)` with `JS::SetReservedSlot`? Not sure how to make a finalizer and assign the dynamic memory via JSClass and JS_NewObject
+
+[11:24:29.0808] <davidj361>
+> <@jonco:mozilla.org> you'll need a JSClass
+
+ * Meaning I'll need `JSCLASS_HAS_RESERVED_SLOTS(1)` as a field to `JSClass` and use `JS::SetReservedSlot`? Not sure how to make a finalizer and assign the dynamic memory via JSClass and JS\_NewObject
+
+[11:29:31.0916] <davidj361>
+Or I need to create a function and link to it via JSClassOps?
+
+[11:30:05.0032] <davidj361>
+ * Or I need to create a function and link to it via JSClassOps? Where I manually deconstruct the ReservedSlot with the provided finalizer function?
+
+[11:30:14.0939] <davidj361>
+ * Or I need to create a function and link to it as a finalizer via JSClassOps? Where I manually deconstruct the ReservedSlot with the provided finalizer function?
+
+[11:30:21.0510] <davidj361>
+ * Or I need to create a function and link to it as a finalizer via a provided JSClassOps? Where I manually deconstruct the ReservedSlot with the provided finalizer function?
+
+[11:30:41.0597] <davidj361>
+Would it not be similar to this which you said I don't need to do? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/examples/cookbook.cpp#L705
+
+[12:04:54.0110] <davidj361>
+also why doesn't this complain about missing field initializers for spec, ext, and oOps?
+
+[12:04:56.0625] <davidj361>
+ * also why doesn't this complain about missing field initializers for spec, ext, and oOps? https://searchfox.org/mozilla-esr102/rev/e6968a2690c3ced63366d7f18b643392faa59c14/js/src/builtin/TestingFunctions.cpp#2978
+
+[12:05:09.0084] <davidj361>
+ * also why doesn't [this](https://searchfox.org/mozilla-esr102/rev/e6968a2690c3ced63366d7f18b643392faa59c14/js/src/builtin/TestingFunctions.cpp#2978) complain about missing field initializers for spec, ext, and oOps? 
+
+[12:10:36.0014] <davidj361>
+ * also why doesn't [this](https://searchfox.org/mozilla-esr102/rev/e6968a2690c3ced63366d7f18b643392faa59c14/js/src/builtin/TestingFunctions.cpp#2978) complain about missing field initializers for spec, ext, and oOps? I assume it's because of compiler options being different..
+
+[12:10:43.0565] <davidj361>
+ * also why doesn't [this](https://searchfox.org/mozilla-esr102/rev/e6968a2690c3ced63366d7f18b643392faa59c14/js/src/builtin/TestingFunctions.cpp#2978) complain about missing field initializers for spec, ext, and oOps? I assume it's because of compiler options being different
+
+[12:12:36.0784] <davidj361>
+ * also why doesn't [this](https://searchfox.org/mozilla-esr102/rev/e6968a2690c3ced63366d7f18b643392faa59c14/js/src/builtin/TestingFunctions.cpp#2978) complain about missing field initializers for spec, ext, and oOps? I assume it's because of compiler options being different like those warnings are disabled.
+
+[13:07:17.0575] <davidj361>
+Do I need to do something like this?
+```c++
+    JS::SetReservedSlot(obj, FUNC_SLOT, JS::PrivateValue(static_cast<void*>(new std::function<Ret(Args...)>(inFunc))));
+    js::SetFunctionNativeReserved(JS_GetFunctionObject(func), FUNC_SLOT, JS::ObjectValue(*obj));
+```
+
+[13:08:05.0639] <davidj361>
+Where you finalize after with this?
+```c++
+        std::function<Ret(Args...)>* func =
+            JS::GetMaybePtrFromReservedSlot<std::function<Ret(Args...)>>(obj, FUNC_SLOT);
+        delete func;
+```
+
+[14:40:25.0202] <sfink>
+using `FUNC_SLOT` for both seems a little sketchy. I would probably make a `FUNC_SLOT` and use it, exactly as you did, for the `JS::SetReservedSlot` call. Then I would have a `FUNC_HOLDER_SLOT` or `FINALIZER_OBJ_SLOT` or something for the `js::SetFunctionNativeReserved` call, even if they both happen to be zero.
+
+[14:40:42.0748] <sfink>
+(I would also be tempted to use `auto* func = ...` because you've already spelled out the messy type once, but that's debatable.)
+
+[14:46:18.0322] <sfink>
+hm, actually you don't know whether the `js::SetFunctionNativeReserved` maps directly to a slot offset, so maybe it's better not to use `_SLOT` in the name. The parameter is called `which`. `FUNC_HOLDER_RESERVED`? Bleh, I don't know what to call it. You could be forgiven for just using the constant `0`. Then again, I notice that our code uses a mixture of `something_SLOT` and `SLOT_something`, so... meh, call it whatever you want, but using the same `FUNC_SLOT` for both is deceptive.
+
+
+2023-04-13
+[06:31:56.0123] <davidj361>
+Not sure why line 35 segfaults https://godbolt.org/z/jjcYbxez1
+
+[06:34:56.0252] <davidj361>
+ * Not sure why line 35 segfaults https://godbolt.org/z/r4dG11P8h
+
+
+2023-04-14
+[11:55:26.0621] <mstange>
+sfink: What does TenuredChunk::emplace do? Are we poisoning freshly-allocated memory?
+
+[11:55:35.0500] <mstange>
+I would have expected poisoning to happen on free
+
+[11:56:29.0275] <sfink>
+not necessarily freshly-allocated. We might be recycling a nursery chunk as a tenured chunk, for example.
+
+[11:56:59.0693] <sfink>
+there is a different poison pattern written on free, so you can distinguish between UAF and using uninitialized memory
+
+[12:00:41.0762] <mstange>
+ah, ok that makes some sense
+
+[12:03:13.0370] <mstange>
+sfink: jrmuizel and I are trying to understand what happens when we get a new TenuredChunk. We mmap 1MB, it is currently decommitted. Then we poisen it (which commits the contents), and then we decommit it again. Then later when we allocate things into the chunk, we pagefault which recommits the accessed page. Does that sound right?
+
+[12:05:59.0720] <sfink>
+I don't think that intiial poisoning happens in a regular build, [only in debug and nightly builds with an env var set](https://searchfox.org/mozilla-central/rev/7939a5150dcd96915bccf1c819433ad489a5edc9/js/src/util/Poison.h#191-193).
+
+[12:08:41.0807] <mstange>
+oh, great!
+
+[12:08:59.0760] <mstange>
+ok, I think our initial hypothesis was bad, we're doing more research
+
+[12:09:08.0346] <mstange>
+(we're trying to figure out why we have a lot more pagefaults than V8)
+
+[12:44:03.0014] <denispal>
+> <@mstange:mozilla.org> (we're trying to figure out why we have a lot more pagefaults than V8)
+
+Could it be related to the pointer compression difference we saw with L3 misses? 
+
+[12:47:39.0222] <mstange>
+denispal: we're running V8 with pointer compression turned off, and their pagewalks are still 60% of ours
+
+[12:47:50.0856] <mstange>
+ * denispal: we're running V8 with pointer compression turned off, and their pagefaults are still 60% of ours
+
+[12:48:08.0167] <denispal>
+ah gotcha
+
+[16:21:49.0039] <sfink>
+Wasn't someone talking about how to generate PGO builds locally? Sadly, I think I may have [need](https://bugzilla.mozilla.org/show_bug.cgi?id=1827072#c9) for such a thing, and I don't remember where it was discussed. tcampbell probably?
+
+[16:23:32.0142] <tcampbell>
+sfink: https://bugzilla.mozilla.org/show_bug.cgi?id=1808583
+
+[16:24:38.0216] <tcampbell>
+You can download the PGO file from CI too if you need an more precise match.
+
+[16:25:39.0775] <tcampbell>
+(the PGO data is basically just a code coverage database, so I don't expect wild differences, although thread timing certainly could have different code executed)
+
+[16:29:52.0231] <sfink>
+seems to be doing... something
+
+[16:30:19.0736] <sfink>
+and this isn't for perf, this is for a stupid linker error, so *hopefully* the profdata doesn't matter.
+
+[16:30:35.0650] <tcampbell>
+Artifacts tab of a Bpgo(run) job has it
+
+[16:31:11.0979] <sfink>
+it's whining a lot about "function control flow change detected (hash mismatched)". Hopefully that's ignorable.
+
+[16:31:21.0109] <tcampbell>
+Also close enough is good enough for the database so you don't need a perfect match
+
+[16:31:25.0130] <sfink>
+I suppose I could be using profdata that's closer to what it ran into.
+
+[16:31:40.0301] <tcampbell>
+Also saves time 
+
+[16:33:30.0198] <sfink>
+but thank you! This does seem to be doing more or less the right thing.
+
+[16:35:37.0725] <sfink>
+uh oh. Crashed llvm in a weird way. Maybe I shouldn't have unpacked newer profdata in the middle of a run...
+
+[16:41:04.0461] <sfink>
+PSA: You know how you're always running a build, getting 50 screens of error messages, scrolling back and giving up in disgust when you have to scroll too far to see the beginning stuff, so you rerun the build again? Or maybe you rerun it but pipe the output through less, which gets you the errors but loses the colors. `mach show-log` is great for that. I now alternate `mach build` with `mach show-log` when I'm in the masses-of-errors phase of development.
+
+[16:41:37.0537] <sfink>
+\o/ linker error reproduced!
+
+
+2023-04-15
+[18:17:28.0354] <tcampbell>
+> <@sfink:mozilla.org> it's whining a lot about "function control flow change detected (hash mismatched)". Hopefully that's ignorable.
+
+Yes, that can be ignored. Chrome builds just disable the warning entirely in order to avoid making eye contact with the abyss
+
+
+2023-04-17
+[09:58:05.0985] <kfjvj>
+Does anyone know how to force the GC to run?
+
+[10:01:34.0731] <nbp>
+there is a `gc()` function in the shell. It might also be available in Firefox chrome code.
+https://searchfox.org/mozilla-central/source/js/src/builtin/TestingFunctions.cpp#8304
+
+[10:09:59.0351] <padenot>
+it's exposed in `Component.util.forceGC()`
+
+[10:11:08.0495] <padenot>
+there's a bunch of other functions depending
+
+[10:13:00.0914] <mccr8>
+Yeah it depends on what kind of test you are writing. `SpecialPowers.forceGC()` will work in plain mochitests.
+
+[10:19:16.0290] <iain>
+kfjvj: The embedder-exposed GC code is [here](https://searchfox.org/mozilla-central/source/js/public/GCAPI.h). In particular, if you just want a GC and aren't worried about making it incremental, [these](https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#713,743-744) look promising.
+
+[10:24:59.0600] <kfjvj>
+I'm trying to test finalizers, and I'm getting weird behaviour.
+
+```
+JS_GC(ctx); // This call causes segfault
+JS::PrepareForFullGC(ctx); // This call does not
+```
+
+[10:27:03.0189] <iain>
+kfjvj: Without digging too deeply into the implementation, it looks to me like `PrepareForFullGC` schedules all zones to be collected, but does not actually trigger a GC. You need something like `NonIncrementalGC` to actually force a GC.
+
+[10:28:08.0615] <iain>
+But also: `JS_GC` looks like an easier way of triggering a GC than the links I provided. If it's segfaulting with finalizers, something is probably going wrong during the GC.
+
+[10:36:07.0961] <dug>
+> <@kfjvj:mozilla.org> I'm trying to test finalizers, and I'm getting weird behaviour.
+> 
+> ```
+> JS_GC(ctx); // This call causes segfault
+> JS::PrepareForFullGC(ctx); // This call does not
+> ```
+
+JS_GC(runtime) (SM 24) has been working for me. JS_GC Segfaults can be because of other rooting or JSAPI mistakes, I found out, so in my C++ I put JS_GC() after each/every JSAPI call in my app to pinpoint where my JSAPI calls start to go wrong -- a debugging tool.
+
+[10:42:34.0704] <ptomato>
+dug: there is an environment variable that does this automatically for you! (well, not _exactly_ this, but it does a GC after every memory allocation): `JS_GC_ZEAL=2,1`
+
+[12:00:36.0095] <davidj361>
+> <@davidj361:matrix.org> Not sure why line 35 segfaults https://godbolt.org/z/r4dG11P8h
+
+I found the issue, JSClass needed to be `static`
+
+[16:11:03.0543] <Kelsey (jgilbert)>
+does https://github.com/tc39/proposal-type-annotations have any momentum?
+
+[16:11:09.0600] <Kelsey (jgilbert)>
+seems like no?
+
+[16:16:46.0344] <iain>
+Kelsey (jgilbert): IIRC it was discussed at one of the last few meetings, without making forward progress. There are some concerns about how valuable it really is to make some (but not all) typescript code parse as JS.
+
+[16:17:14.0428] <Kelsey (jgilbert)>
+it has my vote for "strong yes", fwiw :)
+
+[16:18:05.0324] <Kelsey (jgilbert)>
+/me is having to vendor some typescript example tests into the tree for CI right now, and they *barely* use TS, but I still need to do the whole song and dance and get pretty mangled output html/js
+
+[16:19:01.0696] <Kelsey (jgilbert)>
+obviously it's more complicated than the explainer overview gist, but coming from python, I really miss the lint-only annotations
+
+[16:21:13.0356] <iain>
+Kelsey (jgilbert): Here are the notes, fwiw: https://github.com/tc39/notes/blob/main/meetings/2023-03/mar-22.md#type-annotations-proposal-update
+
+[16:21:22.0094] <Kelsey (jgilbert)>
+thanks!
+
+[16:22:22.0130] <iain>
+Also here: https://github.com/tc39/notes/blob/main/meetings/2023-03/mar-22.md#type-annotations-delimiting-concerns
+
+[16:23:38.0230] <iain>
+Which summarized is basically "there's a lot of syntax in them thar types"
+
+[16:26:34.0836] <Kelsey (jgilbert)>
+it's certainly harder when trying to serve a bunch of existing grammars
+
+[16:31:10.0138] <iain>
+Roughly speaking, the big problem with the proposal is that the engine can't make any use of the type annotations, so they're pure overhead that we want to parse as quickly as possible. The best way to do that is to wrap the type in some sort of delimiter so that the parser can skip past it without caring what's inside, but then you've just introduced a new syntax that isn't TypeScript, so it's not actually helping anybody run their TypeScript code
+
+[16:32:25.0989] <iain>
+But if you don't have delimiters, then the engine needs to parse the union of several different type systems, some of which are under active development
+
+[16:33:00.0701] <iain>
+ * Roughly speaking, the big problem with the proposal is that the engine can't make any use of the type annotations (because there's no guarantee that they're trustworthy), so they're pure overhead that we have to parse as quickly as possible. The best way to do that is to wrap the type in some sort of delimiter so that the parser can skip past it without caring what's inside, but then you've just introduced a new syntax that isn't TypeScript, so it's not actually helping anybody run their TypeScript code
+
+[16:34:00.0583] <iain>
+I suspect it falls into the category of "nice sounding idea that doesn't actually work in practice", but we'll see how it plays out
+
+
+2023-04-18
+[06:06:11.0187] <liam_g>
+What debugging techniques do the pros use for debugging Spidermonkey code? Right now, all i really know how to do is us the js::dump functions, and step into Spidermonkey code. But this is cumbersome, and I'm wondering if there are better techniques. I'm especially interested in seeing object trees, seeing where objects are updated, etc. Are there any tools for this?
+
+[06:06:45.0728] <liam_g>
+Please note that I'm talking about debugging Spidermonkey C++ code, not debugging Javascript that runs on Spidermonkey.
+
+[06:36:06.0170] <jandem>
+I think you already heard about `rr`, but it's pretty useful. For example, to see where a property got added/removed, set a watch point on the object's first word (the shape), then run backwards
+
+[06:37:09.0532] <jandem>
+ * I think you already heard about `rr`, but it's pretty useful. For example, to see where a property got added/removed, set a watch point on the object's first word (the shape), then `reverse-continue`
+
+[06:56:57.0060] <liam_g>
+I'm looking into rr. Good to know that it's the standard. What exactly is meant by an object's shape?
+
+[06:57:55.0054] <liam_g>
+Ok, i just googled it...
+
+[07:13:09.0458] <jandem>
+it describes the object's structure. For non-proxy objects the list of properties, so when this changes the object gets a new shape
+
+[07:13:25.0187] <jandem>
+ * it describes the object's structure. For non-proxy objects this includes the list of properties, so when this changes the object gets a new shape
+
+[12:14:27.0494] <dminor>
+Why do we do this? https://searchfox.org/mozilla-central/source/js/src/frontend/ObjectEmitter.cpp#105-114
+
+[12:19:36.0421] <sfink>
+not my area and I really have no idea, but it looks like dup2+pop is 2 bytes while DupAt is 3?
+
+[12:21:35.0057] <sfink>
+hm, or is that 4?
+
+[12:32:05.0014] <iain>
+I would expect that the dispatch overhead of an extra op is more important than saving a couple of bytes of bytecode
+
+[12:34:57.0950] <dminor>
+Is this changing the stack? It looks like we dup something and then pop it immediately, what am I missing?
+
+[12:38:57.0328] <iain>
+We dup the top two values, and then pop the top one, which is the same as duping the second value from the top
+
+[12:40:09.0235] <dminor>
+Oh I now I see it, thanks!
+
+[12:41:56.0837] <dminor>
+I was reading Dup2 as a specialization of DupAt
+
+[14:04:27.0410] <dug>
+JSAPI in game engine > CompileScript on one loop, ExecuteScript on next loop > ExecuteScript bombs. If I recompile on every loop, execute runs. Hypothesis: I'm not saving the compiled JSScript* properly, and it gets GC'd.  I've tried saving bare pointer, and Heap<JSScript*>:
+
+[14:07:35.0320] <dug>
+> <@dug:mozilla.org> JSAPI in game engine > CompileScript on one loop, ExecuteScript on next loop > ExecuteScript bombs. If I recompile on every loop, execute runs. Hypothesis: I'm not saving the compiled JSScript* properly, and it gets GC'd.  I've tried saving bare pointer, and Heap<JSScript*>:
+
+Q. how to keep JSScript* from garbage collection between calls in a big game engine loop?
+
+[16:08:06.0982] <ptomato>
+is the `Heap<JSScript*>` traced?
+
+
+2023-04-19
+[09:07:54.0479] <dug>
+> <@pchimento:igalia.com> is the `Heap<JSScript*>` traced?
+
+No. I'll try that - thanks for suggestion.
+
+[09:18:29.0298] <mgaudet>
+dug: I'd definitely read through https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/next/docs/GC%20Rooting%20Guide.md 
+
+[09:28:18.0015] <davidj361>
+When you use `JS_AddWeakPointerZonesCallback(JSContext* cx, JSWeakPointerZonesCallback cb, void* data);`, is `data` meant to be the thing you want to `delete` inside the callback?
+
+[09:31:13.0473] <iain>
+davidj361: No. It's a pointer you want to have access to inside the callback. For example, in the Gecko embedding, the XPCJSRuntime passes a pointer to itself: https://searchfox.org/mozilla-central/source/js/xpconnect/src/XPCJSRuntime.cpp#2884
+
+[09:38:17.0699] <iain>
+(In general, if you want to figure out how to use something, looking at how it's used in Gecko is probably a good place to start)
+
+
+2023-04-20
+[05:07:18.0025] <pbone>
+Hi SpiderMonkey folks.  the JS GC limits memory addresses to that the 17 (I think) higher order bits are clear and then the addresses are suitable for NaN-boxing.  I noticed that jemalloc is also doing this, is that actually used?  Are jemalloc pointers ever NaN-boxed?
+
+[05:27:57.0540] <tcampbell>
+pbone: Jemalloc pointers occasionally get stored as `PrivateValue` which currently using a restriction of top 16 bits must be clear https://searchfox.org/mozilla-central/rev/31f5847a4494b3646edabbdd7ea39cb88509afe2/js/public/Value.h#336-340 I believe we could trivially relax that to only top 1-bit being clear
+
+[05:31:22.0089] <pbone>
+Okay. So there's some special code in jemalloc to help ensure this (top 17 bits though).  I was looking at PHC and PHC has no such guantee,  So if by chance SpiderMonkey tried to box a PHC pointer I was concerned.  But I don't see a problem given that most/all OSs keep those bits clear.  AFAIK Intel CPUs only just started having 56 bit pointers?
+
+[05:37:03.0526] <l11d>
+newer CPUs support 57 bits. on ubuntu [vdso] might get mapped to an address larger than 47 bits (my machine maps it at `0x8000001c9000`). but a normal mmap call won't give you addresses >47 bits unless specifically requested (see https://www.kernel.org/doc/html/v5.2/x86/x86_64/5level-paging.html#user-space-and-large-virtual-address-space) so this might not be an issue for PHC
+
+[05:41:55.0971] <tcampbell>
+The GC allocations do have the restriction of 47-bits. 
+
+[05:43:32.0525] <tcampbell>
+We used to allow 64-bit PrivateValues and required their _low_ bit to be 0, but that caused sadness for embeders and Tor builds, so got rid of the weird bit shifts and changed restriction to be _high_ 16 bits must be zero
+
+[05:45:07.0360] <tcampbell>
+I think using high 16-bits for just the minimal high 1-bit was a restriction that Iain and I arbitrarily chose to avoid having to reverse it in the future if decided we wanted the bits back.
+
+[05:52:51.0720] <l11d>
+if the ARM security mitigation memory tagging (finally) gets shipped: this would require address bits 56-59 for storing the tag
+
+[05:55:34.0629] <l11d>
+with "finally" I meant the lack of hardware availability
+
+[06:02:13.0082] <pbone>
+Okay cool.
+
+[06:02:26.0309] <pbone>
+Thanks tcampbell l11d 
+
+[06:38:20.0628] <davidj361>
+Can you use a `WeakPointerAfterGC` callback to delete multiple specific data from the same context?
+
+[06:38:57.0159] <davidj361>
+e.g. `JS_AddWeakPointerZonesCallback(cx, autoDeleteCbk<T>, new HeapDataWrapper(obj, data, cx));`
+
+[06:39:41.0413] <davidj361>
+If so, how could you delete the right callback inside afterward? `JS_RemoveWeakPointerZonesCallback(wrapper->cx, autoDeleteCbk<T>);`
+
+[06:39:54.0345] <davidj361>
+ * If so, how could you delete the right callback inside the callback afterward? `JS_RemoveWeakPointerZonesCallback(wrapper->cx, autoDeleteCbk<T>);`
+
+[07:12:50.0948] <jonco>
+davidj361: the idea is to set one callback and have that do all the work
+
+[07:13:59.0117] <davidj361>
+Thank you
+
+[08:36:17.0191] <nbp>
+ok, i do not get it … I added 4 fields to one of the cache IR stubs, fields which are simply unused, and some how the jit stack alignment is no longer respected.
+I would have expected the stubs to never be on the stack, and as such I do not understand why this would change anything.
+
+[08:39:36.0230] <nbp>
+I am not directly changing any of the assembly.
+
+[08:39:47.0921] <nbp>
+iain: Any idea what might be going on?
+
+[08:42:49.0295] <iain>
+nbp: You are correct that the stubs shouldn't ever be on the stack
+
+[08:43:39.0836] <iain>
+The only thing I can think of is that somewhere stub code is reading the wrong data
+
+[08:44:12.0265] <iain>
+Bear in mind that the stub fields are stored in memory immediately following the IC stub
+
+[08:44:35.0613] <iain>
+If you put your patch up somewhere I can take a look
+
+[08:45:45.0527] <nbp>
+I will try a debug build first, and fallback on submitting a draft.
+
+[10:56:37.0074] <guybedford>
+@allstarschh: not sure if this is the right venue, but was just trying out worker modules in Firefox, and noticed that I can't get a simple test case of `import()` working in a script worker with `dom.workers.modules.enabled`. The case works in Chrome and Safari, would be great to see in Firefox as it would unlock a bunch of stuff..... https://gist.github.com/guybedford/326cd23f5fdb79eefdc6e9dae9cc24c8
+
+[12:47:45.0633] <sfink>
+guybedford: right venue, wrong timezone. He's in Germany. But your example seems to work.
+
+[12:48:03.0649] <sfink>
+the only problem is that `console.log(x)` where `x` is a `Module` object doesn't log anything.
+
+[12:48:13.0237] <sfink>
+try `console.log(x.dep)` instead.
+
+[12:55:36.0569] <guybedford>
+sfink: interesting, yes I can confirm that works! very excited to finally have this support.
+
+[12:56:15.0135] <guybedford>
+weird that the logging doesn't work on its own for the ModuleNamespace object
+
+[12:56:22.0736] <guybedford>
+I guess there's a reason the feature is still flagged?
+
+[12:57:25.0465] <sfink>
+I don't know the details. There's probably some other stuff that people want to land together, so that partial support is not exposed? I couldn't find the bug for it in a quick search. What's the feature flag?
+
+[12:57:37.0503] <sfink>
+(config setting, I assume?)
+
+[12:57:41.0080] <sfink>
+oh.
+
+[12:57:43.0481] <sfink>
+you said it already
+
+[12:59:12.0749] <sfink>
+bug 1812628 doesn't explain
+
+[12:59:13.0787] <botzilla>
+https://bugzil.la/1812628 — RESOLVED (yulia) — Introduce flag for worker modules
+
+[13:00:20.0750] <sfink>
+maybe bug 1247687 (or rather, its dependencies) is the one to follow?
+
+[13:00:21.0983] <botzilla>
+https://bugzil.la/1247687 — RESOLVED (yulia) — Implement worker modules
+
+[13:00:29.0773] <sfink>
+you may have to wait for someone with a clue to answer
+
+[13:05:33.0281] <@allstarschh>
+> <@guybedford:matrix.org> I guess there's a reason the feature is still flagged?
+
+guybedford: it will be enabled in https://bugzilla.mozilla.org/show_bug.cgi?id=1812591, hopefully we will enable it in this release, 🤞
+
+[13:08:27.0362] <guybedford>
+right, gotcha amazing to see!
+
+[13:12:02.0283] <dug>
+Where can I download spidermonkey 102 lib already built for windows x64 debug and release?
+
+[14:12:32.0126] <sfink>
+dug: we don't create or release those, and I don't know of any third party that does either. (Various linux distros build & release mozjs, but I don't know of anyone doing that for Windows.)
+
+[14:27:36.0632] <denispal>
+Is there a quick way to check if a script is chrome:// or resource:// without checking the filename?
+
+[15:03:15.0201] <Redfire>
+If you follow the instructions here, you just get a dll right? https://firefox-source-docs.mozilla.org/js/build.html
+
+
+2023-04-21
+[02:06:41.0030] <jonco>
+guybedford: we're giving worker modules a little time for the fuzzers to find bugs, and will hopefully release this soon
+
+[08:47:01.0344] <jrmuizel>
+what's going on in Ion here for this:
+```js
+function Ic(a){return a.toString()}
+```
+https://share.firefox.dev/41NeFSx
+
+[08:47:27.0785] <jrmuizel>
+compare with V8: https://share.firefox.dev/3oz36A7
+
+[08:47:35.0111] <jrmuizel>
+V8 is doing what I'd expect for that code
+
+[09:38:33.0900] <iain>
+jrmuizel: I suspect that `a` in this case can be a variety of different functions, which causes us to generate a CallGeneric node. If the target of the CallGeneric turns out to be a native function (implemented in C++), then we [call InvokeFunction to handle it](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#5558-5564). We can probably do better here.
+
+[09:40:01.0884] <iain>
+Can you file a bug?
+
+[10:35:48.0710] <nbp>
+iain: revertting my changes and running the test suite highlight the same issue about the frame size not being optimal.
+
+[10:36:03.0303] <nbp>
+so, at least there is no weird causality.
+
+[10:36:24.0511] <iain>
+Frame size not being optimal? Or stack alignment being wrong?
+
+[10:37:22.0750] <nbp>
+https://searchfox.org/mozilla-central/source/js/src/jit/JitFrames.cpp#2515-2516
+
+[10:38:12.0487] <nbp>
+While running the `ion/stack-alignment.js` and calling the testing function under a Baseline Cache IR.
+
+[10:38:24.0720] <nbp>
+for call function, with a function which has no argument.
+
+[10:46:27.0658] <iain>
+What's your testcase?
+
+[10:46:40.0145] <iain>
+ * nbp: What's your testcase?
+
+[10:48:46.0339] <nbp>
+jit-test/tests/ion/stack-alignment.js with either `--baseline-eager` or `--more-compartments --ion-offthread-compile=off --ion-eager`.
+
+[10:50:27.0239] <iain>
+That test passes for me locally, and I think we test both those variations in CI
+
+[10:50:53.0754] <nbp>
+I will try to rebase next week, and in the mean time ignore it.
+
+[12:10:22.0324] <jrmuizel>
+> <@iain:mozilla.org> jrmuizel: I suspect that `a` in this case can be a variety of different functions, which causes us to generate a CallGeneric node. If the target of the CallGeneric turns out to be a native function (implemented in C++), then we [call InvokeFunction to handle it](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#5558-5564). We can probably do better here.
+
+I filed https://bugzilla.mozilla.org/show_bug.cgi?id=1829411
+
+[12:30:19.0847] <iain>
+jrmuizel: Sweet, thanks
+
+[13:16:14.0928] <dug>
+How build mozjs on windows? I can build firefox and run it using instructions for that. But trying to follow instructions for building just js, I get lost. I can do the configure part. But when I say make, it says not found. If I say sudo apt-get install autotools it says command not found. If I say hg install make it says command not found. I'm in some kind of shell -I think its mozilla-build shell with the $ prompt. How do I get autotools or make?
+
+[13:46:05.0648] <evilpie>
+TIL Qt has it's own JS engine with a baseline jit
+
+[13:46:16.0303] <evilpie>
+ * TIL Qt has its own JS engine with a baseline jit
+
+[14:00:18.0345] <mgaudet>
+I haven't built on Windows in years, but I'd look here: https://firefox-source-docs.mozilla.org/setup/windows_build.html 
+
+[14:00:22.0562] <jrmuizel>
+what's it called?
+
+[14:03:45.0414] <dug>
+> <@mgaudet:mozilla.org> I haven't built on Windows in years, but I'd look here: https://firefox-source-docs.mozilla.org/setup/windows_build.html
+
+Yes thank, and that's how I built firefox and ran it. But the instructions for building embeddable mozjs are different and only linux commands. and I get through the configure statement but there's no make. $make Bash:Make:no command found
+
+[14:05:02.0431] <dug>
+> <@dug:mozilla.org> Yes thank, and that's how I built firefox and ran it. But the instructions for building embeddable mozjs are different and only linux commands. and I get through the configure statement but there's no make. $make Bash:Make:no command found
+
+Here's the link to the embeddable build instructions I was following https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/Building%20SpiderMonkey.md
+
+[14:05:53.0534] <evilpie>
+I am not sure if it has a name: https://github.com/qt/qtdeclarative/tree/15ec024152a1d1d99a4934f7b2408e7af7b2552a/src/qml
+
+[15:14:51.0516] <tcampbell>
+You might be better off following https://firefox-source-docs.mozilla.org/js/build.html
+
+[15:15:26.0961] <tcampbell>
+Instead of using `configure` direction, you would set up the `mozconfig` file with the options and then use `mach build`.
+
+[15:16:46.0798] <tcampbell>
+The 'ac_add_options' lines of the mozconfig correspond to configure options in the guide you followed. For example, you may want to still add `ac_add_options --disable-jemalloc` to simplify your life if you are going to be linking mozjs from your own projects
+
+[15:17:46.0498] <tcampbell>
+Although if you are already getting the configure to work on windows, you might just need to use `mozmake.exe` instead of `make`
+
+[15:19:18.0236] <tcampbell>
+ * Although if you are already getting the configure to work on windows, you might just need to use `mozmake.exe` instead of `make`. I think in the Windows mozbuild environment we provided our own version of make called `mozmake.exe` for historical reasons.  The `configure` path is certainly deprecated and people in this channel will be more familiar with using a `mozconfig` file and running `./mach build`
+
+[16:04:52.0157] <dug>
+> <@tcampbell:mozilla.org> You might be better off following https://firefox-source-docs.mozilla.org/js/build.html
+
+Thanks very much for the suggestions, I did see mozmake.exe in .mozbuild folder I'll give that moz- approach a try.
+
+
+2023-04-22
+[07:02:31.0700] <dug>
+didn't work. 
+
+
+2023-04-24
+[21:45:39.0303] <arai>
+any opinion for bug 1515318, which causes bug 1825938 ?  I'm thinking about tweaking the `'-'` handling.  was there any other attempt like that before?
+
+[21:45:41.0291] <botzilla>
+https://bugzil.la/1515318 — UNCONFIRMED (nobody) — Parsing dd-MMM-yyyy date notation produces negative value
+
+[21:45:41.0682] <botzilla>
+https://bugzil.la/1825938 — NEW (nobody) — can't reserve a seat on a JAL flight
+
+[01:51:23.0480] <evilpie>
+arai: A few months ago I worked on something similar: https://paste.mozilla.org/JdRQ08S7. I am not sure how well this was working, but my idea was to only allow a very narrow format, as not to change behavior.
+
+[01:52:48.0416] <arai>
+thanks! I'll look into it
+
+[01:53:45.0958] <jandem>
+I think it'd make sense to quickly go through the bugs blocking bug 1274354 to see if you can find similar patterns there
+
+[01:53:47.0050] <botzilla>
+https://bugzil.la/1274354 — NEW (nobody) — [meta] Date.parse, amirite
+
+[01:54:22.0218] <arai>
+okay, thanks!
+
+[01:55:49.0339] <evilpie>
+Right. I think I was trying to support `01-Apr-12`, but I am not sure why that one specifically.
+
+[02:57:48.0402] <arai>
+yeah, adding explicit syntax for limited cases sounds better.  possibly with allowing hour etc after that
+
+[03:17:25.0746] <Ms2ger>
+/me shakes fist at Date.parse
+
+[04:34:37.0380] <arai>
+evilpie: I'll post a patch based on your patch above
+
+[05:29:56.0179] <jandem>
+do the stack traces we print for c++ assertion failures in the JS shell work for people? I get "???" for most frames
+
+[05:30:08.0104] <jandem>
+ * do the stack traces we print for c++ assertion failures in the JS shell work for people? I always get "???" for most frames
+
+[05:44:14.0560] <jonco>
+jandem: it works on MacOS, or at least it used to
+
+[05:45:38.0462] <jonco>
+it uses the same system as Firefox so I presume reason this isn't working is something to do with the way the shell is built
+
+[05:47:08.0700] <evilpie>
+Might also depend on how you run the shell? I think we have this fix_stack script that automatically fixes up the stdout crash logs
+
+[05:47:38.0690] <evilpie>
+ * Might also depend on how you run the shell? I think we have this `fix\_stacks.py` script that automatically fixes up the stdout crash logs
+
+[05:48:53.0148] <evilpie>
+ * Might also depend on how you run the shell? I think we have this `fix_stacks.py` script that automatically fixes up the stdout crash logs
+
+[06:01:30.0451] <jandem>
+this is on linux64 with or without `mach run`. It's possible I'm missing a configure option for better debug information or something
+
+[06:50:07.0829] <tcampbell>
+I have the same issue. I think I just adapted my habits to run GDB instead of trying to understand why..
+
+[06:50:42.0801] <tcampbell>
+I guess we still also have the issue that `./mach run` eats up segfault messages 
+
+[06:58:10.0380] <jandem>
+yeah.. I usually run the shell without `mach` to work around that
+
+[09:20:44.0627] <davidj361>
+If you set the private slot of a JSObect with a JSClass that has a finalizer, and that JSClass isn't rooted, will it stay alive until that main JSObject gets garbage collected?
+
+[09:23:27.0504] <Ms2ger>
+JSClass should live for the lifetime of the program
+
+[09:23:30.0710] <iain>
+Instances of JSClass aren't GC things. They don't need rooting. 
+
+[09:25:43.0298] <iain>
+Also you shouldn't be storing a JSClass in a slot of a JSObject
+
+[09:26:27.0092] <iain>
+Or wait, maybe I'm misreading
+
+[09:27:19.0215] <davidj361>
+JSClass is used as a wrapper with a finalizer to `delete` some arbitrary heap data, e.g. `new std::vector<T>`
+
+[09:28:05.0266] <davidj361>
+> <@iain:mozilla.org> Also you shouldn't be storing a JSClass in a slot of a JSObject
+
+So a property would be preferred? I assume the GC will clean that up?
+
+[09:28:43.0212] <iain>
+I think there is some confusion about terminology here
+
+[09:30:08.0329] <iain>
+[Here](https://searchfox.org/mozilla-central/source/js/public/Class.h#609) is the definition of JSClass. If you dig through the members, you'll see that it's effectively just a vtable: a struct holding a bunch of function pointers
+
+[09:30:50.0298] <iain>
+Each JSObject *has* a JSClass. Most of them are PlainObjects, and use [PlainObject::class_](https://searchfox.org/mozilla-central/source/js/src/builtin/Object.cpp#2304)
+
+[09:31:02.0640] <davidj361>
+I meant so a JSObject created via the JSClass
+
+[09:31:06.0892] <davidj361>
+ * I meant to say a JSObject created via the JSClass
+
+[09:31:23.0173] <davidj361>
+ * I meant to say a JSObject created from the JSClass definition
+
+[09:32:37.0791] <iain>
+Right, okay. So you have two objects, one of which has a finalizer. You store the object with the finalizer in a slot of the other object?
+
+[09:33:50.0899] <davidj361>
+Yes
+
+[09:35:03.0815] <iain>
+The private slot of the first object is an edge that the GC traces, so as long as the first object stays alive, the second object will also be alive
+
+[09:36:08.0284] <iain>
+If the data that the second object is wrapping can have references to GC things, then you need to provide a trace method on the JSClass for that object
+
+[09:37:43.0553] <davidj361>
+the 2nd object is wrapping C++ constructed things that aren't SM defined, e.g. could be std::string, std::vector, int, std::unordered_map, any type that the user wants\
+
+[09:37:46.0050] <davidj361>
+ * the 2nd object is wrapping C++ constructed things that aren't SM defined, e.g. could be std::string, std::vector, int, std::unordered\_map, any type that the user wants
+
+[09:41:43.0537] <Redfire>
+You probably want a trace hook on the outer object to actually trace the object in the private slot and all
+
+[09:42:26.0372] <iain>
+If it's being stored as an ObjectValue that shouldn't be necessary
+
+[09:42:28.0738] <davidj361>
+the outer object won't have its own classdef, it will be whatever grabbed JSObject where I don't want to redefine its classdef
+
+[09:42:37.0267] <davidj361>
+ * the outer object won't have its own classdef for me to tinker, it will be whatever grabbed JSObject where I don't want to redefine its classdef
+
+[09:42:52.0594] <Redfire>
+"private slot" was mentioned earlier, so maybe I misunderstood
+
+[09:43:36.0271] <davidj361>
+I was saying for the outer JSObject containing the JSObject "wrapper" (finalize) containing heap stuff I want to delete on finalize
+
+[09:46:24.0610] <iain>
+Unless I'm misunderstanding what davidj361 is saying, "private" slot is different from "PrivateValue"
+
+[09:46:29.0439] <iain>
+ * Unless I'm misunderstanding what davidj361 is saying, "private slot" is different from "PrivateValue"
+
+[09:47:10.0935] <iain>
+Private slots are the old-fashioned way of doing reserved slots, with (IIRC) the main difference being that you only get one
+
+[09:47:26.0806] <iain>
+But they don't exist in current versions of SM, so it's possible I'm forgetting a relevant difference
+
+[09:47:53.0057] <davidj361>
+I'm using `JS::SetReservedSlot`
+
+[09:48:14.0989] <davidj361>
+ * I'm using `JS::SetReservedSlot` on the outer JSObject to contain the wrapper JSObject (finalize)
+
+[09:48:37.0060] <iain>
+Yeah, that should be fine. Slots are traced by default, so long as the GC knows how to trace them.
+
+[09:48:44.0045] <iain>
+ * Yeah, that should be fine. Slots are traced by default, so long as the GC knows how to trace the contents.
+
+[09:49:05.0504] <davidj361>
+Would that be preferred than using `JS_SetProperty`? 
+
+[09:49:15.0716] <davidj361>
+ * Would that be preferred than using `JS_SetProperty`? I assume this is also GCed like Reserved Slot
+
+[09:49:20.0634] <davidj361>
+ * Would that be preferred than using `JS_SetProperty`? I assume this is also GCed akin Reserved Slot
+
+[09:50:30.0836] <iain>
+Reserved slots are probably better. They both get stored in the same place, but setting a property makes it visible to user JS
+
+[09:55:07.0889] <nbp>
+How do people know what tests are available with `mach` commands?
+
+[09:56:10.0165] <iain>
+Roughly speaking, a JSObject consists of a pointer to a shape, an array of slots, and an array of elements. The shape stores metadata, including the class. The elements array contains all the integer-indexed properties (eg `obj[0]` and `obj[10]`. The slots array stores everything else. The JSClass for an object can specify a number of reserved slots, in which case the first N slots in the slots array are dedicated to those private properties, and the remaining slots are used to store regular properties (eg `obj.x`). When the GC traces an object, it will look at all of the slots and elements. Any of them that contain a GC thing will be traced automatically.
+
+[09:56:31.0490] <nbp>
+ * <del>How do people know what tests are available with `mach` commands?</del>
+
+[09:57:07.0111] <iain>
+If you are storing a non-GC-thing as a PrivateValue in a reserved slot, but you need it to be traced because it can have references to GC things, then you need to provide a trace method to tell the GC how to trace it.
+
+[09:57:16.0013] <nbp>
+Ok, I tried on 2 different computers, with 2 different compilers, with 2 different methods of running tests … I still have failures while running the test suite out of central.
+
+[09:57:37.0165] <iain>
+nbp: What's your mozconfig?
+
+[09:57:55.0004] <nbp>
+That's the next thing to check, some old config which used to work for a long time …
+
+[09:58:49.0205] <iain>
+I used to build with intl turned off to make it compile faster, and ran into occasional issues because intl is always enabled in CI. Maybe something similar is happening here
+
+[09:59:22.0676] <davidj361>
+> <@iain:mozilla.org> Yeah, that should be fine. Slots are traced by default, so long as the GC knows how to trace the contents.
+
+and reserved slots are traced by default correct?
+
+[09:59:48.0514] <nbp>
+```
+# Content of $MOZCONFIG_TEMPLATE provided by the shellHook of the derivation.
+ac_add_options --disable-bootstrap
+#ac_add_options --without-wasm-sandboxed-libraries # this may be needed
+mk_add_options AUTOCONF=/nix/store/dlibnlq3r8iw88kjigmw3v1k2iz9i48c-autoconf-2.13/bin/autoconf
+ac_add_options --with-libclang-path=/nix/store/wxzh13nj87d67ncbxnqzxhksig4llgxj-clang-11.1.0-lib/lib
+ac_add_options --with-clang-path=/nix/store/j17j4qqf28js718v8pfymvhk6p3l6n38-clang-wrapper-11.1.0/bin/clang
+export BINDGEN_CFLAGS="-cxx-isystem /nix/store/1gf2flfqnpqbr1b4p4qz2f72y42bs56r-gcc-11.3.0/include/c++/11.3.0 -isystem /nix/store/1gf2flfqnpqbr1b4p4qz2f72y42bs56r-gcc-11.3.0/include/c++/11.3.0/x86_64-unknown-linux-gnu"
+export CC="/nix/store/dq0xwmsk1g0i2ayg6pb7y87na2knzylh-gcc-wrapper-11.3.0/bin/cc"
+export CXX="/nix/store/dq0xwmsk1g0i2ayg6pb7y87na2knzylh-gcc-wrapper-11.3.0/bin/c++"
+
+# Content produced by make.sh generate_conf_args function
+mk_add_options MOZ_SRC=/home/nicolas/mozilla/wksp-6
+mk_add_options MOZ_OBJDIR=/home/nicolas/mozilla/_build/js/bugzil.la/1828115/wip/x64/gcc/dbg
+mk_add_options AUTOCLOBBER=1
+ac_add_options --prefix=/home/nicolas/mozilla/_inst/js/bugzil.la/1828115/wip/x64/gcc/dbg
+ac_add_options --disable-bootstrap
+ac_add_options --enable-nspr-build
+ac_add_options --enable-application=js
+ac_add_options --disable-jemalloc
+ac_add_options --enable-valgrind
+ac_add_options --with-libclang-path=/nix/store/wxzh13nj87d67ncbxnqzxhksig4llgxj-clang-11.1.0-lib/lib
+ac_add_options --with-clang-path=/nix/store/j17j4qqf28js718v8pfymvhk6p3l6n38-clang-wrapper-11.1.0/bin/clang
+ac_add_options --enable-jitspew
+ac_add_options --enable-ctypes
+ac_add_options --enable-oom-breakpoint
+ac_add_options --enable-debug=-ggdb2
+ac_add_options --disable-optimize
+ac_add_options --enable-release
+ac_add_options --enable-perf
+ac_add_options --disable-tests
+ac_add_options --enable-build-backends=CompileDB,FasterMake,RecursiveMake
+```
+
+That's the generated content so far.
+
+[09:59:49.0931] <iain>
+Reserved slots are just regular slots that you can't see from JS
+
+[09:59:55.0302] <iain>
+ * davidj361: Reserved slots are just regular slots that you can't see from JS
+
+[10:00:02.0745] <iain>
+(So yes)
+
+[10:03:39.0828] <iain>
+nbp: Your mozconfig is much bigger than mine:
+```
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-scratch
+ac_add_options --enable-application=js
+ac_add_options --enable-jitspew
+ac_add_options --disable-optimize
+ac_add_options --enable-debug
+```
+Nothing there looks obviously problematic to me, though.
+
+[10:04:31.0865] <nbp>
+It has seen more years, and it has to make some tools works on a system there were not designed to work on.
+
+[10:04:46.0920] <nbp>
+Also, you have not seen the code use to generate it :P
+
+[10:06:54.0099] <davidj361>
+Thank you everyone for the help
+
+[10:08:04.0881] <iain>
+ * Roughly speaking, a JSObject consists of a pointer to a shape, an array of slots, and an array of elements. The shape stores metadata, including the class. Both arrays contain JSValues. The elements array contains all the integer-indexed properties (eg `obj[0]` and `obj[10]`. The slots array stores everything else. The JSClass for an object can specify a number of reserved slots, in which case the first N slots in the slots array are dedicated to those private properties, and the remaining slots are used to store regular properties (eg `obj.x`). When the GC traces an object, it will look at all of the slots and elements. Any of them that contain a GC thing will be traced automatically.
+
+[10:15:19.0923] <nbp>
+ok, definitely one of the configuration flags.
+
+[10:32:22.0569] <nbp>
+iain: denispal: Apparently `--enable-perf` is the issue here.
+
+[10:35:17.0256] <denispal>
+nbp: what is the issue?
+
+[10:35:22.0497] <denispal>
+I haven't really been following
+
+[10:35:54.0119] <nbp>
+denispal: running the test suite yield tons of strange issues, which are not obviously traced to anything specific.
+
+[10:36:34.0516] <denispal>
+nbp: I suspect maybe from the entry trampolines, they are enabled by default with --enable-perf
+
+[10:37:07.0392] <denispal>
+we also leak the jitcode memory under --enable-perf which maybe causes some issues?
+
+[10:37:10.0042] <nbp>
+such as an assertion when running jit-test `asm.js/bug1385428.js` with `--no-asmjs`
+
+[10:37:26.0718] <nbp>
+No, the JS shell does not care about leaks.
+
+[10:37:27.0367] <denispal>
+I always get an assert in debug builds during shutdown with --enable-perf because of the leak
+
+[10:39:45.0222] <nbp>
+It would definitely be better if we did not had configure options which are triggering assertions.
+
+[10:40:51.0950] <denispal>
+I guess it's been there historically so we don't reuse the same address for different jit code, but we can remove it now with jitdump
+
+[10:41:19.0432] <denispal>
+I just need to add a patch that emits an unload record into the jitdump
+
+
+2023-04-25
+[01:14:00.0104] <liam_g>
+I am trying (again) to understand how to implement modules in my code, following the embedding examples on github. When I call `JS::ModuleEvaluate()`, I get back a `Promise` object. But how do I resolve the `Promise` to get the resultant modules? I've tried `JS::ResolvePromis()`, but this asserts something about the flag. I've tried `JS::GetPromiseResult()`, but it just returns undefined. How do I get the evaluated code?
+
+[01:14:47.0287] <liam_g>
+Note that my embedding system is set up for promises and async code, so I should be able to proceed.
+
+[01:26:37.0515] <Redfire>
+You don't need to resolve it manually, just let the tasks be queued onto the job queue
+
+[01:26:50.0877] <Redfire>
+* You don't need to resolve it manually, just let the tasks be queued onto the job queue, which happens automatically when it's evaluated
+
+[01:28:36.0847] <Redfire>
+If you want the module object itself, you already had it from `CompileModule` (which you did before `ModuleLink` and `ModuleEvaluate`
+
+[01:28:48.0065] <Redfire>
+* If you want the module object itself, you already had it from `CompileModule` (which you did before `ModuleLink` and `ModuleEvaluate`)
+
+[01:29:05.0845] <liam_g>
+Hmm, I adapted the `modules.cpp` code to my own system, and no promise job seems to reach the job queue...
+
+[01:36:04.0618] <Redfire>
+* If you want the module record itself, you already had it from `CompileModule` (which you did before `ModuleLink` and `ModuleEvaluate`)
+
+[01:38:43.0181] <liam_g>
+But I'll take another look. Perhaps I've missed something.
+
+[01:43:49.0520] <liam_g>
+Just so I know I'm on the right track, once I get the resolved object from `JS::Evaluate()`, it should have all of the values that there exported in the script, right? So if I did `JS::Evaluate("export class A ...")`, then I should get an object back which has class A in it... is that right?
+
+[01:44:15.0980] <liam_g>
+Having gone through the example many times, I'm still not entirely clear on what the result is.
+
+[01:53:12.0949] <liam_g>
+> <@liam_g:mozilla.org> But I'll take another look. Perhaps I've missed something.
+
+Oh I see, if I `await` the imported object, then it gets queued.
+
+[02:48:44.0917] <Redfire>
+You don't use `Evaluate` with modules though? Only with scripts, so this wouldn't even apply.
+
+[02:49:12.0442] <Redfire>
+The reason the top-level module now returns a promise is top-level await
+
+[05:06:57.0259] <liam_g>
+ * Just so I know I'm on the right track, once I get the resolved object from `JS::ModuleEvaluate()`, it should have all of the values that there exported in the script, right? So if I did `JS::ModuleEvaluate("export class A ...")`, then I should get an object back which has class A in it... is that right?
+
+[05:07:20.0667] <liam_g>
+> <@redfire75369:mozilla.org> You don't use `Evaluate` with modules though? Only with scripts, so this wouldn't even apply.
+
+oops, I meant `JS::ModuleEvaluate`. I've fixed it.
+
+[05:15:31.0227] <Redfire>
+I'm not actually sure, but I'd assume that the promise should resolve to the completion value of the module. I would test this, but I've had other issues with `GetPromiseResult` in my usage so I can't test that. 
+
+[05:31:33.0012] <liam_g>
+Let me start again, because I think I've been pretty unclear with what I've written so far. I want to be able to write a separate .js files with `exports`, load it into my program, and then access the exported classes and functions in my main program. I'm following the `modules.cpp` tutorial, which compiles two simple modules: `"export const C1 = 1"` and `"import {C1} from 'a'"`. If I run this, the promise never gets resolved. But if I alter the second module to `"import {C1} from 'a'; await C1"`, then the promise resolves. However, when I call `JS::GetPromiseResult()` on the resolved promise, it's coming back undefined.
+
+[07:49:56.0118] <davidj361>
+Can you grab a JSContext* off a `JS::HandleValue`?
+
+[07:52:19.0163] <davidj361>
+ * Can you grab a JSContext\* off a `JS::HandleValue`? I assume no
+
+[07:53:39.0331] <Ms2ger>
+No
+
+[09:17:58.0951] <davidj361>
+how can you return a JSObject* that is null?
+
+[09:20:15.0507] <davidj361>
+apparently JS::NullValue() is saying cannot convert `JS::Value` to `JSObject*` when I see this in WeakMapPtr.cpp `static JSObject* NullValue() { return nullptr; }`
+
+[09:20:28.0158] <davidj361>
+ * apparently `return JS::NullValue()` is saying cannot convert `JS::Value` to `JSObject*` when I see this in WeakMapPtr.cpp `static JSObject* NullValue() { return nullptr; }`
+
+[09:23:05.0534] <iain>
+That's not the same `NullValue()`. You're presumably calling the one [here](https://searchfox.org/mozilla-central/source/js/public/Value.h#1105), which returns a JS::Value.
+
+[09:23:18.0208] <iain>
+You can just return `nullptr`.
+
+[09:23:22.0823] <davidj361>
+Ah thank you
+
+[13:26:35.0141] <davidj361>
+will this break if obj is an arbitrary JSObject because its classdef must have `JSCLASS_HAS_RESERVED_SLOTS(1) `?
+`JS::RootedValue wrapperVal(ctx, JS::GetReservedSlot(obj, reserved_slot));`
+
+[13:26:44.0109] <davidj361>
+ * will this break if obj is an arbitrary JSObject because its classdef must have `JSCLASS_HAS_RESERVED_SLOTS(1)`?
+`JS::RootedValue wrapperVal(ctx, JS::GetReservedSlot(obj, reserved_slot));`
+
+[13:27:20.0775] <davidj361>
+or its reserved slot must be set before using `GetReservedSlot` on it?
+
+[13:28:33.0435] <davidj361>
+mainly just seeing if there's anything in the reserved slot first
+
+[13:30:08.0949] <davidj361>
+because i get a segfault from `MOZ_ASSERT(slot < JSCLASS_RESERVED_SLOTS(GetClass(obj)));`
+
+[13:32:35.0109] <iain>
+davidj361: You should only call GetReservedSlot on an object if its class has reserved slots
+
+[13:33:12.0632] <davidj361>
+I suppose I could do `JSCLASS_RESERVED_SLOTS(JS::GetClass(obj)` to check if it has any reserved slots then
+
+
+2023-04-26
+[22:00:19.0395] <liam_g>
+When I define a class in Javascript, what exactly happens? There is no object or property that I can find with the name of that class. Is there a master list of classes somewhere that I can access?
+
+[22:00:43.0362] <liam_g>
+The crux of my problem right now is that I want to define a class in script A and use it in script B. I have a system already for doing this with objects and values (by evaluating a script and stealing the global variables). But it fails for classes, because classes are not objects.
+
+[22:02:18.0866] <liam_g>
+I thought that using module export and import would help, but I ran into difficulties with that yesterday. Modules might still be an option, but in order to proceed, I think I first need to understand what a class definition actually is, and where it is stored.
+
+[00:59:50.0430] <arai>
+liam_g: do you mean `class A { ... }` in JavaScript ?  it becomes global lexical binding.  how are you trying to access it?   if you're using global object's property,  the lexical binding doesn't appear there.
+
+[01:01:40.0332] <arai>
+so, `class A {}   console.log(typeof globalThis.A);` prints `"undefined"`.  if you want to access the class with global object's property, you need to use var binding, such like `var A = class A {};  console.log(typeof globalThis.A);`
+
+[01:03:57.0189] <arai>
+or, you could try accessing the lexical environment object and get the property, to access lexical bindings
+
+[01:04:26.0504] <arai>
+https://searchfox.org/mozilla-central/rev/8329a650e3b4f866176ae54016702eb35fb8b0d6/js/src/jsapi.h#250
+```cpp
+extern JS_PUBLIC_API JSObject* JS_GlobalLexicalEnvironment(JSObject* obj);
+```
+
+[01:04:51.0644] <arai>
+passing a global object to it returns its lexical environment object
+
+[01:07:42.0482] <arai>
+classes are objects.  the value of class itself is the constructor function.  so, with either of the above way, you'll get the constructor function's value
+
+[01:09:54.0350] <liam_g>
+Thanks arai. I am talking about Javascript classes, not C++.
+
+[01:10:54.0852] <liam_g>
+You're right that doing `var A = class {...}` fixes the issue, and I can now see a property called A, which I can access.
+
+[01:12:52.0212] <liam_g>
+This is probably a good enough solution, but it's a shame to have to give up on the more natural `class A {}` syntax. I wonder if there's any way of holding on to this? I haven't looked at the JS_GlobalLexicalEnvironment()` function yet, but I'm guessing that it wouldn't be so easy to extract a list of class objects from it.
+
+[01:14:04.0859] <arai>
+you can use `class A {}` syntax if you access it via lexical environment object retrieved from `JS_GlobalLexicalEnvironment`
+
+[01:14:38.0853] <arai>
+where do you access the global property?  is it inside C++, or inside JavaScript
+
+[01:14:40.0704] <arai>
+ * where do you access the global property?  is it inside C++, or inside JavaScript?
+
+[01:14:56.0633] <liam_g>
+Inside C++ 
+
+[01:15:13.0710] <arai>
+so, you get global object and access its property, right?
+
+[01:16:02.0191] <arai>
+if so, you can use `JS_GlobalLexicalEnvironment` on the global object and access its property to get the `class A {}` value
+
+[01:17:43.0224] <liam_g>
+My setup is a bit different, as I'm using the env_chain argument for the `JS::Evaluate` call. But I suspect that it will work the same (and I can still access to the global object if needed).
+
+[01:18:02.0582] <liam_g>
+Let me dig into `JS_GlobalLexixalEnvironment` and see what I can find.
+
+[01:20:36.0423] <arai>
+oh, if you use env chain, the lexical environment is stored into different place
+
+[01:22:20.0839] <liam_g>
+Is it possible to access that different place?
+
+[01:22:27.0804] <arai>
+let me check if there's a public API for it
+
+[01:27:23.0707] <arai>
+at least for JSM environment, we have `JS::NewJSMEnvironment` and `JS_ExtensibleLexicalEnvironment` on it, but I don't yet find similar things for simple env chain
+
+[01:33:05.0355] <arai>
+the workaround we were using in JSM when the lexical bindings were not accessible was to perform `this.A = A;` after `class A {}` declaration, to expose each property to global object
+
+[01:37:40.0102] <liam_g>
+This makes sense
+
+[01:38:06.0117] <liam_g>
+But it looks like I might be able to use the `JS_ExtensibleLexicalEnvironment()` thing also
+
+[01:38:45.0843] <liam_g>
+You see, the object that I'm putting into the env chain is a Proxy object (`js::Wrapper`)
+
+[01:39:49.0742] <liam_g>
+When I do `JS_HasExtensibleLexicalEnvironment()` on it, it comes out as true. And when I do `js::DumpObject(JS_ExtensibleLexicalEnvironment(wrapperObject))`, I can see the class object that I'm looking for.
+
+[01:40:36.0333] <liam_g>
+This might be my ticket!
+
+[01:42:52.0592] <arai>
+yeah, it looks like the innermost envChain object can be the key for `JS_ExtensibleLexicalEnvironment`
+
+[01:43:44.0747] <liam_g>
+Oh, maybe it's that rather than it being a Proxy. Either way, it seems to be working.
+
+[01:44:09.0702] <liam_g>
+I never would have found this without your help. Thanks @arai!
+
+[07:16:31.0456] <davidj361>
+Calling `SetReservedSlot` won't automatically add a reserved slot to the class's definition will it? `JS::SetReservedSlot(obj, PSlot, JS::ObjectValue(*wrapperObj));`
+If not, is there a function call that will?
+
+[07:16:39.0222] <davidj361>
+ * Calling `JS::SetReservedSlot` won't automatically add a reserved slot to the class's definition will it? `JS::SetReservedSlot(obj, PSlot, JS::ObjectValue(*wrapperObj));`
+If not, is there a function call that will?
+
+[07:17:53.0707] <davidj361>
+since I notice it fails on `MOZ_ASSERT(slot < JSCLASS_RESERVED_SLOTS(GetClass(obj)));`
+
+[07:23:53.0252] <davidj361>
+ * Calling `JS::SetReservedSlot` won't automatically add a reserved slot to the JSObject's definition will it? `JS::SetReservedSlot(obj, PSlot, JS::ObjectValue(*wrapperObj));`
+If not, is there a function call that will?
+
+[07:25:12.0232] <arai>
+davidj361: the slot is created when you create the object. you cannot add it later
+
+[07:26:00.0982] <arai>
+what's the kind of object you want to use reserved slot?
+
+[07:26:27.0961] <davidj361>
+oh no, I was trying to make a way for arbitrary C++ data be deleted for an arbitrary JSObject so I thought I would make a wrapper JSObject with a `finalize` to clean that stuff up then get the main/outer/original JSObject to have this wrapper JSObject in its Reserved Slot
+
+[07:26:50.0604] <davidj361>
+ * oh no, I was trying to make a way for arbitrary C++ data be deleted in a reserved slot as a privatevalue for an arbitrary JSObject so I thought I would make a wrapper JSObject with a `finalize` to clean that stuff up then get the main/outer/original JSObject to have this wrapper JSObject in its Reserved Slot
+
+[07:27:39.0662] <davidj361>
+Original JSObject -> Wrapper JSObject (as reserved slot that gets GCed) -> C++ arbitrary data (as privatevalue in reserved slot of wrapper and gets cleaned up by finalize)
+
+[07:27:55.0414] <davidj361>
+ * Original JSObject -> Wrapper JSObject (as reserved slot of original that gets GCed) -> C++ arbitrary data (as privatevalue in reserved slot of wrapper and gets cleaned up by finalize)
+
+[07:28:00.0122] <arai>
+if you define your own `JSClass`, you can set `JSCLASS_HAS_RESERVED_SLOTS` flag to let it have reserved slot
+
+[07:28:01.0047] <davidj361>
+ * Original JSObject -> Wrapper JSObject (as a reserved slot of original that gets GCed) -> C++ arbitrary data (as privatevalue in reserved slot of wrapper and gets cleaned up by finalize)
+
+[07:28:16.0364] <arai>
+example https://searchfox.org/mozilla-central/rev/8329a650e3b4f866176ae54016702eb35fb8b0d6/js/src/builtin/DataViewObject.cpp#957-961
+```cpp
+const JSClass DataViewObject::class_ = {
+    "DataView",
+    JSCLASS_HAS_RESERVED_SLOTS(DataViewObject::RESERVED_SLOTS) |
+        JSCLASS_HAS_CACHED_PROTO(JSProto_DataView),
+    &DataViewObjectClassOps, &DataViewObject::classSpec_};
+```
+
+[07:28:46.0890] <davidj361>
+yeah but the original JSObject is an arbitrary JSObject given input, I won't be creating it
+
+[07:29:50.0632] <arai>
+for "arbitrary object", I think you need to use regular property to store it, or create a map from object to value
+
+[07:30:20.0474] <davidj361>
+oh jeez...
+
+[07:30:50.0472] <davidj361>
+I was given the assumption that reserved slots would be the superior way and would work for this as a reserved slot would be hidden vs a property
+
+[07:31:09.0245] <davidj361>
+as i want to hide C++ GC stuff and not have it accessibly by property
+
+[07:31:11.0871] <davidj361>
+ * as i want to hide C++ GC stuff and not have it accessibly by property by JS users
+
+[07:31:32.0387] <davidj361>
+ * as i want to hide C++ GC stuff and not have it accessible by property by JS users
+
+[07:31:38.0904] <davidj361>
+ * as i want to hide C++ GC stuff and not have it accessible via property by JS users
+
+[07:32:29.0586] <davidj361>
+are you at least able to add a reserved slot definition to an already existing JSObject without destroying it?
+
+[07:32:30.0436] <arai>
+I think you can create weakmap with the object as key and the C++ data pointer as value
+
+[07:32:53.0673] <arai>
+that's not exposed to JS users unless you expose the weakmap
+
+[07:33:30.0460] <davidj361>
+I've never used weakmap, i assume it's just `SetWeakMapEntry` / `GetWeakMapEntry`
+
+[07:34:52.0051] <arai>
+I don't think you can change the JSClass definition of the live object
+
+[07:34:53.0408] <davidj361>
+i assume when I `SetWeakMapEntry` of the original JOSbject with the wrapper JSObject then it will GC the wrapper JSObject which then calls its finalize
+
+[07:46:32.0358] <davidj361>
+I'm a bit confused, can you even give a JSObject a WeakMap?
+
+[07:47:26.0976] <davidj361>
+ * I'm a bit confused, can you even give a JSObject a WeakMap where it will be hidden to the JS user?
+
+[07:54:49.0527] <davidj361>
+because the original JSObject is not a WeakMapObject so `SetWeakMapEntry` shouldn't work on it then, right?
+
+[07:57:30.0495] <jonco>
+davidj361: you have to create a separate weakmap, and call SetWeakMapEntry on that to associate the original JSObject with you own data
+
+[07:57:37.0259] <jonco>
+ * davidj361: you have to create a separate weakmap, and call SetWeakMapEntry on that to associate the original JSObject with your own data
+
+[07:58:37.0069] <davidj361>
+ah i see
+
+[07:59:08.0641] <davidj361>
+I don't think I can go that approach because I want the original JSObject to be the main container to set and get things from rather than adding another container that I'll have to keep track of
+
+[07:59:27.0726] <davidj361>
+I guess making the wrapper JSObject as a property is my best bet
+
+[08:33:53.0851] <arai>
+how about defining a non-enumerable property with symbol key?
+
+[08:34:47.0205] <Redfire>
+Random-ish question: What happens if you `JS_SetProperty` with a `PrivateValue`?
+Does it fail or something else?
+
+[08:40:20.0453] <arai>
+private value is just a number value.  it works without any problem  https://searchfox.org/mozilla-central/rev/8329a650e3b4f866176ae54016702eb35fb8b0d6/js/public/Value.h#1028,1032-1033
+```cpp
+void setPrivate(void* ptr) {
+...
+  asBits_ = uintptr_t(ptr);
+  MOZ_ASSERT(isDouble());
+```
+
+[08:49:50.0564] <jonco>
+sfink: ping
+
+[09:32:10.0820] <davidj361>
+> <@arai:mozilla.org> how about defining a non-enumerable property with symbol key?
+
+how do you create a non-enumerable property of a JSObject? It's not JS_SetProperty is it?
+
+[09:32:16.0415] <davidj361>
+> <@arai:mozilla.org> how about defining a non-enumerable property with symbol key?
+
+ * how do you create a non-enumerable property of a JSObject? It's not `JS_SetProperty` is it?
+
+[09:33:41.0438] <davidj361>
+I was also considering just using `#` in the property string name to see if it would make it private: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_class_fields
+
+[09:35:24.0690] <arai>
+`JS_DefineProperty` without `JSPROP_ENUMERATE` attribue
+
+[09:36:35.0829] <arai>
+https://searchfox.org/mozilla-central/rev/8329a650e3b4f866176ae54016702eb35fb8b0d6/js/public/PropertyDescriptor.h#36
+
+[09:36:59.0860] <davidj361>
+Why a Symbol key?
+
+[09:39:49.0782] <arai>
+non-enumerable property can be accessed only when the property name is known, and if you create a symbol and don't expose it, there's no way to access (am I correct?  is there any trick to access?)
+
+[09:40:12.0618] <arai>
+so you can hide it from JS users
+
+[09:40:42.0165] <mgaudet>
+(I -think- another option would be to use a syntactical impossible property name, such that JSAPI can get to it, but users can't. This trick is used in the engine in a few places) 
+
+[09:41:00.0447] <mgaudet>
+(Symbol is probably better) 
+
+[09:45:29.0597] <ptomato>
+if you use `JS_SetProperty` with a `#` in the property string name, I believe you'll just get a public property that you access with `o['#foo']`
+
+[09:46:54.0150] <tcampbell>
+> <@arai:mozilla.org> non-enumerable property can be accessed only when the property name is known, and if you create a symbol and don't expose it, there's no way to access (am I correct?  is there any trick to access?)
+
+`foo.getOwnPropertySymbols()` will let you find them. Without this, the other bad trick was using a Proxy to watch property accesses.
+
+[09:48:44.0407] <arai>
+oh, then it's not safe
+
+[09:49:36.0007] <liam_g>
+> <@pchimento:igalia.com> if you use `JS_SetProperty` with a `#` in the property string name, I believe you'll just get a public property that you access with `o['#foo']`
+
+I've been wondering about this. Is there any way of setting a private (as in # class id) property using the Spidermonkey API?
+
+[09:50:29.0202] <arai>
+if it needs to be completely hidden from JS users for security reason, using a separate map/weakmap would be the simplest way
+
+[09:52:54.0398] <ptomato>
+if you only need to access it from C++, and you already have a JSClass for the object, then a private slot is probably simple as well
+
+[09:55:32.0499] <arai>
+if exposing the raw pointer value as "readonly" is acceptable,  I guess you can define non-configurable/non-writable property with the PrivateValue?
+
+[10:08:36.0888] <davidj361>
+> <@pchimento:igalia.com> if you only need to access it from C++, and you already have a JSClass for the object, then a private slot is probably simple as well
+
+But I can't redefine the original JSObject's JSClass to show it has a reserved slot. If you mean private slot as a different thing i.e. setting a ReservedSlot to a PrivateValue, it won't GC the JSObject in there afaik
+
+[10:08:47.0012] <davidj361>
+> <@pchimento:igalia.com> if you only need to access it from C++, and you already have a JSClass for the object, then a private slot is probably simple as well
+
+ * But I can't redefine the original JSObject's JSClass to have a reserved slot. If you mean private slot as a different thing i.e. setting a ReservedSlot to a PrivateValue, it won't GC the JSObject in there afaik
+
+[10:09:14.0708] <davidj361>
+ * But I can't redefine the original JSObject's JSClass to have a reserved slot. If you mean private slot as a different thing i.e. `JS::SetReservedSlot(obj, m_private_data_slot, JS::PrivateValue(static_cast<void*>(data)));`, it won't GC the JSObject in there afaik
+
+[10:09:16.0311] <ptomato>
+sorry, I did mean 'reserved slot'
+
+[10:09:32.0555] <davidj361>
+ * But I can't redefine the original JSObject's JSClass to have a reserved slot. If you mean private slot as a different thing i.e. `JS::SetReservedSlot(obj, m_private_data_slot, JS::PrivateValue(myJSObjectWrapper));`, it won't GC the JSObject in there afaik
+
+[10:09:54.0514] <ptomato>
+why is it not possible to change the JSClass?
+
+[10:10:38.0261] <davidj361>
+it already exists and is given as an input, I hear you cannot redefine the JSObject's JSClass?
+
+[10:10:49.0606] <davidj361>
+ * The given abitrary original JSObject already exists and is given as an input, I hear you cannot redefine the JSObject's JSClass?
+
+[10:11:00.0632] <davidj361>
+ * The given abitrary original JSObject already exists and is given as an input, I hear you cannot redefine/change the JSObject's JSClass?
+
+[10:11:06.0495] <davidj361>
+ * The given abitrary original JSObject already exists and is given as an input, I hear you cannot redefine/change the JSObject's JSClass to have a ReservedSlot?
+
+[10:12:01.0335] <ptomato>
+so, you mean that the object can have an arbitrary JSClass and can come from user code?
+
+[10:13:49.0245] <davidj361>
+I was trying to make it so you can attach any kind of C++ data to a JSObject. So I was doing:
+Original JSObject -> JSObject wrapper with `finalize` to cleanup reserved slot of private data -> C++ heap data
+
+[10:14:18.0670] <davidj361>
+So I was trying to create a wrapper that Original JSObject would secretly own, which is the arbitrary input
+
+[10:15:07.0105] <davidj361>
+so the original JSObject would call the JSObject wrapper's finalize via automatic GC via reserved slots
+
+[10:15:32.0103] <davidj361>
+I have no idea what the original JSObject could be, it's up to the user what they want to put in
+
+[10:16:12.0174] <davidj361>
+ * So I was trying to create a wrapper that Original JSObject (the arbitrary input) would secretly own
+
+[10:17:11.0686] <sfink>
+this is kind of the situation that WeakMaps are intended for: decorating arbitrary objects with additional information, but without keeping those objects alive via the decoration mechanism.
+
+[10:17:58.0083] <sfink>
+some people even implement them by storing the information in the object itself in some hidden way (referred to as an "inverted representation")
+
+[10:18:11.0292] <davidj361>
+> <@sfink:mozilla.org> this is kind of the situation that WeakMaps are intended for: decorating arbitrary objects with additional information, but without keeping those objects alive via the decoration mechanism.
+
+but you cannot `SetWeakMapEntry` on the original JS Object as it's not a WeakMap
+
+[10:18:24.0521] <sfink>
+the weakmap would be global
+
+[10:18:32.0604] <ptomato>
+or maybe there is some way with `JS::WeakCache<JS::GCHashMap<...>>` to map the JS object to the C++ pointer without the go-between object
+
+[10:18:52.0396] <sfink>
+think of the weakmap as defining as the "relation" in question
+
+[10:19:13.0478] <davidj361>
+i would prefer that the original JSObject keeps all the data
+
+[10:19:20.0736] <sfink>
+you would probably have a single relation of interest
+
+[10:20:05.0804] <sfink>
+right, but then you have to play games with trying to hide the data from everything else.
+
+[10:21:02.0607] <davidj361>
+but how would the weakmap know when to GC its entry? the whole point is that the C++ data is only needed for the lifetime of some JSObject
+
+[10:21:34.0904] <sfink>
+but ptomato is right, there's probably a way to do it with `WeakCache`. But that gets tricky to manage correctly.
+
+[10:21:57.0853] <sfink>
+> <@davidj361:matrix.org> but how would the weakmap know when to GC its entry? the whole point is that the C++ data is only needed for the lifetime of some JSObject
+
+fortunately, that is also the whole point of WeakMaps!
+
+[10:22:20.0019] <sfink>
+a value is kept alive by a weakmap only if the weakmap and the object are live
+
+[10:22:46.0070] <sfink>
+your weakmap will more or less always be alive
+
+[10:23:13.0776] <sfink>
+but when there are no other references to the object, the weakmap entry will be discarded, and so it will no longer keep the value alive
+
+[10:23:20.0554] <davidj361>
+so if i have a WeakMap where the key is original JSObject where if the original JSObject dies then the value will call it's `finalize` if it was a JSObject wrapper with a `finalize`?
+
+[10:23:29.0532] <davidj361>
+i see
+
+[10:24:07.0325] <sfink>
+as long as that "finalization object" isn't leaked out to anywhere else (because then that could keep it alive)
+
+[10:24:43.0884] <sfink>
+it does mean that every time you want to get from the object to its data, you have to do a WeakMap lookup.
+
+[11:39:51.0799] <jrmuizel>
+how does one determine the cause of bailouts?
+
+[11:42:48.0067] <iain>
+jrmuizel: If you run with `IONFLAGS=bl-bails`, it will dump a lot of information, only a small amount of which is relevant. Each bailout will include a "Bailout kind: ..." message, which comes from [this list](https://searchfox.org/mozilla-central/source/js/src/jit/IonTypes.h#100)
+
+[11:43:42.0251] <iain>
+The most common bailouts are TranspiledCacheIR, which means that we transpiled a guard that failed, and FirstExecution, which means that we reached code that had never run and did not have any CacheIR
+
+[11:44:23.0924] <iain>
+To get more specific than that, I normally use rr
+
+[11:44:43.0489] <leftmostcat>
+Is there an available, up-to-date API reference? It looks like MDN used to have one, but the archives I can find of it are incomplete. In particular, I'd like to get access to the AST if possible.
+
+[11:45:33.0415] <jrmuizel>
+iain: thanks
+
+[11:49:51.0087] <iain>
+leftmostcat: What you see is what you get, I'm afraid. You could try digging into Reflect.parse to see if it gives you what you need: https://searchfox.org/mozilla-central/source/js/src/jsapi.h#260
+
+[11:51:26.0846] <iain>
+This is where most of the existing documentation lives, if you have not found it yet: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/tree/next
+
+[11:51:40.0138] <iain>
+ * This is where most of the existing documentation lives, if you have not found it yet: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples
+
+[11:52:50.0582] <leftmostcat>
+Thanks. Basically at this point just doing early investigation on the feasibility of trying to build a language server for JS based on SpiderMonkey (and, in particular, one supporting `ChromeUtils`/`XPCOMUtils`-style imports and resource URIs for imports).
+
+[12:13:34.0172] <davidj361>
+the problem is if I were to create a WeakMap in my function meant to add C++ heap data onto a JSObject then the Rooted Weakmap will fall off scope
+
+[12:14:02.0616] <davidj361>
+where I would have to instead redesign everything where all contexts have a Rooted WeakMap
+
+[12:20:31.0210] <davidj361>
+ * the problem is if I were to create a WeakMap in my function meant to add C++ heap data onto a JSObject then the Rooted Weakmap will fall off scope after the function ends
+
+[12:20:43.0241] <davidj361>
+ * the problem is if I were to create a WeakMap in my function meant to add C++ heap data onto a JSObject then the Rooted Weakmap will fall off scope with the function ending
+
+[12:35:45.0066] <davidj361>
+does `global` already come with reserved slots? I'm not having issues Getting and Setting it
+`JS::RootedObject global(ctx, JS::CurrentGlobalOrNull(ctx));`
+
+[12:36:22.0015] <davidj361>
+ * does `global` already come with reserved slots? I'm not having issues Getting and Setting it
+```c++
+            JS::RootedObject global(ctx, JS::CurrentGlobalOrNull(ctx));
+            JS::RootedObject map(ctx, JS::NewWeakMapObject(ctx));
+            JS::SetReservedSlot(global, 2, JS::ObjectValue(*map));
+            JS::RootedValue test(ctx, JS::GetReservedSlot(global, 2));
+```
+
+[12:40:41.0755] <iain>
+davidj361: GlobalObject has its own internal reserved slots that the engine uses, along with 5 slots (0-4) reserved for use by the application (see [here](https://searchfox.org/mozilla-central/source/js/public/Class.h#566-569))
+
+[12:41:19.0045] <iain>
+This is not true for most objects. The global is special.
+
+[12:44:43.0181] <sfink>
+yeah, you don't want to be creating new WeakMaps, you want a single global one, and putting it on the global probably makes sense. Or creating it in C++ and tracing it as part of your root tracing.
+
+
+2023-04-27
+[20:38:20.0535] <liam_g>
+Is it possible to set the prototype of the global object?
+
+[22:21:33.0492] <jandem>
+liam_g: sure, you should be able to mutate it after creating the global. In the browser we use JS_SetImmutablePrototype to make it immutable though
+
+[22:42:15.0033] <leftmostcat>
+Are the servo bindings the only way into the JS parser code from Rust? It's looking like building the language server in Rust would be pretty feasible and it looks like I can access XPCOM that way for some things like resource: resolution, but the sticking point is I can't find a way to call the `Parser` except from C++.
+
+[22:42:35.0888] <leftmostcat>
+(Even the servo bindings don't seem to support `Parser`.)
+
+[22:46:31.0215] <Redfire>
+I was about to say, they don't support `Parser`
+
+[22:47:03.0793] <Redfire>
+A lot of C++ stuff doesn't get bindings specifically generated
+
+[22:48:44.0828] <liam_g>
+> <@jandem:mozilla.org> liam_g: sure, you should be able to mutate it after creating the global. In the browser we use JS_SetImmutablePrototype to make it immutable though
+
+I suppose I was looking to create a global object with a given prototype. Isn't it a bad idea to change the prototype after the object has already been created?
+
+[22:52:43.0649] <jandem>
+liam_g: that's not possible. It'd also be a bit tricky because the global has to be allocated first for a realm. The good news is that changing the prototype right after you create an object should be fine in modern SpiderMonkey (since version 83-85 or so)
+
+[22:53:44.0104] <liam_g>
+Great, thanks for the tip. I'll give it a go.
+
+[22:58:23.0340] <Redfire>
+leftmostcat: Is it even possible to access XPCOM using the servo bindings?
+
+[23:04:49.0917] <Redfire>
+From what I can tell, xpcom basically doesn't exist in the patched version of mozjs it uses
+https://github.com/servo/mozjs/tree/master/mozjs/mozjs/xpcom/
+
+[23:06:56.0066] <leftmostcat>
+> <@redfire75369:mozilla.org> leftmostcat: Is it even possible to access XPCOM using the servo bindings?
+
+I don't think so; I'm not thinking about the servo bindings, though. Probably what I'm looking at is compiling and running from within the Firefox tree, just using Ruat as an entry point.
+
+[23:09:40.0870] <leftmostcat>
+All I really want is to be able to provide decent JS tooling for Firefox/Thunderbird in an IDE, but the resource: paths and `ChromeUtils`/`XPCOMUtils` imports make that difficult. But hey, Firefox has its own JS parser and I can be pretty sure that the results it gives will match up with how things parse in the browser. 😅
+
+[23:20:56.0806] <Redfire>
+well, there goes my tiny amount of expertise
+
+[23:25:07.0034] <leftmostcat>
+Redfire: How much do you know about rust-mozjs? Do you know if there's a particular reason `Parser` isn't supported?
+
+[23:26:40.0144] <Redfire>
+1. Wasn't even aware the `Parser` API was public till just now
+2. It probably isn't supported for the same reason stuff like `Debugger` isn't, it's not important for the servo project. rust-mozjs is primarily a servo thing after all.
+
+[23:26:54.0246] <Redfire>
+* 1. Wasn't even aware the `Parser` API was public till just now
+2. It probably isn't supported for the same reason stuff like `Debugger` isn't, it's not important for the servo project (for now at least). rust-mozjs is primarily a servo thing after all.
+
+[23:27:09.0142] <leftmostcat>
+Fair.
+
+[23:27:54.0479] <Redfire>
+I'll be PR'ing debugger support eventually, but it'll take a while for me to need it either
+
+[23:28:59.0942] <leftmostcat>
+Anything I can look at to get a sense of what would be needed to add parser support?
+
+[23:31:04.0925] <Redfire>
+I'd need to know the public parser API, which I'm having trouble finding. But most of the custom logic is in https://github.com/servo/mozjs/blob/master/mozjs/src/jsglue.cpp or in https://github.com/servo/mozjs/blob/master/rust-mozjs/src/jsglue.cpp
+
+[23:36:02.0627] <leftmostcat>
+https://searchfox.org/mozilla-central/source/js/src/frontend/Parser.h#1515 is the definition.
+
+[23:37:08.0977] <Redfire>
+That doesn't seem to be exposed with `JS_PUBLIC_API` or anything, so how does that work
+
+[23:38:00.0745] <leftmostcat>
+Oh, that's a detail I wasn't aware of. Could be that it isn't public. I'm not familiar at all with the JS code.
+
+[23:39:39.0933] <leftmostcat>
+(I'm a simple man. I see a class defined in a header and I think "I can call that API!")
+
+[23:41:34.0183] <leftmostcat>
+There is https://searchfox.org/mozilla-central/source/js/src/builtin/ReflectParse.cpp#3777 which also isn't supported by mozjs. It'd mean having to stand up a JS runtime, but that at least seems doable via servo.
+
+[23:44:10.0552] <Redfire>
+I'm not sure starting up a JS runtime is the smartest idea in an IDE but that's your decision
+
+[23:54:50.0715] <Redfire>
+```ts
+interface Config {
+  loc: boolean, // to read config for location
+  source: string, // file name
+  lineno: number, // line number
+  target: string, // script or module
+}
+Reflect.parse(source: string, config: Config);
+```
+This seems to be the API of Reflect.parse. Returns some form of AST
+
+[00:03:20.0063] <leftmostcat>
+> <@redfire75369:mozilla.org> I'm not sure starting up a JS runtime is the smartest idea in an IDE but that's your decision
+
+Not my favorite plan ever, but this is new territory for me and unfamiliar APIs that aren't intended to do what I'm trying to do, heh. Anything to avoid having to write a new parser.
+
+[00:06:55.0454] <Redfire>
+jsparagus exists, but it's kinda unmaintained right now and not complete
+
+[00:07:20.0525] <Redfire>
+https://github.com/mozilla-spidermonkey/jsparagus
+
+[00:09:41.0339] <leftmostcat>
+I did come across that, but the list of limitations does make it a tough sell at the moment.
+
+[00:11:02.0508] <Redfire>
+It's main goal was indefinitely postponed
+From discord:
+> One of the reasons is that our hand made parser appeared to be way more competitive than we had estimated, and more than the generated parser, which exhibit different cache behaviours.
+
+[00:15:51.0278] <leftmostcat>
+I wonder if it'd be easier to get the parser made public. :P
+
+[00:16:33.0057] <Redfire>
+You can try making a bug for that, or asking here first ig
+
+[10:34:00.0656] <ewang21>
+ * class A {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+...
+private:
+...
+};
+
+class B {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+
+B(A const& a, ...)
+    : m_a{a},... {}
+
+A const& getA() const noexcept { return m_a; }
+...
+
+
+private:
+A const& m\_a;
+...
+};
+```
+getA() of the class B will return the reference member variable(m\_a) of the class B. How do I bind the getA()?  Or how to set rval() in the binding implementation?
+
+[10:34:16.0766] <ewang21>
+ * ```
+class A {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+...
+private:
+...
+};
+
+class B {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+
+B(A const& a, ...)
+: m\_a{a},... {}
+
+A const& getA() const noexcept { return m\_a; }
+...
+
+private:
+A const& m\_a;
+...
+};
+
+```
+getA() of the class B will return the reference member variable(m\_a) of the class B. How do I bind the getA()?  Or how to set rval() in the binding implementation?
+
+[10:34:45.0081] <ewang21>
+ * ```
+class A {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+...
+private:
+...
+};
+
+class B {
+public:
+static bool DefineClass(JSContext\* ctx, JS::HandleObject global);
+
+B(A const& a, ...)
+: m_a{a},... {}
+
+A const& getA() const noexcept { return m_a; }
+...
+
+private:
+A const& m_a;
+...
+};
+
+```
+
+getA() of the class B will return the reference member variable(m\_a) of the class B. How do I bind the getA()?  Or how to set rval() in the binding implementation?
+
+
+2023-04-28
+[21:46:57.0009] <arai>
+jrmuizel: about bug 1827197,  do you have real-world example of field initializer consumers ?  I'd like to see how it's used in wild, and what kind of initializer expressions are common
+
+[21:46:59.0247] <botzilla>
+https://bugzil.la/1827197 — NEW (nobody) — Consider not having a separate function to initialize each member of a class
+
+[01:07:20.0672] <delan>
+how do i make a tarball like [https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/WIYJNG5dS-W5rZk-dKYx-w/runs/0/artifacts/public/build/mozjs-112.0.0.tar.xz](mozjs-112.0.0.tar.xz) from my local checkout? it’s not mach package, and it sounds like i want the equivalent of the sm-package-linux64-opt job on tc, but i can’t seem to find the commands it uses under the hood
+
+[01:07:39.0012] <delan>
+ * how do i make a tarball like [mozjs-112.0.0.tar.xz](https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/WIYJNG5dS-W5rZk-dKYx-w/runs/0/artifacts/public/build/mozjs-112.0.0.tar.xz) from my local checkout? it’s not mach package, and it sounds like i want the equivalent of the sm-package-linux64-opt job on tc, but i can’t seem to find the commands it uses under the hood
+
+[01:08:46.0119] <arai>
+it looks like it's using this script https://searchfox.org/mozilla-central/source/js/src/make-source-package.py
+
+[01:08:59.0703] <arai>
+in this line https://searchfox.org/mozilla-central/rev/566f69826b829767d0373169eef6c50cc7d2241b/taskcluster/scripts/builder/build-sm-package.sh#11
+```
+AUTOMATION=1 DIST=$UPLOAD_DIR $GECKO_PATH/js/src/make-source-package.py
+```
+
+[01:13:00.0802] <delan>
+thanks! i’ll try that once i’m back at my desk :)
+
+[05:17:25.0643] <liam_g>
+Is there some way of marking a native function as async? Something like `JS_FN("someAsyncFunction", someAsyncFunction, 0, ASYNC_FLAG)`
+
+[05:19:48.0259] <Redfire>
+not on its own, you just have to set the rval as a promise
+
+[05:20:40.0284] <liam_g>
+Oh right, that makes sense.
+

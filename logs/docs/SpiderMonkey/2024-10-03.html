@@ -1,0 +1,66 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2024-10-03</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2024-10-03<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2024-10-02" class="nav-link"><span>prev</span></a>
+<a href="2024-10-06" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Wed Oct 02 2024 17:22:56 GMT-0700 (Pacific Daylight Time)">00:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><p>Things need to be done would be:</p>
+<ul>
+<li>(1) Perform the additional <a href="https://wicg.github.io/scheduling-apis/#sec-patches-html-hostmakejobcallback">HostMakeJobCallback</a> steps</li>
+<li>(1.1) Modify <a href="https://searchfox.org/mozilla-central/rev/7e0ae4372c52b8183d1178132dd6493edb576738/js/public/Promise.h#34">JS::JobQueue</a> to make it possible to pass the current <code>[[SchedulingState]]</code> value from the embedding to SpiderMonkey, as a part of <code>[[HostDefined]]</code></li>
+<li>(1.2) Call the new JS::JobQueue method when creating a reaction in <a href="https://searchfox.org/mozilla-central/rev/7e0ae4372c52b8183d1178132dd6493edb576738/js/src/builtin/Promise.cpp#5146-5151,5164,5186-5187">NewReactionRecord</a> (which corresponds to HostMakeJobCallback done in <a href="https://tc39.es/ecma262/#sec-performpromisethen">PerformPromiseThen</a>) and associate it to the reaction</li>
+<li>(2) Pass the additional <code>[[HostDefined]]</code> value to the embedding back when enqueueing the job</li>
+<li>(2.1) Modify <a href="https://searchfox.org/mozilla-central/rev/7e0ae4372c52b8183d1178132dd6493edb576738/js/public/Promise.h#56">JS::JobQueue::enqueuePromiseJob</a> to make it possible to pass the <code>[[SchedulingState]]</code> value (separate parameter, or maybe wrap incumbentGlobal and SchedulingState into single parameter to allow future extension)</li>
+<li>(2.2) Modify the Gecko's side to store the <code>[[SchedulingState]]</code> value to the promise job (somewhere around <a href="https://searchfox.org/mozilla-central/rev/7e0ae4372c52b8183d1178132dd6493edb576738/xpcom/base/CycleCollectedJSContext.cpp#250-251">mozilla::CycleCollectedJSContext::enqueuePromiseJob</a>)</li>
+<li>(3) Perform the additional <a href="https://wicg.github.io/scheduling-apis/#sec-patches-html-hostcalljobcallback">HostCallJobCallback</a> steps</li>
+<li>(3.1) Currently the incumbentGlobal handling is done before by <a href="https://searchfox.org/mozilla-central/rev/7e0ae4372c52b8183d1178132dd6493edb576738/dom/bindings/CallbackObject.cpp#274,287">CallSetup</a> before calling the job, but in order to exactly follow the spec, the handling should be done as part of HostCallJobCallback, which is performed <a href="https://tc39.es/ecma262/#sec-newpromisereactionjob">inside the job</a>, only when the handler is not EMPTY.  So either modify the ordering, or somehow make it possible to perform the equivalent with the current CallSetup way</li>
+</ul>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Wed Oct 02 2024 17:41:12 GMT-0700 (Pacific Daylight Time)">00:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">and once that part is implemented, the task handling just need to set the current scheduling state to the specific value only during the sync execution of the task and unset it after that.  so that the scheduling state is stored to the reactions created during the sync execution, and propagated to the async promise-based execution</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Thu Oct 03 2024 06:23:08 GMT-0700 (Pacific Daylight Time)">13:23</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-16" title="@mccr8:mozilla.org">mccr8</span>&gt;</div></td><td class="msg-cell">Thanks for the explanation!</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Thu Oct 03 2024 09:36:23 GMT-0700 (Pacific Daylight Time)">16:36</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell">we now have a GitHub issue to track JSAPI changes for the next (ESR) Migration Guide for SM embedders. Please list breaking JSAPI changes here: <a href="https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/issues/87">https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/issues/87</a></td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Thu Oct 03 2024 11:17:48 GMT-0700 (Pacific Daylight Time)">18:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@sefeng:mozilla.org">sefeng</span>&gt;</div></td><td class="msg-cell">thanks so much!! Will ping you back with more questions :) </td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Thu Oct 03 2024 13:58:17 GMT-0700 (Pacific Daylight Time)">20:58</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@sefeng:mozilla.org">sefeng</span>&gt;</div></td><td class="msg-cell"><span class="nick-15">arai</span>: what should the scheduling state be, any C++ object or it needs to be a JS specific thing...?</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Thu Oct 03 2024 13:59:31 GMT-0700 (Pacific Daylight Time)">20:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@sefeng:mozilla.org">sefeng</span>&gt;</div></td><td class="msg-cell"><p>I guess from the DOM perspective, it should look like</p>
+<pre><code>class WebTaskSchedulingState {
+ private:
+  Maybe&lt;RefPtr&lt;AbortSignal&gt;&gt; mAbortSource;
+  Maybe&lt;RefPtr&lt;TaskSignal&gt;&gt; mPrioritySource;
+};
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Thu Oct 03 2024 14:16:49 GMT-0700 (Pacific Daylight Time)">21:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><p>the restrictions here are the following:</p>
+<ol>
+<li>The state value needs to be stored into the <a href="https://searchfox.org/mozilla-central/rev/ce404cd26e52d09e6a48d664c1986da25df50484/js/src/builtin/Promise.cpp#729">PromiseReactionRecord</a> object's slot.  This means it shoult be representable as <code>JS::Value</code> (so, <code>JSObject*</code>, or <code>JS::PrivateValue</code>, or some integer token, or something along that line)</li>
+<li>The state value is stored into a pending reaction, and it can be left pending until the page unload.</li>
+<li>The PromiseReactionRecord can be finalized off main thread.  If the state needs to be immediately freed upon finalization, the destructor might need to cover the case</li>
+</ol>
+</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Thu Oct 03 2024 14:19:07 GMT-0700 (Pacific Daylight Time)">21:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">simple solution would be to create a JSObject (possibly with its own JSClass) that represents the entire <code>[[HostDefined]]</code> field and replace the "incumbentGlobal" handling with it, and let the object's finalize hook handle the refcount etc</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Thu Oct 03 2024 14:20:28 GMT-0700 (Pacific Daylight Time)">21:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">if the state persists until the page unload regardless of the task's lifetime, the other option would be to create an integer token on the embedding side and pass the token, so that you don't have to worry about the lifetime management</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

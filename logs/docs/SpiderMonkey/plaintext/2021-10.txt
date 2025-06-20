@@ -1,0 +1,2399 @@
+2021-10-01
+[02:06:36.0808] <arai>
+TheQwertiest: not specifically, but I think I saw some code that mentions nested loop and task/microtask.  look for "Task", "Microtask" or  "MicroTaskCheckPoint" in https://searchfox.org/mozilla-central/source/xpcom/base/CycleCollectedJSContext.cpp
+
+[02:07:28.0987] <arai>
+so, using the same model for when to perform microtask checkpoint would make your application works similar to Firefox's code
+
+[05:29:17.0543] <ANdi>
+Hello folks, using the new clang-13, that has just been release today I see some data races with RefPtr in `Spidermonkey Thread Sanitizer `
+
+[05:29:22.0874] <ANdi>
+https://firefox-ci-tc.services.mozilla.com/tasks/B4sU3VtNR2264ZjrYSqWTA
+
+[05:30:08.0141] <ANdi>
+I hope on monday to be able to land the migration from llvm-12.0.1 to llvm-13.0.0 and to fix this by then
+
+[06:48:39.0367] <jandem>
+I checked the [log](https://firefox-ci-tc.services.mozilla.com/tasks/B4sU3VtNR2264ZjrYSqWTA/runs/0/logs/public/logs/live.log), it looks wasm-related
+
+[06:48:44.0384] <jandem>
+lth: ^
+
+[06:49:15.0134] <lth>
+looking...
+
+[06:50:19.0290] <jandem>
+(the log viewer UI is a bit annoying, but you can try searching for `wasm::Code`)
+
+[06:53:45.0439] <lth>
+works to search for UNEXPECTED-FAIL too, yeah
+
+[06:53:51.0196] <lth>
+("annoying" is an understatement)
+
+[06:54:18.0221] <lth>
+ANdi: highly unlikely we'll be able to get to this before monday
+
+[06:54:42.0070] <lth>
+ANdi: is this current mozilla-central or code from a couple days ago?  we had a patch land that we know have races , but it was later backed out
+
+[06:55:06.0698] <ANdi>
+> <@lth:mozilla.org> ANdi: is this current mozilla-central or code from a couple days ago?  we had a patch land that we know have races , but it was later backed out
+
+no, it's latest from earlier today
+
+[06:55:15.0557] <lth>
+hm, that's interesting
+
+[06:55:17.0112] <ANdi>
+But I think we can mark as expected the fail, right?
+
+[06:56:21.0221] <lth>
+i see a lot of error reports, so i don't know about that
+
+[06:57:02.0339] <lth>
+(log viewer says "193 matches" for UNEXPECTED-FAIL in that log)
+
+[07:05:19.0399] <lth>
+Ryan Hunt: ^
+
+[07:05:25.0710] <lth>
+/me heads into meetings soon
+
+[07:19:29.0879] <Ryan Hunt>
+interesting. From first look, that seems like a genuine race. but the code here is tricky
+
+[07:24:26.0600] <lth>
+if it is a real race, it might be related to the problems dmitry has been having, because those almost certainly stem from some type of race during tier-up.  we have assumed it's a problem in his code, but it doesn't have to be that.
+
+[07:26:49.0001] <Ms2ger 💉💉>
+I'd love to hear that one isn't our fault!
+
+[07:28:42.0397] <Ryan Hunt>
+the read of the race is `bestTier()` which checks an atomic bool hasTier2 then proceeds to read tier2_ which is a uniqueptr. the race is complaining about the write to tier2_ during setTier2. it doesn't look like uniqueptr uses any atomics, so I don't think there's a defined ordering between the write to hasTier2 and the write to tier2_
+
+[07:29:10.0923] <Ryan Hunt>
+but I may be missing something
+
+[07:33:42.0605] <lth>
+there should be a commit of the tier2 code+data later in finishTier2 which sets that bool and creates the ordering
+
+[07:33:52.0675] <lth>
+(if memory serves)
+
+[07:54:49.0481] <Ryan Hunt>
+yeah I see that, but I'm not sure how that function (https://searchfox.org/mozilla-central/source/js/src/wasm/WasmCode.cpp#1225) creates an ordering between hasTier2_ tier2_. but I need to refresh my memory ordering knowledge
+
+[07:56:11.0422] <ANdi>
+Folks latest m-c with clang-13 also has this issue https://treeherder.mozilla.org/jobs?repo=try&revision=019579dcbc37671c81f8dfe4d45ab1508eb23955&selectedTaskRun=eDzrJbivSEq_6XpBUFl2Mw.0
+
+[07:58:37.0430] <lth>
+ah, i see the problem
+
+[07:58:53.0110] <lth>
+hasTier2_ is being set after the MOZ_RELEASE_ASSERT
+
+[07:59:06.0387] <lth>
+the MOZ_RELEASE_ASSERT reads tier2_
+
+[07:59:27.0840] <lth>
+this is formally a race though unlikely to be of any practical consequence
+
+[07:59:37.0019] <lth>
+Ryan Hunt: ^
+
+[08:26:49.0900] <mgaudet>
+Q: Are there any rules one can rely on about weakref cleanup? Looking at a test case that hopes that after a few GC/CC cyles a weakref ought to have been collected... but is that a thing that can actually be relied on? 
+
+[08:44:19.0921] <mccr8>
+mgaudet: yes, we should always collect everything that can be collected, though it can take multiple cycles if C++ is involved, sometimes.
+
+[08:44:37.0362] <mccr8>
+Also you might have to worry about lingering closure references or something.
+
+[09:07:23.0307] <mgaudet>
+Awesome. Thanks for the help. 
+
+[09:24:14.0883] <mccr8>
+the multiple cycles can happen because of JS -> C++ -> JS -> C++ kinds of things. This used to be an issue with Promises, so a chain like that would take N Gc/CC cycles to clean up. Though I think Olli fixed that, so if you are seeing that, please report it as a bug.
+
+[09:50:45.0905] <mgaudet>
+no, this was related to Bug 1733480, where the lovely test case was making a bit of an assumption about how quickly a WeakRef gets cleaned (and in my run not quite getting it right). 
+
+[09:50:47.0679] <botzilla>
+https://bugzil.la/1733480 — NEW (nobody) — Debugger Memory API's trackingAllocationSites force holding all globals which allocated objects
+
+[09:53:27.0668] <mccr8>
+mgaudet: you can look at js/xpconnect/tests/mochitest/test_weakmaps.html for an example of a test that makes sure weak maps are cleaned up properly. SpecialPowers.exactGC() is useful because it returns to the event loop before running the GC, which can help avoid some stack references.
+
+[10:02:43.0221] <lth>
+ANdi: I can produce a patch on monday, but if you want to test it before then, swap the order of the two middle lines of Code::commitTier2 in js/src/wasm/WasmCode.cpp
+
+[10:03:05.0660] <lth>
+/me slides into his weekend
+
+[10:04:09.0129] <ANdi>
+> <@lth:mozilla.org> ANdi: I can produce a patch on monday, but if you want to test it before then, swap the order of the two middle lines of Code::commitTier2 in js/src/wasm/WasmCode.cpp
+
+1227 with 1228, right?
+
+[11:13:42.0680] <lth>
+yes
+
+[14:06:33.0535] <mgaudet>
+Via JSAPI I need to get a hold of the constructor of `Uint8Array` -- any tips? 
+
+[14:06:42.0688] <Tim>
+mgaudet: Thanks for reviewing https://phabricator.services.mozilla.com/D127201 -- could you land it?
+
+[14:07:17.0072] <mgaudet>
+tim: We'll just hold on till the whole stack is done to avoid confusing bugzilla if that's OK with you 
+
+[14:07:25.0821] <Tim>
+> <@mgaudet:mozilla.org> tim: We'll just hold on till the whole stack is done to avoid confusing bugzilla if that's OK with you
+
+OK, no problem
+
+[14:07:38.0893] <Tim>
+This is my first time working with Spidermonkey in a very long time, so I don't really know the workflow
+
+[14:07:39.0780] <mgaudet>
+(otherwise, need to tell bugzilla not to close for that patch, and it gets hairy as you have stacks spread through time) 
+
+[14:07:48.0216] <mgaudet>
+Tim: No worries! 
+
+[14:25:52.0408] <mgaudet>
+> <@mgaudet:mozilla.org> Via JSAPI I need to get a hold of the constructor of `Uint8Array` -- any tips?
+
+(Trying a different design) 
+
+[14:35:09.0969] <mgaudet>
+confession: Have a fairly complete, but not user-exposed implementation of ReadableByteStreamController. This is because Gecko streams, like fetch, are implemented as ReadableStreams with ByteStream controllers, but default readers. 
+
+[14:35:13.0119] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[15:08:56.0274] <sfink>
+mgaudet: the original Uint8Array constructor or the current one? Though it sounds like you may not need it anymore.
+
+[15:09:34.0318] <sfink>
+or rather: "I don't know, but note that you have two choices."
+
+[16:07:50.0198] <mgaudet>
+Hah. Ok, that’s a good note. I think original, but my current solution seems fine, and so I will stick with it for now. 
+
+[16:08:00.0092] <mgaudet>
+Also: have a good weekend all!
+
+
+2021-10-04
+[01:56:18.0775] <lth>
+ANdi: still investigating, it may take a little time
+
+[01:57:33.0615] <ANdi>
+> <@lth:mozilla.org> ANdi: still investigating, it may take a little time
+
+I did the proposed fix and it kinda didn't fix the issue
+
+[01:57:47.0854] <lth>
+yeah, i think it is an issue but it's not the issue we're looking for
+
+[08:03:32.0338] <lth>
+ANdi: Disassembly points to this being a Clang/TSAN bug, I've ni?'d you
+
+[10:41:45.0537] <wes>
+Hey, folks! I'm getting ready to plan out a JSAPI project for a developer who is new to embedding.  I'm not new to JSAPI, but out of date (I know JS 1.8.5 very well).  We're going to try and run spidermonkey from inside of Python, sharing immutable memory between select JS and Python data types  (falling back to ctypes if that fails).   Any words of wisdom for us?
+
+My big question is -- have any super major under the hood changes to basic data structures happened since jsapi moved to fatvals?  I Know we have a moving GC now, and interop with the GC will be very important for the project. I'm assuming that there is a way of declaring a "don't move my data" JS root, and the basic GC callback API probably still exists...  Are strings still basically uint16[] ?  Are jsvals still NAN-tagged float 64s?
+
+I'll also need a basic network stack so that I can implement XHR if anybody happens to know of something...otherwise we can cobble together a basic reactor around select() or something.
+
+(Does jorendorff still hack on spidermonkey?)
+
+[10:46:41.0504] <iain>
+wes: values are still NaN-boxed doubles. Strings are arrays of either char or char16_t, depending on whether they contain any non-latin1 characters
+
+[10:47:01.0064] <sfink>
+Hey Wes! It's been a while. jorendorff is gone, semi-recently (in the time scale of your involvement, pretty recently!)
+
+[10:47:47.0948] <sfink>
+for the GC, if your data is in malloc memory held by the GC cell, then you're fine
+
+[10:48:03.0377] <sfink>
+it gets more complicated if you want to store the data directly in the GC thing
+
+[10:49:16.0743] <sfink>
+ctypes has sort of been on life support for a while -- Gecko has very few remaining uses and they're slowly being removed, and it's likely that we'll drop it from spidermonkey once that's gone
+
+[10:50:18.0533] <sfink>
+the GC rooting APIs still exist, fewer of them now, but there are easier ways now (eg `PersistentRooted`). See https://spidermonkey.dev/ for examples.
+
+[10:50:39.0247] <sfink>
+ * the GC rooting APIs still exist, fewer of them than in 1.8.5, but there are easier ways now (eg `PersistentRooted`). See https://spidermonkey.dev/ for examples.
+
+[10:50:58.0523] <wes>
+iain: Cool - was wondering when an 8-bit backing store for characters was coming. :)   That's a good choice, giving how latin1 maps onto both utf16 and unicode.
+
+[10:51:29.0548] <sfink>
+we'd kind of like it to be wtf-8, I think, but for now it's just latin1 or 16bit chunks
+
+[10:55:14.0857] <iain>
+Out of curiosity, I checked, and the latin1 optimization landed [seven years ago](https://bugzilla.mozilla.org/show_bug.cgi?id=998392)
+
+[10:58:55.0732] <wes>
+sfink: Bummer to hear about Jason, but I bet he's doing amazing things. I remember his early days here, hacking on tamarin, he was very kind and gracious and taught me many things.
+
+Sorry to hear that ctypes is on life support...........OTOH I implemented a complete ffi for JS 1.8.5, and if things are kind of still the same I can reimplement something very similar to js-ctypes if I absolutely have to and hopefully wire it up to python C types  (I don't actually know anything about python...time to learn, I guess)
+
+re strings -- v8 either does or did have a utf8 backing store (have not RTFSd in a long while), I can certainly see the value, especially when remote data is from a utf8 source. wtf-8 is a new one on me, thanks for the reference.......I initially thought it was going to be something like the old spidermonkey wctombs code (I think I actually wrote some patches on that back in the day) ...... but I see now that wtf-8 is what I thought utf-8 allowed AND it explains a bug I had in NodeJS a couple of years ago.  I was banging float64s, bitwise raw, into Strings and expecting them to make it across the network; but somewhere along the line my unpaired surrogates were getting rewritten as invalid code points.  This was in a distributed computing astrophysics application and it only harmed my mantissa, most of the time.  BOY was that fun to figure out.
+
+[10:59:56.0013] <wes>
+iain: ToT    I hate that I'm not as involved @moz as I'd like to be.   I landed the JS 1.8.5 release more than ten years ago  (face book told me earlier this year) and that was the last major work I did. :( :( :( 
+
+[11:00:10.0315] <wes>
+ * iain: ToT  Seven years!!!  I hate that I'm not as involved @moz as I'd like to be.   I landed the JS 1.8.5 release more than ten years ago  (face book told me earlier this year) and that was the last major work I did. :( :( :(
+
+[11:00:36.0612] <sfink>
+it must have been a good release, given how long people continued to use it... ;-)
+
+[11:03:14.0660] <iain>
+Huh, V8 having a utf8 backing store is news to me. One of the obstacles to wtf8 is that the regexp engine wants to be able to index into strings (for eg Boyer-Moore search), which requires fixed-length characters, and we use the same regexp code as V8
+
+[11:05:36.0608] <wes>
+sfink: That was no accident. Folks were using 1.7.0 at the time and some distros were shipping even earlier.  The distros wanted moz to adopt semver-style versioning for jsapi, at a time where jsapi wasn't even ABI compatible between -DDEBUG and -UDEBUG  (sizeof JSClass changed!!)....and they were trying to move to fatvals, improve tracemonkey, etc..... it took a fair bit of politicking behind the scenes with the distros to convince them to let mozjs185 in the ecosystem.  Now that release-train is on board and the path has been blazed, releases are (should be??) easier, but getting embedders to keep up with the major version changes (which become package changes) is still a challenge, I imagine.
+
+I tried to address the API/ABI cross-release stuff with GPSEE, but ran out of capability.  Something in the future like N-API, though, would be cool.  (I actually think it should be possible to write a N-API layer for spidermonkey quite easily if it hasn't been done. Too bad it didn't exist during the spidernode push)
+
+[11:06:03.0912] <wes>
+iain: They definitely had one ten years ago.  But that is an eternity in JS engine time.
+
+[11:06:26.0738] <wes>
+(or maybe my brain is muddy - not impossible)
+
+[11:06:38.0323] <wes>
+Interesting problem with the regex, is the backing engine still a pcre fork?
+
+[11:07:46.0022] <iain>
+Looks to me like they convert utf8 strings to latin1 or utf16 on [construction](https://source.chromium.org/chromium/chromium/src/+/main:v8/src/heap/factory.cc;l=735-764;drc=ed29b11535052162b60b14c1eaf88553f42b8d5b;bpv=0;bpt=1)
+
+[11:07:48.0407] <ptomato>
+ > at a time where jsapi wasn't even ABI compatible between -DDEBUG and -UDEBUG
+
+this is still true, FWIW 😄
+
+[11:08:39.0973] <iain>
+No, V8 wrote [irregexp](https://blog.chromium.org/2009/02/irregexp-google-chromes-new-regexp.html), and we stole it twice
+
+[11:08:49.0221] <nbp>
+wes: most of the JSAPI C++-ified since.
+
+For embedding, one of the trick which can be done is what is done in mozjs rust library, which is to have a vector of rooted elements.
+However interaction between Python and SpiderMonkey memory collection is going to be some kind of a challenge (I would expect)
+
+[11:09:26.0058] <iain>
+I wrote a blog post about the second import of irregexp [here](https://hacks.mozilla.org/2020/06/a-new-regexp-engine-in-spidermonkey/)
+
+[11:12:16.0701] <nbp>
+wes: I would recommend looking at Gecko cycle-collector interaction with the GC, but I am not even sure python offers APIs to tweak its memory management system.
+
+[11:18:19.0586] <wes>
+iain: Stole it twice. NICE! :)   <reads blog>
+
+nbp: Thanks for mentioning the mozjs rust lib. This hadn't crossed my mind, I will certainly give that a read.   Re Gecko cycle-collector, I was thinking the same thing!  I actually mentioned this the other day as illustrative example of how two GCs can cooperate if done right.   Getting both GCs to interoperate will certainly be a challenge, I hope we can pull it off.  I guess we will be learning lots about the Python guts soon.  I am sick of our scientific computing stack being slow and bloated.
+
+[11:27:00.0096] <ewlsh>
+You could take a look at GJS for interfacing with a reference counting system
+
+[11:28:02.0947] <ewlsh>
+GJS would've been only a few years old when you landed 1.8.5 wes ☺️
+
+It's come a ways since then and distro packaging generally follows our release cycle now.
+
+[11:38:11.0987] <wes>
+> <@ewlsh:gnome.org> You could take a look at GJS for interfacing with a reference counting system
+
+ewish - nice! Glad to see that's still around. I do remember this project, it was in its infancy but very interesting to me. 
+
+[11:39:38.0679] <ewlsh>
+It now runs the entire GNOME desktop environment and we track the ESR builds 🎉
+
+[11:40:08.0659] <mccr8>
+The cycle collector used to theoretically support interoperating with multiple languages, including Python, but I don't think it was ever actually used.
+
+[11:40:46.0177] <ewlsh>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/
+
+ptomato @ptomato:gnome.org started this work and it's become quite wonderful
+
+[12:12:51.0974] <wes>
+iain - great blog post, really helped pull some cobwebs out of my brain, too.  (BTW - I see you're in Canada - I'm in Kingston ON - if you're anywhere near Ottawa/Montreal/Toronto, I'd love to buy you lunch someday)
+
+I also took a walk through memory lane and checked out v8's string implementation from 2009  (which is about the last time I read it).   They have two-byte and ascii backing store, but as you said, the utf8 is taken apart at constructor time, and either jammed into the ascii or the uint16 strings, depending on content.  They also have (had?) "sliced strings" which I'm guessing are some kind of rope.
+
+[12:13:37.0715] <iain>
+Alas, I was in Toronto until a year or so ago, but now we're in Abbotsford
+
+[12:16:48.0556] <iain>
+IIRC, V8's sliced strings are equivalent to our [dependent strings](https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#93), which are a cheap way to make substrings of an existing string
+
+[12:17:27.0590] <iain>
+Looks like ropes in V8 are called ConsStrings
+
+[12:18:55.0937] <iain>
+Basically, there's a bunch of different string representations listed in [this SMDOC](https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#81), and last time I checked there was pretty much a one-to-one mapping between the string types in SM and V8
+
+[12:37:29.0258] <evilpie>
+oh it's already a new cycle
+
+[13:39:16.0069] <wes>
+Iain - Abbotsford!  Nice place.  I visited on my way to visit the left coast a couple of years back.  My buddy has a Volkswagen Westfalia (ontario plate VAN GOUGH) parked in Abby that I borrowed for the duration.  
+
+Thanks for the SMDOC pointer. That's all new. I will be reading lots.  This is great, way better than bugging brendan, shaver, jorendorff and waldo when I don't grok the source. :) :) 
+
+[13:55:20.0467] <iain>
+There are [SMDOC] comments scattered [throughout the code](https://searchfox.org/mozilla-central/search?path=&q=%5Bsmdoc%5D), which is basically an indication that at some point somebody thought it was an important concept and put an above-average amount of effort into documenting it
+
+
+2021-10-05
+[03:57:09.0814] <nbp>
+iain: https://bugzilla.mozilla.org/show_bug.cgi?id=1733899#c4 What?! This sounds wrong to me, as RInstruction can potentially delay objects mutations which might happen before an exception is raised. Thus making the out-of-order induce by the optimizing JIT visible within JavaScript, which can lead to differential behaviour.
+
+[05:25:06.0801] <arai>
+yulia: how were you using the spec comment's revision hash?
+
+[06:02:07.0288] <yulia>
+arai: there were name changes to how modules were initialized, so i wasn't sure from which revision we had the name from
+
+[06:02:58.0187] <yulia>
+but, i don't think the way we do it now is good, fwiw -- it might be better to include the commit hash of the spec in the commit message or something?
+
+[06:03:35.0849] <yulia>
+I found the change by bisecting, since the commit hash wasn't there -- it took a bit of time but wasn't a huge issue
+
+[06:04:08.0584] <yulia>
+ * I found the change by a best guess and bisecting, since the commit hash wasn't there -- it took a bit of time but wasn't a huge issue
+
+[06:19:00.0180] <arai>
+yulia: if there's hash, do you build the spec for given hash, or is there static history?
+
+[06:19:50.0303] <arai>
+ecma262-compare provides partial history, but less than 2 years
+
+[06:20:10.0198] <yulia>
+arai: I use the github repo to track the spec back
+
+[06:20:23.0830] <yulia>
+oh, and this is also why we introduced the searchfox view of the spec actually
+
+[06:20:31.0832] <arai>
+ah
+
+[06:20:45.0523] <yulia>
+https://searchfox.org/ecma262/rev/eb84feeb87e20865178af81ea575fa801c740212/spec.html#796
+
+[06:20:49.0386] <yulia>
+for example
+
+[06:21:11.0240] <yulia>
+can't remember why i was looking at that, its from my history
+
+[06:21:31.0149] <arai>
+okay, then I'll add the hash to spec comment
+
+[06:21:59.0855] <yulia>
+It probably shoudn't be for every one, though I am unsure what a good system here would be
+
+[06:22:12.0232] <yulia>
+I really like the changes you made to the comments
+
+[07:11:14.0587] <arai>
+commit message works only when the section comment is updated at the latest change I think.  unless we introduce some system that collects all spec comment for the function and find the latest commit's message
+
+[07:12:49.0540] <arai>
+so, if having hash in each section comment would be simpler solution for now
+
+[08:07:02.0641] <arai>
+* so, having hash in each section comment would be simpler solution for now
+
+[08:23:50.0051] <iain>
+nbp: It's [this patch](https://phabricator.services.mozilla.com/D125360). We're just saving the exception before running the RInstruction interpreter. There shouldn't be any change in behaviour.
+
+[08:26:55.0023] <nbp>
+Ok. Nevermind then, thanks for the pointer. 
+
+[09:21:54.0270] <ochameau>
+I'm bit stuck on https://bugzilla.mozilla.org/show_bug.cgi?id=1733480
+I'm starting to think that storing `SavedFrame`'s into an `ObjectWeakMap` as a value
+introduces some hazardry in GC rules.
+Could there be some very special GC rule that gets in the way here?
+Where using a random JS Object as a key and a SavedFrame as a value in a  ObjectWeakMap
+ends up forcing either the key or the value to be kept in memory.
+* Note that there is cross references between the key (a JS object) and the value (the SavedFrame)
+  The SavedFrame (value) comes from the same global as the JSObject (key), which is a global attribute.
+  So that keeping the SavedFrame in memory keeps the JSObject and the other way around, via the weakmap.
+
+[09:26:37.0038] <sfink>
+jonco: you around? I'd like to discuss bug 1717553
+
+[09:26:40.0097] <botzilla>
+https://bugzil.la/1717553 — NEW (jonco) — On YouTube, some of the memory of previous pages is not cleared
+
+[09:30:10.0017] <sfink>
+ochameau: I'm not sure if I fully follow, but if this ObjectWeakMap is alive (marked black / reachable from a regular root), then the reachability rules are the same as if it were a Map. And thus there is a strong reference from the key to the SavedFrame value.
+
+[09:31:02.0230] <sfink>
+so yes, if the key is reachable from the value, then there's a cycle between them such that they'll keep each other alive
+
+[09:32:37.0769] <ochameau>
+Oh. Then, it makes perfect sense. This is this precise weakmap: https://searchfox.org/mozilla-central/source/js/src/vm/Realm.h#250-252
+
+[09:33:19.0175] <ochameau>
+But then... is ObjectsWeakMap a lie? It shouldn't be named this way? Or is it broken because of the actual key and values I'm using?
+
+[09:34:05.0551] <ochameau>
+By lie I mean... it isn't quite the behavior I would expect of a "weak map" ;)
+
+[09:34:14.0697] <sfink>
+I guess I'm not sure whether that weakmap should be marked black in your case.
+
+[09:34:50.0736] <sfink>
+"weak map" *is* a bit of a misnomer. The correct term would be "ephemeron table", but that's a mouthful of jargon.
+
+[09:36:08.0109] <sfink>
+where a regular map has edges from the map to each key, and from each key to its corresponding value, a weakmap has an edge from the *conjunction* of the (map, key) -> value. As in, both the map and key have to be reachable in order for that edge to keep the value alive.
+
+[09:36:48.0638] <sfink>
+that's different from the usual usage of "weak" in eg weak references, where the weak edge simply does not participate in keeping something alive
+
+[09:38:05.0207] <sfink>
+for your problem, it seems like either (1) you want the ObjectWeakMap to only be reachable from the corresponding global, or (2) to have a weak reference from the SavedFrame value to its global.
+
+[09:38:39.0029] <sfink>
+the latter sounds kind of tricky, since I would imagine SavedFrames could have all sorts of references to things in that realm.
+
+[09:39:59.0777] <sfink>
+so I guess my question would be: why is that ObjectRealm getting traced? (I assume the ObjectRealm traces the objectMetadataTable uncondtionally.)
+
+[09:40:22.0488] <sfink>
+yes, it is
+
+[09:41:00.0571] <sfink>
+it's called from Realm::traceRoots
+
+[09:42:09.0593] <ochameau>
+All what you just said make sense except the very last about ObjectRealm. And also, I'm bit confused about why cycles ends up keeping both key and value alive ? In theory, we no longer have anything justifying the key to be alive. That, except the value itself. Does that mean the weakmap holds strong reference to all keys?
+
+[09:42:09.0843] <sfink>
+I'm wondering if it could also be guarded by `shouldTraceGlobal()`?
+
+[09:42:53.0405] <sfink>
+sorry, cycles don't keep themselves alive by themselves.
+
+[09:43:15.0704] <sfink>
+in this case, it seems like the key is reachable from the global
+
+[09:43:27.0251] <sfink>
+and so is the map
+
+[09:43:36.0290] <sfink>
+(via Realm::traceRoots)
+
+[09:43:48.0739] <ochameau>
+yes
+
+[09:44:18.0147] <ochameau>
+but the global is only kept alive because of the SavedFrame
+
+[09:44:24.0183] <ochameau>
+so... the cycle
+
+[09:45:15.0004] <ochameau>
+if I stop recording SavedFrame in this weakmap, the realm and the global get freed
+
+[09:45:47.0685] <ochameau>
+and so the key/JSObject which is a global attribute
+
+[09:46:20.0619] <sfink>
+yeah, I'm trying to think through what else could be reaching the global. Because I agree, it seems like just making the weakmap reachable should not be doing this.
+
+[09:47:59.0315] <ochameau>
+I may be missing lots of knowlege on how the GC really work. But your suggestions seem to make sense in order to try to get rid of the cycle. 
+
+[09:49:12.0338] <ochameau>
+Also... I was wondering if we could have a (3) option: Have a real weak map here? Have a really weak reference between each JSObject and their allocation site?
+
+[09:49:27.0079] <ochameau>
+allocation site being the SavedFrame
+
+[09:50:10.0357] <sfink>
+I do agree with your point that nothing seems to be marking the global, so that part is still a mystery 
+
+[09:50:27.0870] <sfink>
+if that were a weak reference, what would keep the SavedFrame from just getting tossed out immediately?
+
+[09:50:53.0735] <ochameau>
+yes... sorry... I keep thinking about this while it is obviously wrong
+
+[09:52:31.0336] <sfink>
+do you have this in rr or Pernosco? Or an easy way to reproduce? I'd like to see what is marking the global.
+
+[09:52:35.0605] <ochameau>
+so... I'm looking into this because I'm trying to build some tool to detect and debug leaks. And these tools actually tell me the edge names of why the objects are being kept alive. 
+
+[09:52:54.0502] <ochameau>
+Here is the two typical path of why my transient globals are being kept alive:
+
+[09:53:09.0122] <ochameau>
+```
+0:38.87 GECKO(175125) - other@no-stack:undefined.vm_stack[2]
+ 0:38.87 GECKO(175125)  \--> Proxy@no-stack:undefined.proxy target
+ 0:38.88 GECKO(175125)  \--> Debugger@no-stack:undefined.WeakMap entry value
+ 0:38.88 GECKO(175125)  \--> Object@no-stack:undefined.Debugger.Object referent
+ 0:38.88 GECKO(175125)  \--> Sandbox@no-stack:undefined
+ 0:38.88 GECKO(175125) - other@no-stack:undefined.script
+ 0:38.88 GECKO(175125)  \--> other@no-stack:undefined.cacheir-object
+ 0:38.88 GECKO(175125)  \--> Function@no-stack:undefined.shape
+ 0:38.88 GECKO(175125)  \--> other@no-stack:undefined.base
+ 0:38.89 GECKO(175125)  \--> other@no-stack:undefined.baseshape_global
+ 0:38.89 GECKO(175125)  \--> Sandbox@no-stack:undefined
+```
+
+
+[09:53:55.0136] <mccr8>
+You should look at what the GC log tells you is the reason the stack things are alive.
+
+[09:54:23.0044] <mccr8>
+Well, I guess why the key is alive, as you know why the map is alive.
+
+[09:54:31.0808] <ochameau>
+Unfortunately, I'm not used to use rr/pernosco, so I don't have that. But I wrote a mochitest to easily reproduce the leak and explain everything: https://phabricator.services.mozilla.com/D127169
+
+[09:56:18.0640] <sfink>
+well, it seems like that 2nd path is the relevant one here. There's a CacheIR thing leading to the global, which means it seems like JIT code is holding onto it.
+
+[09:56:46.0292] <sfink>
+does it go away if you minimize memory usage from about:memory? (I think that'll discard JIT code.)
+
+[09:57:42.0198] <ochameau>
+I can give it a try. Is that enought to call `gMgr.minimizeMemoryUsage()` ?
+
+[10:00:06.0147] <ochameau>
+Yes... it is enough... OMG. I spent so much time on this and my helpers were actually telling me the truth :o
+
+[10:00:59.0328] <ochameau>
+Calling minimize memory does free everything! Crazy. But why storing things in this weakmap does introduce the leak?
+
+[10:01:33.0515] <sfink>
+...I'm still not sure about that. It seems like the JIT code should be enough for it to leak.
+
+[10:01:46.0694] <ochameau>
+If I don't put the SavedFrame in this weakmap.... things do not start to leak.
+
+[10:03:00.0265] <sfink>
+so it doesn't leak the global? I mean, without all the SavedFrame clutter, there wouldn't be as much stuff to leak.
+
+[10:04:40.0579] <ochameau>
+Yes, if I stop recording the SavedFrame in that ObjectWeakMap, the globals and everything related to it (global attributes and their allocation site/SavedFrame) are all freed. 
+
+[10:05:18.0816] <ochameau>
+Now, with your tip, if I record the SavedFrame, everything starts leaking (what I just listed). But if minimizeMemory, everything is freed again.
+
+[10:05:26.0632] <sfink>
+ok. I see that in your mochitest too.
+
+[10:05:30.0792] <ochameau>
+ * Now, if I record the SavedFrame, everything starts leaking (what I just listed). But if minimizeMemory, everything is freed again.
+
+[10:06:33.0959] <sfink>
+I hope this isn't the allocation site processing getting JITted or something.
+
+[10:06:40.0359] <ochameau>
+Putting this just before checking the (real) JS weakref (The `ok(!!ref.get())`) does fix the leak :
+
+[10:06:41.0250] <ochameau>
+let gMgr = Cc["@mozilla.org/memory-reporter-manager;1"].getService(
+    Ci.nsIMemoryReporterManager
+  );
+  await new Promise(r=>gMgr.minimizeMemoryUsage(r));
+
+[10:08:32.0191] <ochameau>
+Well... I'm getting quite some noise in the data of the Memory API. I suspect that I'm seeing the SavedFrame in the output of the Memory API. It actually makes sense as SavedFrame comes from the inspected debuggee... But still I rather sounds like internal data used by the Debugger API.
+
+[10:08:58.0873] <ochameau>
+So. I wouldn't be surprise if there is some additional unexpected noise coming from the inspection.
+
+[10:09:10.0173] <ochameau>
+ * So. I wouldn't be surprised if there is some additional unexpected noise coming from the inspection.
+
+[10:09:37.0851] <sfink>
+jandem: iain: any idea why there would be a CacheIR thing holding onto a global only when allocation site tracking is enabled?
+
+[10:11:13.0983] <nbp>
+Is there any reasons why the savedFrame would even be JSObjects?
+
+[10:11:45.0315] <ochameau>
+My tooling currently prints `other@no-stack:undefined.cacheir-object` it is actually some data that comes from the Memory API. I'd be happy to improve that if there is some more useful information we can leverage from the platform.
+
+[10:12:43.0865] <ochameau>
+I'm using the `describeNode` method of the memory API: https://searchfox.org/mozilla-central/source/devtools/shared/test-helpers/allocation-tracker.js#499-501
+
+[10:12:51.0752] <sfink>
+nbp: `SavedFrame` inherits from `NativeObject`
+
+[10:13:00.0782] <ochameau>
+i.e. this API: https://searchfox.org/mozilla-central/source/dom/chrome-webidl/HeapSnapshot.webidl#69
+
+[10:13:17.0793] <sfink>
+or are you asking, should it?
+
+[10:13:38.0968] <nbp>
+sfink: CacheIR is linked to its caller, if the code is discarded but still on the stack, it should be able to return to its calling function, which has a callee which is a JSFunction?
+
+[10:13:54.0165] <nbp>
+sfink: I was asking why this was necessary.
+
+[10:14:47.0758] <sfink>
+I don't know why SavedFrame is done as an object. Probably makes the implementation easier. They get structured cloned, I know. And we want them as values in a weakmap for Debugger.
+
+[10:15:24.0169] <sfink>
+and yes, it's not surprising to me that CacheIR would be able to reach a global, it's more about why there would be CacheIR in one case and not the other
+
+[10:15:25.0721] <iain>
+sfink: Is this allocation site tracking distinct from the allocation site tracking we do for pretenuring?
+
+[10:15:46.0376] <sfink>
+yes, they're different
+
+[10:16:03.0725] <sfink>
+this is a heavyweight thing that grabs a stack when you allocate an object
+
+[10:16:18.0389] <iain>
+Is this AllocationMetadataBuilder?
+
+[10:16:22.0729] <sfink>
+yes
+
+[10:18:46.0508] <iain>
+So, the NewObject and NewArray ICs have to guard to make sure that there's no AllocationMetadataBuilder ([eg](https://searchfox.org/mozilla-central/source/js/src/jit/CacheIR.cpp#11347-11353)) because the stub doesn't support it, but it seems like that would go the other way: we would hold onto the global only when tracking is *disabled*
+
+[10:19:19.0856] <sfink>
+hah!
+
+[10:20:04.0858] <sfink>
+(though this is a failure of imagination on my part; I hadn't considered that the ICs would be different in the two cases)
+
+[10:20:27.0231] <iain>
+IIRC they're not different; we just don't attach if there's a builder
+
+[10:20:43.0379] <iain>
+Although I guess that is a difference of sorts
+
+[10:22:06.0444] <sfink>
+it's *the* important difference, just... backwards. :-(
+
+[10:22:14.0288] <iain>
+Yeah
+
+[10:22:58.0266] <iain>
+That's the only kind of stub we support for both of those operations, so if we don't attach that we won't attach anything, and we'll just end up calling the fallback a lot
+
+[10:23:37.0155] <ochameau>
+Note that the leak isn't really tied to having an AllocationMetadataBuilder or not. It is really down to collecting the frame within it
+
+[10:23:42.0202] <ochameau>
+See this comment https://bugzilla.mozilla.org/show_bug.cgi?id=1733480#c7
+
+[10:24:17.0292] <ochameau>
+I got rid of the leak when only removing the weakmap population, while keeping the allocationMetadataBuilder around
+
+[10:25:41.0813] <sfink>
+so like if you just comment out https://searchfox.org/mozilla-central/rev/75e9d727ce5ba2c14653cf8fb0f1367f085271b7/js/src/vm/Realm.cpp#470 then the leak goes away?
+
+[10:27:11.0803] <ochameau>
+hum, that's not quite what I did, but I can try and tell you what happens.
+
+[10:27:37.0985] <ochameau>
+What I did is to comment out the call to saveCurrentStack over there: https://searchfox.org/mozilla-central/rev/75e9d727ce5ba2c14653cf8fb0f1367f085271b7/js/src/vm/SavedStacks.cpp#1894-1897
+
+[10:27:42.0710] <sfink>
+I saw where you removed the whole `saveCurrentStack` call... yeah
+
+[10:29:11.0507] <sfink>
+I'll be back in a bit
+
+[10:43:11.0536] <ochameau>
+Oh! So. If I only remove `objects_.objectMetadataTable->add(cx, obj, metadata)`, the leak still reproduces. And it is still fixed if I minimizeMemory. So... at the end, it has nothing to do with this ObjectWeakMap!
+
+[10:44:01.0691] <ochameau>
+Then, if I restore this code and only comment out `stacks.saveCurrentStack(cx, &frame)`, the leak not longer reproduce, and I don't need to call minimizeMemory to fix the leak.
+
+[10:45:13.0207] <ochameau>
+I have no clue what "Cache IR" means. But could `saveCurrentStack` trigger some "Cache IR"-related code?
+
+[10:45:13.0821] <ochameau>
+https://searchfox.org/mozilla-central/source/js/src/vm/SavedStacks.cpp#1296
+
+[11:10:41.0653] <iain>
+Trying to stay out of the weeds: CacheIR is one of the ways that we generate code. The code that we generate can have edges to all sorts of things; as sfink said above, it's not surprising that CacheIR can reach a global. If we call the generated code, and it's still on the stack, then it's reachable and we can't free anything it reaches. We're generally pretty conservative about freeing CacheIR code; if it's able to make calls, I think we generally wait until we do a compacting GC and discard JIT code.
+
+[11:11:43.0031] <iain>
+So it seems plausible to me that saving a stack would keep otherwise-dead CacheIR code alive, which would then keep other stuff alive
+
+[11:15:50.0753] <ochameau>
+Thanks a lot for the super clear description. Everything suddently makes sense (even to me). And, the icing on the cake is that there is no more leaks!!
+
+[11:16:02.0028] <ochameau>
+Thanks iain and sfink for all the help!
+
+[11:19:56.0067] <sfink>
+ochameau: is that an adequate fix? You're ok with doing the `minimizeMemoryUsage` call? It's kind of heavyweight, and could add a noticeable pause. But given that you're already doing a heap traversal, I'm guessing it's ok. (We could add a lighter-weight API to do a more targeted cleanup if necessary.)
+
+[11:23:46.0806] <ochameau>
+These leak scripts are super heavy and I'm still building them up. As we start using them we may try to do some polish like what you just suggested. But for now, it is totally fine!
+
+[11:24:32.0466] <ochameau>
+Having said that... I'm wondering if we should force some GC/minimizeMemory when closing the DevTools and may be also while they are running.
+
+[11:24:39.0362] <sfink>
+ok, cool. I don't know if you need to incorporate fancy logic around weakmap marking. Your tool showed correct paths, but it doesn't reveal that the first path would not have existed if not for the second path.
+
+[11:25:17.0599] <ochameau>
+Yes, I'll investigate that!
+
+[11:25:40.0306] <sfink>
+I mean, there's nothing incorrect now. It's more a question of whether it would be helpful to know the additional detail.
+
+[11:26:42.0448] <ochameau>
+It actually makes sense, it would have helped me ignore the weakmap scenario and rather focus on the cache ir thing
+
+[11:28:25.0909] <sfink>
+as for forcing a cleanup -- we have similar logic in the scheduling code for things like when you're running a series of tests. (We want to force a certain type of GC in between tests, again because a particular type of garbage tends to accumulate.) Optimally, these would all be notifications to the scheduler that something relevant to garbage quantities happened, and the scheduler would be super smart and do the right thing based on that. In practice, we can continue adding these types of manual cleanups where they're relevant.
+
+[11:29:44.0636] <ochameau>
+I'll keep that in mind, we are fixing many leaks. But in real world, the leaks may still be pending a GC that doesn't necessarily happen so frequently in production.
+
+[11:29:50.0718] <ochameau>
+ * I'll keep that in mind, we are fixing many leaks in devtools. But in real world, the leaks may still be pending a GC that doesn't necessarily happen so frequently in production.
+
+[11:30:01.0299] <sfink>
+right
+
+[11:30:26.0066] <ochameau>
+I gtg, it is a bit late over here, but thanks again for the helpful chat!
+
+[11:31:59.0734] <sfink>
+I'm glad it got resolved.
+
+[14:16:55.0854] <mgaudet>
+confession: Ooof. Big style error in method naming is going to make me working through my patches a bit of a pain. C'est la vie 
+
+[14:16:58.0943] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-10-06
+[06:17:18.0285] <evilpie>
+What is `ExposeValueToActiveJS` for again?
+
+[07:06:31.0919] <Ms2ger 💉💉>
+CC?
+
+[07:20:08.0913] <jonco>
+evilpie: it's a read barrier that does gray unmarking - we have an invariant that no gray cells are passed into the JS API
+
+[07:21:06.0645] <jonco>
+so there's a read barrier on browser roots that marks gray things black
+
+[07:21:37.0385] <evilpie>
+https://searchfox.org/mozilla-central/source/dom/base/nsGlobalWindowInner.cpp#7464 can be gray marked? This ends up calling JS_ReadStructuredClone
+
+[07:22:03.0523] <evilpie>
+`aRetVal`
+
+[07:23:02.0245] <jonco>
+anything in a handle should not be gray (because it's a handle to a Rooted which will be marked black)
+
+[07:23:29.0928] <evilpie>
+This is specifically about https://phabricator.services.mozilla.com/D127641 
+
+[07:24:36.0124] <evilpie>
+The binding code also does this https://searchfox.org/mozilla-central/source/__GENERATED__/__linux64__/dom/bindings/WindowBinding.cpp#19706
+
+[07:25:22.0314] <evilpie>
+and this is also a Rooted
+
+[07:25:34.0591] <evilpie>
+ * The binding code also does this `https://searchfox.org/mozilla-central/source/__GENERATED__/__linux64__/dom/bindings/WindowBinding.cpp#19706`
+
+[07:26:47.0862] <jonco>
+I would have expected whatever wrote a value into that would not be able to get a gray thing, because it would have triggered the read barrier
+
+[07:26:54.0330] <jonco>
+but, it depends on what that does exactly
+
+[07:27:04.0340] <jonco>
+ * I would have expected whatever wrote a value into that would not be able to get a gray thing, because it should have triggered the read barrier
+
+[07:28:51.0864] <jonco>
+it looks like this comes out of JS_ReadStructuredClone, and it's stored in a Rooted, so I would expect it to never be gray
+
+[07:31:22.0840] <jonco>
+the binding code may well be doing the expose unnecessarily
+
+[07:31:39.0506] <jonco>
+but you could add an assertion there and see
+
+[07:55:22.0965] <evilpie>
+jonco: Seems to black at least in the test case
+
+[08:29:59.0542] <mgaudet>
+> <@mgaudet:mozilla.org> Via JSAPI I need to get a hold of the constructor of `Uint8Array` -- any tips?
+
+ Turns out I do need this. The exact spec-ese I'm dealing with is a request to save into a data-structure the "view constructor %Uint8Array%"; while the cut I'm working on right now always uses Uint8Array, later changes I'll have to make will need to consume user-defined constructors. So I'd still ultimately be better served by actually having the constructor around. 
+
+Previously when I asked about this, Steve asked if I wanted the original Uint8Array constructor or the _current_ one -- I think `%Uint8Array% fairly conclusively says I want the original. 
+
+[08:30:21.0380] <Ms2ger 💉💉>
+That's correct
+
+[08:30:25.0776] <Ms2ger 💉💉>
+From which realm, though?
+
+[08:31:31.0689] <mgaudet>
+O.o 
+
+[08:31:44.0780] <mgaudet>
+🤷 The current one? 
+
+[08:31:48.0369] <annevk>
+Ms2ger 💉💉: 😛
+
+[08:32:53.0162] <Ms2ger 💉💉>
+I guess "the original one" doesn't work here :)
+
+[08:32:54.0404] <annevk>
+mgaudet: you could probably take a look at what TextEncoder's encode() does
+
+[08:33:08.0454] <mgaudet>
+annevk: I love pointers to things. 
+
+[08:33:17.0731] <mgaudet>
+I am king-of-the-cargo cult still 
+
+[08:35:40.0255] <mgaudet>
+Hmm. [Skimming the TextEncoder spec](https://encoding.spec.whatwg.org/#interface-textencoder), I don't think the array type is tweaked or stored so I'll bet it just uses `JS_NewUint8Array...` 
+
+[08:37:33.0850] <mgaudet>
+UInt8Array::Create it turns out. 
+
+[08:43:51.0118] <annevk>
+Oh I see, I wonder if a lot of this language in Streams (which I'm assuming you're looking at) stems from before it got rewritten into IDL
+
+[08:45:00.0265] <annevk>
+I guess not if it can be user supplied
+
+[08:46:08.0441] <mgaudet>
+Oh! I think I was being silly yesterday when I concluded it was user controlled
+
+[08:46:47.0612] <mgaudet>
+Specifically, the place where I figured it was, [ReadableByteStreamControllerPullInto](https://streams.spec.whatwg.org/#readable-byte-stream-controller-pull-into) 
+
+[08:47:00.0117] <annevk>
+https://streams.spec.whatwg.org/#pull-into-descriptor-view-constructor seems to say it's rather finite
+
+[08:47:19.0749] <mgaudet>
+specifically limits the set of constructors to the typed array subset, and otherwise will produce a dataview
+
+[08:47:26.0605] <jonco>
+sfink: ping
+
+[08:47:35.0619] <mgaudet>
+:D *phew* Looks like I can get by with my current system! 
+
+[08:47:40.0295] <mgaudet>
+Thanks annevk 
+
+[11:44:04.0371] <mgaudet>
+confession: Just queued the first two DOM ReadableStream patches for landing. (and now have to go out of office 😬) 
+
+[11:44:09.0033] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-10-08
+[18:08:49.0929] <Danny Colin>
+https://twitter.com/khyperia/status/1445874916482506755?s=20
+
+[18:11:03.0308] <Danny Colin>
+Interesting fun fact on how spidermonkey and blink parse JS differently.
+
+[19:56:11.0038] <Tim>
+Is anyone here willing to review https://phabricator.services.mozilla.com/D127907 ? mgaudet suggested it should be someone familiar with builtins
+
+[19:56:30.0646] <Tim>
+for context, this was originally part of https://phabricator.services.mozilla.com/D127909
+
+[20:30:44.0765] <arai>
+Tim: done
+
+[20:41:37.0611] <Tim>
+> <@arai:mozilla.org> Tim: done
+
+Thanks!
+
+[00:07:34.0976] <wingo>
+> <@dannycolin:mozilla.org> Interesting fun fact on how spidermonkey and blink parse JS differently.
+
+evilpie has the correct response :)  comes up often enough that maybe we should harmonize these
+
+[14:25:08.0236] <Jared Hirsch [:jhirsch]>
+Hey folks! I'm looking at a patch where a private hash named JS function is being made public just for the sake of a unit test being able to call the function. It seems like a shame to lose the nice public/private API semantics of hash names because of unit testing. Any suggestions on the simplest way to break privacy for this specific use case?
+
+[14:53:40.0512] <sfink>
+Jared Hirsch [:jhirsch]: does https://paste.mozilla.org/vHvgAJ0O count?
+
+[14:55:04.0312] <Jared Hirsch [:jhirsch]>
+@sfink thanks! that's what I was thinking
+
+[14:56:54.0135] <Jared Hirsch [:jhirsch]>
+(maybe wrapping the getTestAPI() bit in a testmode ifdef or something to prevent it being used in real code)
+
+
+2021-10-10
+[07:14:22.0115] <l11d>
+jandem: as part of bug 1688033 js shell option "scalar-replace-arguments" was added. I can't find any use of that option; is it supposed to configure something other than "ion-scalar-replacement"?
+
+[07:14:24.0252] <botzilla>
+https://bugzil.la/1688033 — RESOLVED (iain) — Use scalar replacement to optimize the arguments object in Warp
+
+[08:56:18.0068] <jandem>
+l11d @l11d:mozilla.org : I think that option is a no-op now after we removed the old arguments analysis code 
+
+
+2021-10-11
+[05:35:23.0016] <ANdi>
+folks has anyone encountered with an issue like this before: https://firefoxci.taskcluster-artifacts.net/RMcb1UKfSLyOcPtwXW_Bew/0/public/logs/live_backing.log
+
+[05:35:26.0674] <ANdi>
+?
+
+[05:35:55.0860] <ANdi>
+when building: sm-fuzzing-linux64/opt
+
+[06:24:25.0086] <nbp>
+```
+[task 2021-10-11T07:47:46.293Z]  4:19.55 /usr/bin/ld: __sancov_cntrs has both ordered [`__sancov_cntrs' in /builds/worker/workspace/obj-spider/x86_64-unknown-linux-gnu/release/libjsrust.a(jsrust-1dd5b57242ed73db.jsrust.f5702655-cgu.0.rcgu.o)] and unordered [`__sancov_cntrs[_ZN7mozilla6VectorIN2js4wasm4NameELm0ENS1_17SystemAllocPolicyEE13growStorageByEm]' in /builds/worker/workspace/obj-spider/js/src/build/../wasm/Unified_cpp_js_src_wasm5.o] sections
+```
+
+
+[06:25:07.0428] <nbp>
+I have not seen this one before. Sounds like some instrumentation code in clang.
+
+
+2021-10-12
+[08:35:08.0090] <tcampbell>
+> <@l11d:mozilla.org> mgaudet: thanks :) I was wondering whether it makes sense to have some kind of Fuzzilli-like setup that emits stencil as this could diversify inputs to the jitter; however this probably uncovers way to many non-issues (for now)
+
+No, it isn't a hardened format. A big reason is that the underlying spidermonkey bytecode cannot be fuzzed either. It is very easy to generate bytecode sequences that crash (and slow to always check). I think people have toyed with better bytecode integrity checks (in debug builds), but bytecode behaviour can still be subtle so it wasn't always easy to describe a succinct check. It would certainly be nice to get to a more verifiable bytecode, but I think there are still some big gaps and we'd want to be careful not to hurt performance in release builds.
+
+[09:59:44.0771] <nbp>
+I second ted comment. Even if we were to have a validation phase that the input is a valid Stencil and that the bytecode is sound, … Adding this possibility be much more development effort to implement this validating phase, and much more effort to catch bugs which are not reachable from our current frontend.
+
+[10:02:43.0596] <nbp>
+However, this is something I wished for in IonMonkey, to test the pipeline of IonMonkey.
+
+[11:14:39.0735] <iain>
+It would be nice if we had a fuzzer-verified definition of the requirements for valid bytecode, but I agree that it would be a non-trivial amount of work
+
+[11:48:12.0824] <Tim>
+mgaudet: Thanks for looking into the revert situation. I was going to ask about that
+
+[11:48:40.0372] <Tim>
+I'm pushing to try now; I've done so sporadically, but not consistently because it takes so long and there always seem to be random unrelated failures
+
+[12:06:17.0564] <mgaudet>
+> <@tjc:igalia.com> I'm pushing to try now; I've done so sporadically, but not consistently because it takes so long and there always seem to be random unrelated failures
+
+Lemme know if you want any guidance for things to test in your push / help evaluating oranges when the push is done :)
+
+[12:06:26.0126] <mgaudet>
+Then give me a poke when we're ready to try landing again! 
+
+[16:13:44.0000] <Tim>
+> <@mgaudet:mozilla.org> Then give me a poke when we're ready to try landing again!
+
+I think we're ready -- https://treeherder.mozilla.org/jobs?repo=try&revision=5cd3ac1c3f4f0abe01d70b554bcca5098413d48a (the only failures seem to be unrelated to my changes)
+
+[16:14:48.0657] <mgaudet>
+> <@tjc:igalia.com> I think we're ready -- https://treeherder.mozilla.org/jobs?repo=try&revision=5cd3ac1c3f4f0abe01d70b554bcca5098413d48a (the only failures seem to be unrelated to my changes)
+
+Kk. I am past EOD today, will look tomorrow 
+
+[16:34:39.0211] <evilpie>
+mgaudet maybe you can take a look at https://github.com/whatwg/streams/pull/1083 ? You are actually working on that stuff now
+
+[16:35:04.0766] <evilpie>
+Btw I was working on Writable Stream, but all that boilerplate code is really boring
+
+
+2021-10-13
+[17:11:40.0636] <mgaudet>
+> <@evilpie:mozilla.org> mgaudet maybe you can take a look at https://github.com/whatwg/streams/pull/1083 ? You are actually working on that stuff now
+
+Added to my todo list for later. 
+
+[17:12:14.0995] <mgaudet>
+> <@evilpie:mozilla.org> Btw I was working on Writable Stream, but all that boilerplate code is really boring
+
+Yeah; the boiler plate is a lot.  I did find  `mach webidl-example` helped get me over the initial hump. 
+
+[17:12:44.0853] <mgaudet>
+(Got to run; TTYL :D) 
+
+[07:15:01.0198] <nbp>
+iain: I do not think there is a price for the weirdest bug of the year, but I think you win with Bug 1735157 🏆️ 🎉
+
+[07:15:05.0086] <botzilla>
+https://bugzil.la/1735157 — NEW (nobody) — Assertion failure: cx_->hadNondeterministicException(), at js/src/jit/WarpOracle.cpp:188
+
+[07:52:52.0291] <mgaudet|away>
+> <@evilpie:mozilla.org> mgaudet maybe you can take a look at https://github.com/whatwg/streams/pull/1083 ? You are actually working on that stuff now
+
+OK: So taking a look at this, I don't currently have an opinion. I don't know the async iteration protocol yet, and haven't even thought at all about ReadableStream async iteration; so forming an opinion isn't yet an option. 
+
+I'd much rather re-evaluate this in a month or two. Otherwise, I'd defer to your, or other's understanding. Nothing screams "woah, this is gonna be weird", but that's a pretty low bar.
+
+[08:21:55.0238] <evilpie>
+mgaudet: I think it looks fine too. A lot less weird than some other suggestions
+
+[08:24:55.0915] <evilpie>
+Oh, and I have write requests for WritableStreams working, but nothing else
+
+[08:25:41.0186] <mgaudet>
+evilpie: Nice :) I'm a ways away from looking at that, so seeing anyone forge ahead on it is great. If you want to share your patches alter I'd be much obliged :) 
+
+[08:25:49.0438] <mgaudet>
+ * evilpie: Nice :) I'm a ways away from looking at that, so seeing anyone forge ahead on it is great. If you want to share your patches after I'd be much obliged :)
+
+[08:27:04.0260] <mgaudet>
+> <@evilpie:mozilla.org> mgaudet: I think it looks fine too. A lot less weird than some other suggestions
+
+So, if you want to say Firefox hasn't fully evaluated, but isn't conceptually opposed, that would probably be accurate. 
+
+[08:36:36.0573] <evilpie>
+mgaudet: Is the idea for UnderlyingSourceHelpers that we would have different subclasses?
+
+[08:38:06.0299] <mgaudet>
+evilpie: Yeah; I have a Native subclass in my patch stack right now to accomodate `BodyStream` being an underlying source
+
+[08:38:30.0771] <evilpie>
+I copied this approach for WritableStream, but I am not sure if it's necessary
+
+[08:39:15.0101] <mgaudet>
+evilpie: It may not be; we don't have any native writers as far as I understand it 
+
+[08:39:50.0548] <mgaudet>
+(though, you do need a wrapper still, vs holding onto the underlying source callback from the IDL, because you need to hold on to the `this` object still) 
+
+[08:40:29.0236] <mgaudet>
+(I totally support an initial cut that doesn't expect subclassing. It's a huge ugly PITA that I'd love to make better eventually as is) 
+
+[08:41:04.0527] <evilpie>
+I mostly just copy pasted that code anyway, so difference is sort of small
+
+[08:45:15.0112] <mgaudet>
+:) Fair enough
+
+[09:05:07.0212] <sfink>
+https://profiler.firefox.com/public/g10v910267eev83h58pkxbdnrtxq15x62kp4xrg/marker-chart/?globalTrackOrder=70w6&hiddenGlobalTracks=1w4&hiddenLocalTracksByPid=10896-12&localTrackOrderByPid=14860-120~28376-0~30304-0~28188-0~6624-0~10896-30w2~13012-01&thread=a&timelineType=cpu-category&v=6
+
+[09:11:27.0618] <DerekNonGeneric>
+reading that nice new bug tree you all made (thanks), it seems like there may be a duplicate btwx [Implement the Module Attributes Proposal](https://bugzilla.mozilla.org/show_bug.cgi?id=1648614) and [Implement the Import Assertions proposal](https://bugzilla.mozilla.org/show_bug.cgi?id=1668330) unless that proposal was forked instead of renamed?
+
+[09:19:01.0298] <mgaudet>
+DerekNonGeneric: Good catch, I've duped the older one to the the newer (active) one
+
+[09:19:10.0088] <mgaudet>
+Thanks!
+
+[09:23:29.0265] <DerekNonGeneric>
+mgaudet: cool, glad to help -- wondering if you all were getting bored of `type` already and had any plans to add additional attributes yet?
+
+[09:23:56.0238] <mgaudet>
+DerekNonGeneric: :P Let's ship what we've got first
+
+[09:26:56.0728] <DerekNonGeneric>
+yeah, please do, but not sure what another one of the Node.js Loaders team members was referring to in our last meeting (was ooo), but there was talk about potentially using a brand new method of verifying module type (aside from MIME or something)
+
+[09:28:28.0310] <sfink>
+tcampbell:  bug 1599604 is the one I was thinking of. There might be related bugs connected to it.
+
+[09:28:29.0764] <botzilla>
+https://bugzil.la/1599604 — RESOLVED (Harald) — Map usage in Network monitor is slow and causes massive GC
+
+[09:31:53.0419] <DerekNonGeneric>
+mgaudet: it was probably something brought up at the last TC39 meeting, but our meeting was recorded (not exactly sure on the exact time anymore) https://www.youtube.com/watch?v=hxaFpjKy84E
+
+[09:33:27.0139] <mgaudet>
+I've been helping this get landed, but haven't been paying too much attention to spec evolution. We'll keep up with this through TC39 for now
+
+[09:39:39.0404] <DerekNonGeneric>
+okay, likewise (sounded like there were moz-concerns raised that were contrary to what seemed other engines were implementing)
+
+[10:32:35.0538] <DerekNonGeneric>
+[on using { type: "json"}...]
+
+> there was strong feelings from Firefox about
+> it must be banned from being interpreted any other way
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+
+> at least for `type` that's not allowed by javascript spec
+> it must be banned from being interpreted any other way
+> it's a json module, which they went -- they are making their
+> own data type so it can't be worked around
+> specifically banned from saying "it's cool"
+
+hmm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking :p
+
+
+
+[10:42:23.0122] <DerekNonGeneric>
+ * > at least for `type` that's not allowed by javascript spec
+> `type` is specifically banned from saying "it's cool"
+> there was strong feelings from Firefox about
+> it must be banned from being interpreted any other way
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+
+> it must be banned from being interpreted any other way
+> it's a json module, which they went -- they are making their
+> own data type just so so that it can't be worked around
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking (??)
+
+[10:43:01.0983] <DerekNonGeneric>
+ * > at least for `type` that's not allowed by javascript spec
+> `type` is specifically banned from saying "it's cool"
+> there was strong feelings from Firefox about
+> it must be banned from being interpreted any other way
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+> it must be banned from being interpreted any other way
+> it's a json module, which they went -- they are making their
+> own data type just so so that it can't be worked around
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking about (??)
+
+[10:43:32.0802] <DerekNonGeneric>
+ * > at least for `type` that's not allowed by javascript spec
+> `type` is specifically banned from saying "it's cool"
+> there was strong feelings from Firefox about
+> it must be banned from being interpreted any other way
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+> it must be banned from being interpreted any other way
+> it's a json module, which they went -- they are making their
+> own data type just so that it can't be worked around
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking about (??)
+
+[10:59:42.0338] <DerekNonGeneric>
+ * > at least for `type` that's not allowed by javascript spec  
+> `type` is specifically banned from saying "it's cool"  
+> there was strong feelings from Firefox about  
+> it must be banned from being interpreted any other way  
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+
+> it must be banned from being interpreted any other way  
+> it's a json module, which they went -- they are making their  
+> own data type just so that it can't be worked around  
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking about (??)
+
+[11:02:53.0224] <DerekNonGeneric>
+ * > [...] at least for `type` that's not allowed by javascript spec
+> `type` is specifically banned from saying "it's cool"
+> there was strong feelings from Firefox about  
+> it must be banned from being interpreted any other way  
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+
+> it must be banned from being interpreted any other way  
+> it's a json module, which they went -- they are making their  
+> own data type just so that it can't be worked around  
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking about (??)
+
+[11:08:43.0028] <DerekNonGeneric>
+ * > [...] at least for `type` that's not allowed by javascript spec  
+> `type` is specifically banned from saying "it's cool"  
+> there was strong feelings from Firefox about  
+> it must be banned from being interpreted any other way  
+
+https://www.youtube.com/watch?v=hxaFpjKy84E&t=2685s
+
+> it must be banned from being interpreted any other way  
+> it's a json module, which they went -- they are making their  
+> own data type just so that it can't be worked around  
+
+hm.. found and linked w/ exact time now.. would be nice to somehow figure out what they're talking about (??)
+
+[12:55:36.0652] <DerekNonGeneric>
+welp, if there is any way you all could assist me w/ following progress on your implementation, it would be help me out a whole lot -- that was one of the champion's of this proposal on that call basically saying how there is still much left to be desired by that proposal's spec text.. wish that this didn't have to implicate our custom loading API
+
+[12:57:12.0613] <DerekNonGeneric>
+ * welp, if there is any way you all could assist me w/ following progress on your implementation, it would help me out a whole lot -- that was one of the champions of this proposal (Myles) on that call basically saying how there is still much left to be desired by that proposal's spec text.. wish that this didn't have to implicate our custom loading API
+
+[13:06:21.0631] <mgaudet>
+Yeah -- listening to this, I don't have a clear understanding of what the problem is, nor how the specification is problematic. This would be something that'd be an issue filed on the import-assertions repo, and discussion too happen through the TC39 process. 
+
+Some of this is related to how double imports happen, and whether or not if you were to import a JSON once, mutate the result, then import it again,if you'd see the mutation. But that meeting isn't clear on what the concern is. 
+
+[13:06:31.0929] <mgaudet>
+Our implementation is chasing the specification text as written. 
+
+[13:06:43.0405] <mgaudet>
+So if that needs to change, that'd be the venue to try to change it 
+
+[13:29:05.0036] <DerekNonGeneric>
+ergh, it's quite a long story at this point (will try to write up a summary); tbh have been trying to stay out of discussions surrounding this proposal (in both tc39 & node core), so will likely be sending a delegate (they almost always get heated even amongst core collaborators)
+
+[13:30:00.0506] <mgaudet>
+DerekNonGeneric: Sounds good. Suffice it to say, our implementation is being done by a contributor. I'm not going to pull the rug on them barring extreme extenuating circumstances. 
+
+[13:31:02.0811] <mgaudet>
+confession: DOM `ReadableStream`s just passed their first `fetch` test. 🥳
+
+[13:31:04.0882] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:35:24.0983] <DerekNonGeneric>
+hm, have been thinking that failed assertions should throw an `AssertionError`, but that is not even a standard error object, so not sure how engines are dealing w/ things at this layer
+
+[13:47:33.0534] <DerekNonGeneric>
+iirc V8 was throwing `SyntaxError` or some strangness, still haven't figured out how to navigate SM's progress here https://bugzilla.mozilla.org/show_bug.cgi?id=1668330
+
+[13:48:59.0583] <mgaudet>
+I mean, status is mostly: We have an in progress set of patches that implement the standard behaviour, but they are in review and haven't landed
+
+[14:03:56.0308] <DerekNonGeneric>
+/me goes off to summarize the state of affairs w/ custom module loading + import assertions
+
+[15:36:22.0615] <evilpie>
+My patch actually passes a significant number of WritableStream tests now 🎉
+
+
+2021-10-14
+[04:16:16.0874] <rolfmg>
+Hi, I am very new to SpiderMonkey developement so if this is the wrong place to ask questions i am sorry. When the specification is asking to create a new empty List, like this: "Let groups be a new empty List." I presume this is not the same as ArraySpeciesCreate, so how would one go about implementing this? 
+
+[04:20:36.0318] <arai>
+we use internal-only ListObject for it  https://searchfox.org/mozilla-central/rev/46ff2252568db36e811109fa4026c8e3c12e9ee1/js/src/vm/List.h#16-31
+
+[04:21:12.0759] <arai>
+and it can be created like this https://searchfox.org/mozilla-central/rev/46ff2252568db36e811109fa4026c8e3c12e9ee1/js/src/builtin/intl/DisplayNames.cpp#824
+
+[05:02:30.0684] <rolfmg>
+> <@arai:mozilla.org> and it can be created like this https://searchfox.org/mozilla-central/rev/46ff2252568db36e811109fa4026c8e3c12e9ee1/js/src/builtin/intl/DisplayNames.cpp#824
+
+I am actually doing this as a part of the proposal Array.prototype.groupBy here: https://tc39.es/proposal-array-grouping/#sec-%typedarray%.prototype.groupBy so i am doing this in Array.js. I can't seem to find any other places in Array.js where List is used. Is this only doable in c++? Sorry if this is a stupid question i am very new to this :)
+
+[05:12:50.0002] <jandem>
+rolfmg: [here](https://searchfox.org/mozilla-central/rev/46ff2252568db36e811109fa4026c8e3c12e9ee1/js/src/builtin/TypedArray.js#355) is an example
+
+[05:13:24.0713] <jandem>
+(`new_List` just creates an object with null proto)
+
+[05:19:48.0721] <rolfmg>
+> <@jandem:mozilla.org> (`new_List` just creates an object with null proto)
+
+Thank you so much :) 
+
+[05:37:26.0020] <Ms2ger 💉💉>
+(Assuming you're writing self-hosted js, of course)
+
+[07:52:30.0310] <yulia>
+does this still work ?
+
+[07:52:31.0637] <yulia>
+firebot: literal 0xe5
+
+[07:52:42.0610] <yulia>
+nooope.
+
+[07:53:28.0176] <yulia>
+also, welcome rolfmg !
+
+[08:05:01.0195] <evilpie>
+mgaudet: almost feature complete now (only missing signals on WritableStreamDefaultWriter)
+
+[08:05:35.0764] <mgaudet>
+evilpie: Holy wow! That's come together fast. 
+
+[08:06:40.0296] <evilpie>
+feel free to take a look
+
+[08:08:52.0959] <mgaudet>
+I'm a little swamped today, but would love to look. Maybe tomorrow. 
+
+This is so cool, and I'm so grateful you've jumped on this. 
+
+[08:11:37.0141] <nbp>
+firebot is no longer among us 😢
+
+[08:12:24.0429] <nbp>
+yulia: 0xe5 is jemalloc free pattern in mozilla-central.
+
+[08:13:27.0741] <nbp>
+https://searchfox.org/mozilla-central/source/memory/build/mozjemalloc.cpp#1264
+
+[08:19:05.0626] <mgaudet>
+/me wants a Patreon for mrgiggles 
+
+[08:35:05.0443] <Ms2ger 💉💉>
+/me wants Mozilla to pay for it
+
+[08:37:45.0965] <tjr>
+https://github.com/apankrat/notes/tree/master/fast-case-conversion was passed to me as potentially relevant.  🤷‍♂️
+
+[08:38:38.0141] <jandem>
+iain and I were just talking about ^ a while ago..
+
+[08:39:05.0450] <sfink>
+I poked at mrgiggles a little bit over the summer. I had him running on libera.chat, and I have a skeleton bot framework that speaks Matrix. If I could ever catch up with work, I'd love to resurrect him.
+
+[08:42:17.0234] <jandem>
+ * iain and I were just talking about ^ (case conversion and ICU) a while ago..
+
+[10:34:16.0194] <sfink>
+confession: still trying to land a stupid patch stack that has been backed out 3 times so far, for jobs that don't run on try (or at least, not with `mach try auto`?)
+
+[10:34:19.0403] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[10:58:56.0891] <nbp>
+sfink: Have you try "mach try fuzzy" ? I did that in the past to select jobs without going on treeherder to do it.
+
+[10:59:42.0372] <sfink>
+I use `mach try fuzzy` half the time, `mach try auto` the other half. fuzzy only works if I know in advance the jobs I'm going to want, which is not the case here.
+
+[11:00:05.0124] <sfink>
+I don't like the treeherder interface for selecting jobs. I basically never use it.
+
+[11:00:14.0782] <nbp>
+Then go on treeherder, and build everything :P
+
+[11:01:01.0247] <sfink>
+yeah, I just didn't expect to need to.
+
+[11:01:04.0970] <nbp>
+There is a "Trigger missing jobs" on treeherder.
+
+[11:02:40.0728] <sfink>
+huh, I should try that
+
+[11:02:50.0016] <nbp>
+I have a lot of similar memories of either doing either too many too little try jobs.
+
+[11:03:00.0318] <nbp>
+ * I have a lot of similar memories of either doing either too many or too little try jobs.
+
+[11:03:25.0898] <nbp>
+I still haven't found the balance :/
+
+[11:22:29.0873] <tcampbell>
+You're not the boss of me, react!
+
+[11:27:54.0176] <arai>
+mgaudet: it was interesting bug :)  filed bug 1735862 to avoid the future trouble
+
+[11:27:56.0054] <botzilla>
+https://bugzil.la/1735862 — NEW (nobody) — Verify js/public/friend/ErrorNumbers.msg has no preprocessor
+
+[11:50:02.0817] <evilpie>
+Ok WritableStream is completely implemented ☑️
+
+[12:16:13.0490] <mgaudet>
+> <@arai:mozilla.org> mgaudet: it was interesting bug :)  filed bug 1735862 to avoid the future trouble
+
+Thank you for figuring that out! And good catches on the re-review. I appreciate it hugely, and learned a few things too! 
+
+[13:05:51.0873] <mgaudet>
+> <@evilpie:mozilla.org> Ok WritableStream is completely implemented ☑️
+
+That is amazing. One of the concerns we'd struggled with in the previous implementation was AbortSignal; did that go reasonably smoothly?
+
+[13:07:05.0204] <evilpie>
+I guess. I don't know if it's going to cause leaks
+
+[13:09:07.0589] <evilpie>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1660555 is probably still required?
+
+[13:16:11.0397] <mgaudet>
+Hmm. OK. That's good to know. 
+
+In the mean time, I'd be super supportive of us getting this in tree in the mean time. Once I'm caught up on Fetch stuff, I'd like to investigate CI; but I'm hoping we can flip the switch not too far in the future. Lots of work before we can get there, but still. 
+
+[13:18:03.0379] <mgaudet>
+(I'm hoping we can have this shipping before EOY)
+
+[13:22:14.0111] <evilpie>
+Cool! I hope we can get some help with the AbortSignal leaks. But maybe it's going to be less of a problem with everything being in DOM and CC'ed
+
+[13:29:00.0500] <mgaudet>
+evilpie: That's certainly what I'm hoping. 🤞
+
+[13:47:29.0359] <mgaudet>
+confession: DOM ReadableStreams+fetch is passing a number of WPTs; not 100%, crashing in some places... but we're making progress. 
+
+Patches will need a cleanup pass _for sure_. 
+
+[13:47:31.0975] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:50:24.0570] <mgaudet>
+Two questions for the channel: 
+
+1. How to people feel like the confessions (I can move into another channel) 
+2.  Would people like me to move the DOM Streams chat elsewhere? (It's technically off topic) 
+
+[13:59:26.0131] <iain>
+I vote for continuing to confess here about streams. #spidermonkey is not overflowing with content these days
+
+[15:03:34.0204] <greg>
+DOM streams in gecko, you love to see it!
+
+[16:11:10.0110] <DerekNonGeneric>
+> <@mgaudet:mozilla.org> Two questions for the channel: 
+> 
+> 1. How to people feel like the confessions (I can move into another channel) 
+> 2.  Would people like me to move the DOM Streams chat elsewhere? (It's technically off topic)
+
+all progress made towards Streams & fetch is of interest (dont't ask why)
+
+
+2021-10-15
+[03:37:09.0741] <evilpie>
+jandem: are all constant strings in Ion/Warp atomized?
+
+[03:38:06.0903] <jandem>
+evilpie: no, bug 1721413 changed literals to not always be atoms
+
+[03:38:08.0455] <botzilla>
+https://bugzil.la/1721413 — RESOLVED (arai) — Use JSString instead of JSAtom for string literals during instantiation
+
+[03:38:10.0485] <arai>
+no. some strings are JSLinearString
+
+[03:38:45.0071] <arai>
+in case the string is used only as string literal, inside the compilation unit
+
+[03:40:27.0085] <arai>
+and if the string is 8 chars or longer
+
+[03:41:26.0163] <arai>
+https://searchfox.org/mozilla-central/rev/cc869830d5cb2482a123ed3a63782bfd5dcf74ec/js/src/frontend/ParserAtom.cpp#99-110
+
+[03:44:49.0080] <evilpie>
+Thanks! I think I found a potential problem with https://phabricator.services.mozilla.com/D128074
+
+[03:58:08.0133] <arai>
+for `typeof` result, fortunately it can avoid the issue I guess.  most type strings are shorter than 8 chars, and "undefined" and "function" are well-known, so it becomes `JSAtom`
+
+[03:58:23.0550] <arai>
+but yeah, it should carefully handle non-atom case
+
+[04:07:48.0647] <arai>
+if some random string can flow into there, it can be JSLinearString
+
+[12:53:52.0478] <evilpie>
+mgaudet: should I start requesting review?
+
+[12:54:28.0120] <mgaudet>
+evilpie: Absolutely. There's no downsides to this being in tree 
+
+[12:54:43.0473] <mgaudet>
+(I'd like to take a pass, if you want to mark me as non-blocking. As much for my own education as anything else) 
+
+[14:41:27.0329] <mgaudet>
+confession: A successful afternoon of Crash-Whack-A-Mole has me passing a good chunk of the fetch/api/response WPT tests without crashing now (A variety of CC issues found and fixed)... Pretty darn happy with the progress of this week :D 
+
+[14:48:21.0810] <mgaudet>
+([`response-stream-with-broken-then.any.js`](https://searchfox.org/mozilla-central/source/testing/web-platform/tests/fetch/api/response/response-stream-with-broken-then.any.js) oof. You are a monday problem. I'm out.) 
+
+
+2021-10-17
+[12:14:42.0942] <chaircrusher>
+trying to write a resolveHook for ESR78
+
+[12:14:58.0118] <chaircrusher>
+(have a working ESR60 embedding app)
+
+[12:15:10.0990] <chaircrusher>
+The embedding example for ESR78 is apparently wrong.
+
+[12:15:33.0302] <chaircrusher>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/examples/modules.cpp
+
+[12:16:09.0517] <chaircrusher>
+it uses this signature for a resolveHook function: static JSObject* ExampleResolveHook(JSContext* cx,
+                                    JS::HandleValue modulePrivate,
+                                    JS::HandleString spec)
+
+[12:16:25.0757] <chaircrusher>
+but the third argument in the headers is a JS::HandleObject
+
+[12:23:30.0096] <chaircrusher>
+ps thanks for being around on Suday
+
+[12:24:04.0637] <evilpie>
+chaircrusher: you aren't using ESR78 then: https://searchfox.org/mozilla-esr78/source/js/public/Modules.h#34
+
+[12:27:21.0583] <chaircrusher>
+yeah OK
+
+[12:27:44.0951] <chaircrusher>
+I certainly thought I'd gotten the ESR78 branch
+
+[12:41:05.0147] <evilpie>
+chaircrusher: seems like switching to the module variant is quite simple? https://hg.mozilla.org/mozilla-central/rev/be113df2bd10dec29ffa5852757ffb567eb52346#l9.202
+
+[12:43:05.0480] <evilpie>
+ah sorry wrong code. You just call JS::GetModuleRequestSpecifier on the object
+
+[12:44:24.0209] <chaircrusher>
+So we use github
+
+[12:45:06.0047] <chaircrusher>
+and is this the repo to use to get a readonly copy https://github.com/mozilla/gecko-dev.git
+
+[12:51:59.0994] <chaircrusher>
+?
+
+[12:52:54.0341] <evilpie>
+what is the question?
+
+[12:53:13.0180] <chaircrusher>
+I can use that repo to get an ESR78 version?
+
+[12:53:40.0358] <evilpie>
+Pretty sure there is an esr78 branch
+
+[12:53:47.0824] <chaircrusher>
+yes
+
+[12:54:24.0493] <chaircrusher>
+there's like FIREFOX_ESR_78_10_X_RELBRANCH too
+
+[13:46:59.0303] <chaircrusher>
+OK so how REALLY am I supposed to build - still use configure and make?
+
+
+2021-10-18
+[22:32:26.0739] <arai>
+configure+make is supposed to work, be t I'd recommend to switch to `./mach build` workflow https://firefox-source-docs.mozilla.org/js/build.html
+
+[02:16:15.0097] <arai>
+kmag: can you review bug 1736039 ?  it hits beta and I'd like to uplift it
+
+[02:16:18.0503] <botzilla>
+https://bugzil.la/1736039 — ASSIGNED (arai) — Process crash on startupcache-invalidate notification from WebExtension Experiments
+
+[07:21:48.0659] <chaircrusher>
+@arai I don't have a problem with doing a mach build, but what if I just want to build the SpiderMonkey library?
+
+[07:23:23.0351] <arai>
+I don't know much about the library workflow, but I guess it's also placed inside obj-*/dist/bin ?
+
+[07:24:14.0102] <arai>
+oh, you mean `make install` ? if so, I don't know if there's equivalent
+
+[07:27:52.0386] <chaircrusher>
+I mean the instructions on the spidermonkey.dev pages still says to use configure/make.
+And that still works.  Building Firefox/Gecko from the top-level directory is different, is there mach infrastructure down in js/src?
+
+[07:29:54.0654] <arai>
+for mach workflow, here's document.  https://firefox-source-docs.mozilla.org/js/build.html  using `ac_add_options --enable-application=js` in mozconfig and running `./mach build` in the top-level builds only JS shell
+
+[07:31:05.0976] <arai>
+but I don't know if it can be used for library workflow
+
+[07:32:48.0143] <arai>
+sfink: ^ do you know?
+
+[07:40:39.0531] <chaircrusher>
+The issue with mach build is that it's got that whole "here, install a bunch of tools you don't need for anything else" vibe.
+My boss said "I want anyone in the company to be able to check out the source of our app and build it."  and the more additional monkeying around to get prerequisites to install the further we are from that goal.
+
+[07:41:25.0768] <chaircrusher>
+I already have to build an old version of autoconf to build the configure script because it's incompatible with current autoconf.
+
+[07:43:55.0467] <chaircrusher>
+ I'm also having trouble building the esr78 from the gecko-dev on github -- it builds everything but when it gets to building the shared library I get a ton of errors like this:
+
+/home/develop/js/build/dist/include/mozilla/Latin1.h:89: undefined reference to `encoding_mem_is_utf16_latin1'
+
+
+[07:44:32.0489] <chaircrusher>
+commit 3c633b1a0994f380032a616eced632398354d83e (HEAD -> esr78, origin/esr78)
+Author: Sebastian Hengst <archaeopteryx@coole-files.de>
+Date:   Wed Oct 6 14:18:10 2021 +0200
+
+    Bug 1734374 - correct version numbers, drop 'esr' from some of them. a=searchfox-fix
+
+[07:44:33.0934] <botzilla>
+https://bugzil.la/1734374 — RESOLVED (aryx) — Perma Searchfox esr78 subprocess.CalledProcessError: Command '['/builds/worker/checkouts/gecko/obj-arm-unknown-linux-androideabi/_virtualenvs/init_py3/bin/python', '/builds/worker/checkouts/gecko/mach', 'android', 'assemble-app']' returned
+
+[07:47:23.0564] <arai>
+I thought, it's related to whether the rust code is compiled/linked
+
+[07:47:45.0147] <arai>
+and there was some issue in the Makefile or moz.build that rust code isn't included in non-shell case, or some such
+
+[07:50:03.0349] <arai>
+anyone remember the details? ^
+
+[08:23:03.0278] <chaircrusher>
+Yeah
+
+[08:23:26.0495] <chaircrusher>
+actually @arai once I stopped using --disable-js-shell in the configure it worked.
+
+[08:27:14.0583] <arai>
+good to know :)
+
+[08:36:14.0509] <nbp>
+> <@chaircrusher:mozilla.org> The issue with mach build is that it's got that whole "here, install a bunch of tools you don't need for anything else" vibe.
+> My boss said "I want anyone in the company to be able to check out the source of our app and build it."  and the more additional monkeying around to get prerequisites to install the further we are from that goal.
+
+There is a `--disable-bootstraping`, I faced the same issue except that I am running a non-FHS distribution.
+
+[08:36:36.0795] <nbp>
+ * There is a `--disable-bootstrap`, I faced the same issue except that I am running a non-FHS distribution.
+
+[08:47:50.0818] <nbp>
+If you want to reduce the manual maintenance approach, then I will suggest looking at Linux/BSD source distributions, and the recipes they have for building from source. Speaking for the one I know, in Nixpkgs, there is a recipe for [SpiderMonkey](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/interpreters/spidermonkey/78.nix) and a recipe for [many versions](https://github.com/NixOS/nixpkgs/blob/master/pkgs/applications/networking/browsers/firefox/packages.nix) of [Firefox](https://github.com/NixOS/nixpkgs/blob/master/pkgs/applications/networking/browsers/firefox/common.nix). The advantage of Nixpkgs, is that these rules are patchable without modifying Nixpkgs, by maintaining an overlay amend other recipes. Thus one can change the source location of Firefox to pull a git repository, for example.
+
+[08:48:33.0029] <nbp>
+ * If you want to reduce the manual maintenance approach, then I will suggest looking at Linux/BSD source distributions, and the recipes they have for building from source. Speaking for the one I know, in Nixpkgs, there is a recipe for [SpiderMonkey](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/interpreters/spidermonkey/78.nix) and a recipe for [many versions](https://github.com/NixOS/nixpkgs/blob/master/pkgs/applications/networking/browsers/firefox/packages.nix) of [Firefox](https://github.com/NixOS/nixpkgs/blob/master/pkgs/applications/networking/browsers/firefox/common.nix). The advantage of Nixpkgs, is that these rules are patchable without modifying Nixpkgs, by maintaining an overlay to amend other recipes. Thus one can change the source location of Firefox to pull a git repository, for example.
+
+[08:56:37.0859] <chaircrusher>
+Thanks, I'll have a look
+
+[11:27:25.0459] <jon4t4n>
+What is the correct way of checking if import assertions are enabled in a jit-test? Should I extend [GetRealmConfiguration](https://searchfox.org/mozilla-central/rev/5122357c497684e01c5bb2d4a9bf8be1fe97a413/js/src/builtin/TestingFunctions.cpp#196-206), and check `getRealmConfiguration()['importAssertions']`? The import assertions options are defined [here](https://phabricator.services.mozilla.com/D126041).
+
+[11:52:34.0858] <nicolo-ribaudo>
+Idk about how feature-detection in jit tests works, but in general you could check if `eval("()=>import('',{})")` throws
+
+[11:56:22.0367] <arai>
+jon4t4n: yeah, add it to `GetRealmConfiguration` and check it there
+
+[12:18:45.0607] <chaircrusher>
+man, there's some regular Sherlock Holmes stuff in going from embedding esr60 to esr78.
+JS_THIS_OBJECT -> callargs::thisv() for example
+
+[12:19:02.0093] <chaircrusher>
+what is the 'v' for in thisv()
+
+[12:21:11.0509] <evilpie>
+value I would guess? We can't use `this` because it's a c++ keyword
+
+[12:21:31.0741] <mgaudet>
+Ah! That's a great answer, I got the *what* but not the *why* :_ 
+
+[12:21:36.0219] <mgaudet>
+ * Ah! That's a great answer, I got the _what_ but not the _why_ :)
+
+[12:22:33.0823] <evilpie>
+the change isn't documented at https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Migration%20Guide.md :/
+
+[12:22:40.0088] <mgaudet>
+I'm feeling very slow right now: I'm looking at a test case ([response-stream-with-broken-then.any.js](https://searchfox.org/mozilla-central/source/testing/web-platform/tests/fetch/api/response/response-stream-with-broken-then.any.js)) where setting `Object.prototype.then` causes a visible change in an API's behaviour. 
+
+What I don't follow is where this is coming from. 
+
+[12:23:39.0095] <mgaudet>
+(My first guess doesn't apply, because the regular Promise.then is on the Promise Prototype, so we're not hiding that... I believe?) 
+
+[12:23:57.0941] <chaircrusher>
+Also not documented in the migration guide: JS_GetObjectPrototype -> JS_GetPrototype 
+
+[12:24:39.0683] <chaircrusher>
+Once I get on object class compiling I'll know in theory how to fix all of them.
+
+[12:26:17.0440] <ptomato>
+> <@chaircrusher:mozilla.org> man, there's some regular Sherlock Holmes stuff in going from embedding esr60 to esr78.
+> JS_THIS_OBJECT -> callargs::thisv() for example
+
+wasn't that changed even earlier? in esr52?
+
+[12:26:42.0072] <evilpie>
+no it's in Esr60. currently looking for the change
+
+[12:27:02.0674] <evilpie>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1255800
+
+[12:27:13.0181] <evilpie>
+oh I did that apparently, interesting
+
+[12:27:21.0796] <chaircrusher>
+JS::RootedObject x(cx); x = args.thisv(); is a compiler error.  Something in the rooting api?
+
+[12:27:47.0553] <ptomato>
+it would need to be JS::RootedValue
+
+[12:28:12.0783] <chaircrusher>
+thisv is a value
+
+[12:28:27.0669] <chaircrusher>
+so thisv().toObject()
+
+[12:28:44.0914] <ptomato>
+you would have to check isObject() first, because you can do `func.call(42);` and end up with `this` not being an object
+
+[12:29:09.0254] <chaircrusher>
+What about in a constructor
+
+[12:29:20.0613] <chaircrusher>
+i.e. a JSNative object type I've made
+
+[12:29:37.0166] <arai>
+mgaudet: "then" property is checked for all objects passed to promise resolution function.  so, having Object.prototype.then affects when you resolve a promise with non-Promise object
+
+[12:29:47.0864] <arai>
+https://tc39.es/ecma262/#sec-promise-resolve-functions
+
+[12:31:46.0232] <mgaudet>
+arai: Oh. Interesting. I had no idea that existed. Very helpful pointer. 
+
+So, I *think* the issue I'm having is that the resolution is happening in C++, via me calling `->MaybeResolve(val)`; does that sound plausible?
+
+[12:32:01.0157] <mgaudet>
+*resolving a DOM promise
+
+[12:32:44.0084] <ptomato>
+> <@chaircrusher:mozilla.org> What about in a constructor
+
+I guess if it's a constructor you can assert isObject()?
+
+[12:34:08.0725] <evilpie>
+mhm I think thisv() will just be garbage (JS_IS_CONSTRUCTING magic value) in something called with `new`
+
+[12:35:17.0933] <arai>
+mgaudet: yeah, it will reach here https://searchfox.org/mozilla-central/rev/483cfde5a54f6c1cd94c6295564993aeb4f10980/js/src/builtin/Promise.cpp#1131-1132
+
+[12:35:25.0169] <arai>
+(haven't checked the detail of the issue tho
+
+[12:36:47.0669] <mgaudet>
+arai: In the working case you'd expect I get to that line (which does the check), and miss it otherwise. This is something I can verify in pernosco :) 
+
+[12:39:19.0523] <chaircrusher>
+Oh good, so I'm in an object constructor and was using JS_THIS_OBJECT to e.g. set private data on an JSNative object I'm constructing,  What do I use instead?
+I see where you replaced it in that checkin but not how to use it in my particular context.
+
+[12:41:32.0709] <chaircrusher>
+I'm getting a lot of exercise today when I get up in frustration with moving from esr60 to esr78 😀
+
+[12:42:17.0873] <chaircrusher>
+The mozilla employees see all the changes happening incrementally, where third-party embedders like me have to read headers and look like dummies in this forum.
+
+[12:43:17.0841] <arai>
+the cases that it MaybeResolve doesn't hit there I can think of are:  the promise is already fulfilled/rejected before that point, or there's security/dead wrapper, or the resolving functions are different than default one
+
+[12:43:24.0459] <mgaudet>
+(OK... Hmm. I do see the 'then' property getting read correctly I think, so thats... something! ) 
+
+[12:43:58.0170] <mgaudet>
+I'll keep chasing. You've given me great start points :) 
+
+[12:46:33.0940] <ptomato>
+chaircrusher: well, if you can help make the migration guide more exhaustive that'd be appreciated :-)
+
+[12:47:01.0622] <ptomato>
+here's how we migrated in GNOME, in case that helps you: https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/386/commits, https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/462/commits, https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/458/commits
+
+[12:48:04.0710] <chaircrusher>
+So would I fork, edit, and send pull requests for the migration guide?
+
+[12:48:25.0245] <chaircrusher>
+LOL now you have to go 68->78
+
+[12:49:23.0306] <evilpie>
+Actually 83 is right around the corner
+
+[12:50:05.0465] <evilpie>
+ * Actually <del>83</del> ESR 91 is right around the corner
+
+[12:59:42.0442] <ptomato>
+yes, pull request to the migration guide seems like the best way to do it
+
+[13:04:17.0626] <chaircrusher>
+So I have in my C++ JS Class Objects this:
+if(args.isConstructing()) { /* yadda yadda obj = JSNewObjectWithGivenProto(....); } else obj = JS_THIS_OBJECT(cx,vp);
+
+In that case @evilpie said "thisv will be garbage if you're constructing" but I'm using CallArgs::thisv only if isConstructing is false.
+So is it safe to replace JS_THIS_OBJECT with &args.thisv().toObject(); ?
+
+[13:04:57.0981] <chaircrusher>
+Also wonder why if I'm defining a constructor function when is args.isConstructing() false?
+
+[13:05:42.0591] <ptomato>
+well, you can call constructors as regular functions
+
+[13:05:53.0857] <chaircrusher>
+I feel like I've had Freshman Italian and trying to get on in a cafe in Venice.
+
+[13:06:32.0859] <ptomato>
+actually it's probably more the other way around. you can call regular functions as constructors :-)
+
+[13:07:09.0428] <ptomato>
+`class C {}; C()` does not work. `function F() {}; new F()` does 😄
+
+[13:07:18.0922] <chaircrusher>
+I'm defining a JSNative function and passing it in as an argument to JS_InitClass
+
+[13:08:16.0656] <chaircrusher>
+in that case, new F() would return undefined 
+
+[13:09:00.0189] <chaircrusher>
+but you could define a constructor for an object in JS, in JSNative code it's a bit different.
+
+[13:09:29.0190] <ptomato>
+if that function is exposed to JS code in your embedding, then someone could potentially call it without `new` and with a non-object `this`. so it wouldn't be safe to replace `JS_THIS_OBJECT` with `&args.thisv().toObject();` unless you checked isObject() first, because that would crash. but if all your JS code is internal, crashing there may be acceptable to you 😄
+
+[13:11:46.0684] <chaircrusher>
+LOL well for my user base - which is in house developers - I can to some extent say "don't do stupid sh*t" - but the robust thing is to test thisV and return false from the JSNative function which will throw a JS Exception at them.
+
+[13:26:04.0273] <mgaudet>
+confession: Ooops. Chasing a silly goose called misreading-the-test-case-you're-debugging. (It's still broken, but in the *opposite* way I had thought) 
+
+[13:26:07.0241] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:26:23.0537] <mgaudet>
+(I did learn a lot though 😄) 
+
+[13:47:59.0452] <chaircrusher>
+OK I got all my SpiderMonkey code to compile! Huzzah! Thanks!
+Last thing is that my link for ESR60 linked to *builddir*/mozgluebuild/libmozglue.a but now that is gone
+
+[13:48:41.0843] <chaircrusher>
+I'm seeing a bunch of undefined symbols like **/home/develop/pagewiz/build/js-build/dist/include/mozilla/Latin1.h:256: undefined reference to `encoding_mem_convert_latin1_to_utf16'
+/develop/pagewiz/build/js-build/js/src/build/libjs_**
+
+[13:53:54.0514] <chaircrusher>
+it looks like I have to include x86_64-unknown-linux-gnu/release/libjsrust.a
+
+[13:56:30.0578] <chaircrusher>
+LOL this has been a wild ride
+
+[14:06:20.0124] <ptomato>
+hmm. I thought I had a bug open for that, but I can't find it now
+
+[14:06:44.0658] <ptomato>
+don't link to libmozglue as an embedder, that is subtly broken (and probably was already in esr60)
+
+[14:07:27.0454] <chaircrusher>
+in JS60 you definitely had to link to mozglue but IIRC there was a patch on the esr60 branch to make it get built.
+
+[14:07:37.0054] <chaircrusher>
+Now it just needs libjsrust.a
+
+[14:08:11.0320] <chaircrusher>
+which gets dropped into **buildddir**/x86_64-unknown-linux-glue/release
+
+[14:10:24.0064] <chaircrusher>
+ * which gets dropped into **buildddir**/x86_64-unknown-linux-gnu/release
+
+
+2021-10-19
+[04:47:59.0175] <arai>
+jseward: how did you find bug 1736552 ?  is it on automation?  I'm wondering if it's possible to add testcase
+
+[04:48:01.0842] <botzilla>
+https://bugzil.la/1736552 — ASSIGNED (arai) — `ParserBase::setFunctionEndFromCurrentToken` and `TokenStreamSpecific<..>::advance` disagree about liveness
+
+[04:50:38.0427] <arai>
+I see 3 jobs on treeherder that has "valgrind" in their name, but none of them sounds like usable for JS shell test
+
+[05:16:15.0202] <jseward>
+arai: no, not automation, just a local `jit_test.py --valgrind-all` run (with a bit of local tuning)
+
+[05:54:19.0879] <arai>
+ah, thanks 
+
+[10:05:12.0533] <chaircrusher>
+Greetings 
+
+[10:06:29.0655] <chaircrusher>
+Any idea why this would happen: I've built ESR78 spidermonkey, got my code compiling and linking against it, but in some of my test JS scripts I'm getting an error about toSource being undefined.
+To quote Talking Heads "Oh My God What Have I Done?"
+
+[10:09:21.0651] <ptomato>
+chaircrusher: toSource doesn't exist by default, for security reasons. you can flip it back on per realm: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Migration%20Guide.md#security-changes
+
+[10:09:28.0744] <ptomato>
+(also, it's nonstandard anyway)
+
+[10:09:39.0941] <chaircrusher>
+OK Thanks
+
+[13:15:20.0140] <mgaudet>
+confession: 
+
+```
+$ ./mach wpt --headless testing/web-platform/tests/fetch/
+
+web-platform-test
+~~~~~~~~~~~~~~~~~
+Ran 9628 checks (8995 subtests, 633 tests)
+Expected results: 9611 (1 known intermittents)
+Skipped: 1 tests
+Unexpected results: 16
+  subtest: 16 (16 fail)
+``` 
+
+Passing almost all the fetch subtests. The remaining broken test is... [a bit](https://bugzilla.mozilla.org/show_bug.cgi?id=1736460) [hairy](https://bugzilla.mozilla.org/show_bug.cgi?id=1736622)
+
+[13:15:27.0492] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:16:57.0747] <mgaudet>
+/me is really wishing for [very fast cloud builds](https://blog.nelhage.com/post/building-llvm-in-90s/) after having made two mistakes resulting in  a handful of full rebuilds.
+
+
+2021-10-20
+[17:33:09.0245] <Tim>
+mgaudet: arai I think I've addressed all the changes requested on https://phabricator.services.mozilla.com/D127218
+
+[17:33:24.0187] <Tim>
+I'm reading through all the bug comments (was on vacation Friday to yesterday), and I'm not sure if there's anything else I need to do
+
+[22:02:49.0551] <arai>
+I'll review today
+
+[04:49:17.0138] <arai>
+kmag: do you have time for reviewing bug 1736039 ? I'd like to land it in the current cycle and uplift to beta, before landing bytecode pinning patch
+
+[04:49:20.0127] <botzilla>
+https://bugzil.la/1736039 — ASSIGNED (arai) — Process crash on startupcache-invalidate notification from WebExtension Experiments
+
+[05:59:15.0340] <nbp>
+Open question: Should we parse before compiling with Ion? Our [HelperThread choose with a hard-coded priority list](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2705-2714) that we would IonCompile before Parsing.
+My understanding would be that Ion compilation should be last if we are no longer executing JS code on the main thread. If we were to have a 2 scripts, and the first executed script is hot enough to trigger Ion compilation, then we might hold back on the compilation of the second script, as Baseline code might have completed the execution prior the end of Ion ocmpilation.
+
+[05:59:26.0393] <nbp>
+ * Open question: Should we parse before compiling with Ion?
+
+Our [HelperThread choose with a hard-coded priority list](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2705-2714) that we would IonCompile before Parsing.
+
+My understanding would be that Ion compilation should be last if we are no longer executing JS code on the main thread. If we were to have a 2 scripts, and the first executed script is hot enough to trigger Ion compilation, then we might hold back on the compilation of the second script, as Baseline code might have completed the execution prior the end of Ion ocmpilation.
+
+[06:00:17.0461] <nbp>
+ * Open question: Should we parse before compiling with Ion?
+
+Our [HelperThread choose with a hard-coded priority list](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2705-2714) that we would IonCompile before Parsing.
+
+My understanding would be that Ion compilation should be last if we are no longer executing JS code on the main thread. If we were to have a 2 scripts, and the first executed script is hot enough to trigger Ion compilation, then we might hold back on the parsing of the second script, as Baseline code might have completed the execution prior the end of Ion ocmpilation.
+
+[06:26:49.0300] <nbp>
+ * Open question: Should we parse before compiling with Ion?
+
+Our [HelperThread choose with a hard-coded priority list](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2705-2714) that we would IonCompile before Parsing.
+
+My understanding would be that Ion compilation should be last if we are no longer executing JS code on the main thread. If we were to have a 2 scripts, and the first executed script is hot enough to trigger Ion compilation, then we might hold back on the parsing of the second script, as Baseline code might have completed the execution prior the end of Ion compilation.
+
+[06:53:08.0908] <nbp>
+Can the helperThread outlive the JSContext which created the task? (I will presume yes, but this might simplify thing a lot to know the opposite)
+
+[06:57:06.0368] <tcampbell>
+@allstarschh|afk: ^ do you know the answer for nbp?
+
+[06:58:04.0609] <tcampbell>
+I seem to recall you looking at this with the shutdown errors when you refactored the helper-thread provider
+
+[07:01:04.0340] <jandem>
+destroying the runtime will cancel some tasks [here](https://searchfox.org/mozilla-central/rev/b24799980a929597dcc553cb0854aa6c960c82b5/js/src/vm/Runtime.cpp#270-278)
+
+[07:03:21.0879] <nbp>
+Thanks, that answer my question!
+
+[09:47:40.0806] <sfink>
+bug 1736079
+
+[09:47:44.0093] <botzilla>
+https://bugzil.la/1736079 — NEW (nobody) — [meta] Additional static analyses using the GC rooting hazard analysis framework
+
+[10:02:52.0223] <nbp>
+sfink: The “can execute JS”, “can GC”, “can CC” are really interesting to display!
+
+[14:48:21.0122] <mgaudet>
+confession: Meetings and specification confusion day. 
+
+[15:31:56.0639] <sfink>
+They *are* confusing. A meeting is where a group of people come up with things for other people to do that they won't do but will pretend to.
+
+[15:32:04.0700] <sfink>
+A specification is the same.
+
+
+2021-10-21
+[09:13:04.0997] <mgaudet>
+The streams spec giving you a *huge* warning [if you link to a specific commit](https://streams.spec.whatwg.org/commit-snapshots/641df4b4da800e69281f6505f8f5b50f184685aa/) admonishing you
+
+> Do not attempt to implement this version of the standard. Do not reference this version as authoritative in any way. Instead, see https://streams.spec.whatwg.org/ for the living standard. 
+
+is kind of annoying, because here I am trying to implement, and the *spec is changing out from under me* 
+
+[09:13:45.0909] <mgaudet>
+/me sighs
+
+[09:53:41.0844] <mccr8>
+"This spec is not a spec of honor"
+
+[10:50:18.0840] <sfink>
+jonco: some suspicious scheduling behavior in [a profile from Bas](https://profiler.firefox.com/public/d0pc12h2bmpxhk03a1mte1cw34evr8ad0j8df20/marker-chart/?globalTrackOrder=70w6&hiddenGlobalTracks=1w4&hiddenLocalTracksByPid=10896-12&localTrackOrderByPid=14860-120~28376-0~30304-0~18628-0~28188-0~10896-30w2~13012-01&range=2711m167&thread=a&timelineType=cpu-category&v=6)
+
+[10:52:02.0778] <sfink>
+we go off and run JS for 166ms, but within that we do a TOO_MUCH_MALLOC GC and repeatedly trigger 5ms slices while the code is running. It seems like we probably ought to be either stalling the GC until we return to the runloop, or deciding that the alloc pressure is so high that we let it run for much longer.
+
+[14:52:50.0950] <mgaudet>
+confession: Worked around Promise integration issues with Fetch. Starting work on updating my implementation of `ReadableStream.tee` (yes, already), in prep for implementing `tee` for streams with byte controllers; slightly concerned about some loose language... we'll see if it matters in practice. 
+
+[14:52:53.0466] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:53:19.0372] <arai>
+mgaudet: are you going to re-review bug 1729563 ? or is it ready for re-landing?
+
+[14:53:20.0805] <botzilla>
+https://bugzil.la/1729563 — REOPENED (tjc) — Implement the Change Array by copy proposal
+
+[14:54:24.0922] <mgaudet>
+Weird; I landed it this morning, but pulsebot didn't say anything: https://treeherder.mozilla.org/jobs?repo=autoland&revision=dc52f8437ba08bc776d8f42a818b5d0978a4d18b
+
+[14:54:44.0656] <Tim>
+Yeah, I didn't get an email
+
+[14:54:45.0544] <arai>
+oh
+
+[14:55:41.0600] <mgaudet>
+Also the revisions are still open... I can't recall, do they normally get closed at autoland or at merge?
+
+[14:56:10.0174] <tcampbell>
+closed at autoland phase
+
+[14:56:27.0733] <mgaudet>
+Hmm. Those revisions are still open. Something has gone sideways somewhere
+
+[14:57:12.0067] <mgaudet>
+I'll mention this in #developers:mozilla.org , though I'm hitting EOD here, so won't have much more to do 
+
+
+2021-10-22
+[23:03:45.0341] <arai>
+oh, the push above is for the previous one
+
+[23:03:59.0958] <arai>
+I'll re-land it
+
+[23:08:01.0284] <arai>
+I sometimes experience the similar that the land isn't queued in Lando
+
+[01:08:00.0928] <jonco>
+sfink: This is fine. We start by running 5ms slices but make the slices longer and closer together as we approach the incremental limit (where we would finish the GC synchronously).
+
+[10:25:06.0171] <evilpie>
+structured cloning related: https://bugzilla.mozilla.org/show_bug.cgi?id=1556604 has been completely stuck for 3 month
+
+[10:36:08.0790] <arai>
+tjr: have you pushed the updated patch to try with the failed job?
+
+[10:36:45.0873] <tjr>
+arai: sorry, what is this referencing?
+
+[10:37:08.0932] <arai>
+oh, sorry, mistyped the name
+
+[10:37:32.0694] <arai>
+Tim: have you pushed the updated patch to try with the failed job?
+
+[10:54:39.0627] <arai>
+ah, just realized that the reviewbot's push is sufficient
+
+[11:10:09.0130] <Tim>
+> <@arai:mozilla.org> ah, just realized that the reviewbot's push is sufficient
+
+OK
+
+[14:10:15.0241] <tcampbell>
+iain sfink : dumb question, but if a class extends null, how does it have any methods?
+
+[14:10:32.0652] <tcampbell>
+```js
+function NullBase() {
+    return Object.create(null);
+}
+
+class X extends NullBase {
+    constructor() {
+        super();
+        this.prop = "val";
+    }
+}
+
+let x = new X;
+
+assertEq(Object.getPrototypeOf(x), null);
+assertEq(x.prop, "val");
+```
+
+[14:11:27.0985] <tcampbell>
+using the return value trick does get you a object with the right Object, but I'm wondering what is actually expected from class syntax?
+
+[14:11:52.0625] <tcampbell>
+I believe the complaint with this form is that fields don't work
+
+[14:12:24.0027] <tcampbell>
+or.. maybe they do work?
+
+[14:12:27.0158] <iain>
+Own properties should work fine
+
+[14:12:34.0023] <iain>
+Because they're on the object, not the prototype
+
+[14:12:45.0583] <iain>
+And I assume that null-proto objects just don't have any methods
+
+[14:13:17.0473] <iain>
+Er, wait
+
+[14:13:17.0602] <sfink>
+I don't think I'm understanding the question. Instances of a class that extends null still have a non-null prototype that can hold methods, but I'm probably missing the point.
+
+[14:13:26.0668] <iain>
+Yeah, what sfink just said
+
+[14:13:54.0031] <tcampbell>
+oh, is that what people want with extends null?
+
+[14:14:28.0882] <sfink>
+I... assumed so, but haven't actually read any of the proposal.
+
+[14:15:07.0193] <iain>
+I assumed the idea was that it doesn't extend Object
+
+[14:16:12.0375] <iain>
+Like, `class B {}` is in some sense syntax sugar for `class B extends Object`, and `extends null` just overrides that default
+
+[14:19:03.0365] <sfink>
+yeah. So just like `"toString" in Object.create(null)` returns false, `class X extends null {}; "toString" in (new X)` should also return false.
+
+[14:19:47.0176] <sfink>
+just like `"toString" in Object.create(Object.create(null)))`
+
+[14:48:52.0772] <mgaudet>
+confession: Posted [patches for updating `ReadableStream.tee` to match latest spec](https://bugzilla.mozilla.org/show_bug.cgi?id=1736461) 
+
+[14:48:55.0182] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-10-25
+[08:11:17.0676] <sfink>
+people of this channel: I just wanted to mention that https://addons.mozilla.org/en-US/firefox/addon/phab-test-policy/ is a trivial but surprisingly pleasant quality of life improvement for the phabricator review workflow.
+
+[08:14:56.0411] <sfink>
+I should mention that https://addons.mozilla.org/en-US/firefox/addon/phabrinter/ *might* be great too, but I've been using it since it came out so I no longer have any idea how phabricator works without it.
+
+[09:04:56.0320] <tcampbell>
+There are also some people who like https://addons.mozilla.org/en-US/firefox/addon/phab-conventional-comments/ which gives some prefilled formatting/emoji/categories for review feedback to make your tone explicit instead of people guessing over the internet
+
+[14:15:38.0928] <mgaudet>
+confession: Working on the surprisingly complicated implementation of ReadableByteStreamTee, as it's a precondition of getting the fetch integration _totally_ working. 
+
+
+2021-10-26
+[10:07:05.0747] <chaircrusher>
+greetings earthlings
+
+[10:07:32.0905] <chaircrusher>
+Spidermonkey build question: Can post ESR60 be built with G++
+
+[10:07:58.0553] <chaircrusher>
+When I try and run configure it barfs when it gets to looking for llvm-objdump
+
+[10:08:57.0861] <arai>
+using gcc/g++ should work, as we're using it on automation
+
+[10:09:11.0159] <arai>
+but it might still require llvm related tools
+
+[10:09:19.0355] <chaircrusher>
+that's cool 
+
+[10:26:23.0418] <tcampbell>
+I believe that is used for a checker that detects weird GLIBCXX symbol versioning bugs, so it can be pretty useful. Those objdump tools can have pretty variable format so I think someone just hardcoded to llvm-objdump since llvm toolchains are maintained for the different supported platforms
+
+[10:28:17.0138] <tcampbell>
+You might be able to use the LLVM_OBJDUMP env variable to override for config purposes..
+
+[10:42:57.0701] <DerekNonGeneric>
+wonder how often (in C++, i guess) it becomes necessary for one to need to enclose platform-specific code in something like `#ifdef __PLATFORM__...code...#endif` for it to work on a new platform
+
+[11:01:13.0279] <tcampbell>
+Common touch-points to the OS are around memory allocation of any kind (and in particular GC or JIT allocation which may need to deal with gritty details of page mapping). The JITs unsurprisingly have CPU-specific code at the macro-assembler abstraction (in contrast to V8 which often has _more_ CPU-specific code since it is often at higher levels). The `JS::Value` relies on a lot of subtlety around both pointer and floating point representations so hits a bit of platform specific code. For non-JIT targets (like Sparc or PPC), there are less than a dozen tweaks.
+
+[11:07:21.0266] <DerekNonGeneric>
+that's good to know, `JS::Value` is probably where this would be best for me to investigate
+
+[14:36:52.0011] <mgaudet>
+confession: [ReadableByteStreamTee](https://streams.spec.whatwg.org/#abstract-opdef-readablebytestreamtee) is eliciting some unkind thoughts. Huuuuuuge specification algorithm that happens to pull in half the specification it seems, which means it's taking a long time to implement because of all the backtracking I need to do. 
+
+
+2021-10-27
+[10:31:37.0668] <calebjasik>
+👋
+
+[10:31:43.0019] <calebjasik>
+how can i track the status of module workers in firefox?
+https://caniuse.com/mdn-api_worker_worker_ecmascript_modules
+
+
+[10:31:49.0621] <calebjasik>
+Is this the correct bugzilla issue? : https://bugzilla.mozilla.org/show_bug.cgi?id=1247687
+
+[10:32:02.0106] <calebjasik>
+looks like https://bugzilla.mozilla.org/show_bug.cgi?id=1311726 is blocking implementing module workers?
+
+[11:35:42.0016] <tcampbell>
+calebjasik: Yep, those are the right bugs. There is active work on those bugs by the team now and they'll be updated patches in next few weeks. I'm not sure when the overall feature will ship. It depends one what sort of edge cases come up
+
+[11:54:39.0787] <calebjasik>
+Is there anything I can do / read about to understand how they’re being implemented better?
+
+[11:57:43.0133] <tcampbell>
+Probably depends what areas you are curious about. Most of the module script machinery is the same as non-worker contexts, but these patches are about how the module source code is fetched and routed through the Worker code.
+
+[12:02:41.0290] <tcampbell>
+Workers run on their own thread and are able to do synchronous loads with things like `importScripts`. As a result the Worker script-loader code was has been historically be different normal main-thread script loader. The second bug you linked is trying to share more of the module loading code (since there is a surprising amount of complexity in what order module sources are fetched, parsed, and executed).
+
+[12:15:58.0169] <calebjasik>
+So it’s refactoring some code that was tied into normal module scripts and pulling it out into logic that can be used for both module workers and for module scripts?
+
+[12:18:24.0100] <tcampbell>
+pretty much, yeah
+
+
+2021-10-28
+[03:06:56.0037] <yulia>
+calebjasik: its actively being worked on, the refactoring is quite tricky as we can't fetch directly from workers, we have to transition to the main thread. The way that it was being done before was by copying data across threads, but we can't do that if we are reusing the data structures from the dom script loader. 
+
+[06:15:52.0722] <jonco>
+jandem: do you have a better name in mind for MetaTwoByte?  (There's a comment saying this should be renamed after IonBuilder has been removed and I don't understand it enough to come up with a better one)
+
+[06:19:16.0080] <jandem>
+jonco: hm maybe `MetaScriptedTemplateObject`?
+
+[06:19:28.0167] <jandem>
+I think with some work we could remove this op completely
+
+[06:19:45.0896] <jandem>
+similar to the `JSOp::Object` changes we made, to work without a template object
+
+[06:19:55.0294] <jandem>
+ * similar to the `JSOp::NewObject` changes we made, to work without a template object
+
+[06:20:01.0941] <jonco>
+right, would it make sense to have an op to create 'this' separately to the call?
+
+[06:20:47.0519] <jandem>
+yeah maybe that would be simpler than what we do now, and more consistent with what Warp does in the transpiler
+
+[06:21:34.0776] <jonco>
+ok, I'll take a look
+
+[06:21:49.0960] <jandem>
+great :) 
+
+[07:16:08.0255] <Standard8>
+A couple of times now, I think I've heard people say that there may be issues with using certain types of objects in WeakSet/WeakMap.
+
+Does anyone know if that's true? Mossop mentioned there may have been an issue at one time with xpcom components.
+
+[07:17:21.0404] <tcampbell>
+sfink ^
+
+[07:30:07.0064] <mccr8>
+DOM objects working as keys in WeakMaps relies on wrapper preservation. It should work for WebIDL objects. I don't remember exactly what the status is for XPCOM objects.
+
+[07:32:34.0143] <mccr8>
+Standard8: It looks like it should work for XPCOM objects that have wrapper preservation. I don't remember how you can tell that exactly. https://searchfox.org/mozilla-central/rev/a9e0a3f5e5f7cde941d419db967997aaa1f06b0f/dom/bindings/BindingUtils.cpp#1156
+
+[07:33:36.0209] <mccr8>
+I'm not sure why we don't just throw an error if the nsISupports object isn't wrapper cached, honestly. At least that would fail in a less weird way.
+
+[07:34:01.0221] <mccr8>
+The symptom of failure is that the weak map entry will get removed earlier than it should be.
+
+[07:37:07.0366] <Standard8>
+Hmm, so I think it would be useful if we could either get a bug on fixing the issue or making it error.
+
+At the moment, I'd be concerned that someone does start using these without realising.
+
+[07:49:42.0545] <mccr8>
+Looks like support for wrapped natives was removed in bug 1532025. Doesn't look like we fail if isWrappedNative() is true so maybe it'll just silently allow it.
+
+[07:49:44.0821] <botzilla>
+https://bugzil.la/1532025 — RESOLVED (peterv) — Remove support for WrappedNatives from PreserveWrapper
+
+[07:53:28.0973] <mccr8>
+(well, strictly speaking support was removed earlier, but that removed the vestigial code I guess)
+
+[07:59:42.0999] <Standard8>
+mccr8: so just to check I understand, XPCOM objects will probably let you use them, but if you haven't wrapped them, then you're in trouble?
+
+[08:00:29.0639] <mccr8>
+Standard8: From reading the code, I think you can put them in there, but they'll go away sometimes when they shouldn't.
+
+[08:01:28.0227] <Standard8>
+ok, thanks
+
+[09:01:15.0392] <peterv>
+mccr8: did we ever support that for non-DOM objects? I thought even with WNs we only supported that for nodes?
+
+[09:02:13.0328] <DerekNonGeneric>
+we just got `DOMException` added to our growing list of "platform objects" in Node.js lol https://nodejs.org/api/globals.html#domexception
+
+[09:05:48.0252] <mccr8>
+> <@pvanderbeken:mozilla.org> mccr8: did we ever support that for non-DOM objects? I thought even with WNs we only supported that for nodes?
+
+Right, we only support it for things that could be wrappercached. I don't know if that was only nodes or what.
+
+[14:40:49.0518] <mgaudet>
+confession: On an effectively-a-friday afternoon is not when you want to be trying to process [CopyDataBlockBytes](https://tc39.es/ecma262/#sec-copydatablockbytes).
+
+[14:40:52.0697] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:42:06.0142] <mgaudet>
+confession: Still working on ReadableByteStreamTee, which means I'm actually implementing ReadableStreamBYOBReaders at the moment. So much code. 
+
+
+2021-10-29
+[12:33:02.0571] <calebjasik>
+> <@yulia:mozilla.org> calebjasik: its actively being worked on, the refactoring is quite tricky as we can't fetch directly from workers, we have to transition to the main thread. The way that it was being done before was by copying data across threads, but we can't do that if we are reusing the data structures from the dom script loader. 
+
+Why did it work to copy data across threads for regular module scripts? Because of the data being owned by something before the refactor + then not being owned and copyable?
+
+[12:33:50.0208] <calebjasik>
+thx for the response btw tcampbell & yulia
+

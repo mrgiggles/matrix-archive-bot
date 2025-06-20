@@ -1,0 +1,2590 @@
+2023-07-01
+[08:34:25.0603] <wes>
+Hey, folks. If I had a bunch of JSObject*, JSFunction* and other jsvals I wanted to expose to script as an ESM .... is there a good way to do this in jsapi? ModuleResolveHook or ModuleDynamicImportHook and the moduleRequest object maps exports to names?   (have I missed docs for this stuff that aren't Modules.h?)
+
+[08:36:13.0169] <arai>
+afaik, currently a module needs a script (bug 1426690)
+
+[08:36:14.0685] <botzilla>
+https://bugzil.la/1426690 — NEW (nobody) — Add support for defining ES6 modules via JSAPI
+
+[08:36:42.0703] <wes>
+> <@sfink:mozilla.org> er, drink legally, that is
+
+Hacking on Phoenix started in '02. I guess the September release would count as its birth? :)   We should throw it a party.
+
+[08:37:06.0579] <arai>
+so, if you have native functions and objects, you can expose them to the module's global, and then export them from the module script
+
+[08:48:23.0351] <Redfire>
+There was bug 1722802 for native modules, but that hasn't been worked on in... a while.
+
+[08:48:24.0263] <botzilla>
+https://bugzil.la/1722802 — UNCONFIRMED (nobody) — Add JSAPI functions to create JS modules w/ custom exports
+
+[08:52:39.0073] <Redfire>
+I only remember because I've been waiting for this forever, but it's been abandoned which makes me sad 😔
+
+[08:54:37.0130] <wes>
+arai:  Oh, that's a good strategy. It would require auto-generating the module source code, but that's easy enough. Big string, evaluated with the "hey this is a module" option.
+
+[08:54:43.0568] <wes>
+ * arai:  Oh, that's a good strategy. It would require auto-generating the module source code, but that's easy enough. Big string, evaluated with the "hey this is a module" option. Thank you!
+
+[09:08:23.0660] <wes>
+Redfire: Thanks - that bug seems hyper-relevant.  If there's enough willpower @moz to land, I bet I could get my team to pick it up and drive it home.
+
+
+2023-07-02
+[08:09:37.0613] <wes>
+A trillion years ago, we used to ship JS-only source releases. I did it for js-1.8.5, was it the last one?   Is it still reasonable&&possible to carve out js/* from the repo and build it without the tooling from the full build?
+
+Asking because I have an embedding that crashes on the ESR when the JIT is enabled, possible bug in GetDOMProxyShadowsCheck in CacheIR.cpp, I'm trying to figure out if I can reasonably ship an alpha next week by shipping a source build or if I have to come up with a different plan.  (The parallel plan is to test on m-c, if not fixed yet, come up with a minimal repro, file the bug and hopefully file a fix.
+
+[08:12:03.0169] <wes>
+(holy cow does it ever take a long time to clone m-c)
+
+[08:23:15.0525] <wes>
+ * (holy cow does it ever take a long time to clone m-c!!)
+
+[08:47:06.0698] <fabrice>
+wes: Servo re-uses Spidermonkey without a full gecko checkout so that's still possible
+
+[08:48:43.0940] <wes>
+fabrice: Great tip - I will check them out, thank you!
+
+[08:55:17.0017] <wes>
+HOLY COW this mach build is so much better than the autoconf-2.13 stuff!!
+
+
+2023-07-03
+[02:01:18.0445] <jandem>
+wes: you need a bit more than just the js/ directory. There's a package job in CI that includes a bunch of stuff. There's a tar.xz [here](https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/XK-NC0NsQ8SH95R7xxueXA/runs/0/artifacts/public/build/mozjs-116.0a1.0.tar.xz) for example
+
+[02:01:37.0191] <jandem>
+ * wes: you need a bit more than just the js/ directory. There's a SM-package job in CI that includes a bunch of stuff. There's a tar.xz [here](https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/XK-NC0NsQ8SH95R7xxueXA/runs/0/artifacts/public/build/mozjs-116.0a1.0.tar.xz) for example
+
+[02:02:36.0577] <jandem>
+ * wes: you need a bit more than just the js/ directory. There's a SM-package job in CI that includes a bunch of stuff. Here's a recent tar.xz [here](https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/XK-NC0NsQ8SH95R7xxueXA/runs/0/artifacts/public/build/mozjs-116.0a1.0.tar.xz) for example
+
+[02:02:43.0399] <jandem>
+ * wes: you need a bit more than just the js/ directory. There's a SM-package job in CI that includes a bunch of stuff. See a recent tar.xz [here](https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/XK-NC0NsQ8SH95R7xxueXA/runs/0/artifacts/public/build/mozjs-116.0a1.0.tar.xz) for example
+
+[03:16:46.0088] <arai>
+the files/directories are defined in https://searchfox.org/mozilla-central/rev/7069822ab03c425676187eadca1d8e0d84ff3b5b/js/src/make-source-package.py#113-210 , with some comments what they're for
+
+[13:11:10.0868] <kfjvj>
+Is there an initializer/constructor function that can be called when a class's prototype is created?
+
+
+2023-07-04
+[19:03:11.0824] <arai>
+kfjvj: which class is the question about?  is it a class you created with `JS_InitClass` ?  or something else?
+
+[19:08:36.0310] <arai>
+if it's about `JS_InitClass`, that API itself creates a prototype object, and if you want to perform extra initialization steps, you can perform it immediately after the `JS_InitClass` call
+
+[07:15:17.0727] <nchevobbe>
+Would someone know what is this `help` function I'm getting here? https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=var%20g%20=%20newGlobal({newCompartment:%20true});console.log(g.eval(`help`)); 
+
+[07:15:24.0112] <nchevobbe>
+ * Would someone know what is this `help` function I'm getting here? https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=var%20g%20=%20newGlobal({newCompartment:%20true});console.log(g.eval('help'));
+
+[07:16:13.0791] <nchevobbe>
+ * Would someone know what is this `help` function I'm getting here? [wasi](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=var%20g%20=%20newGlobal({newCompartment:%20true});console.log(g.eval('help')))
+
+[07:16:26.0045] <nchevobbe>
+ * Would someone know what is this `help` function I'm getting here? [wasi test case](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=var%20g%20=%20newGlobal(%7BnewCompartment:%20true%7D);console.log(g.eval(%27help%27)))
+
+[07:17:16.0157] <nchevobbe>
+(we have a `help` binding that we inject in the console and I was working on something around that and got confused by what the debugger was returning even when I don't add the binding)
+
+[07:25:51.0207] <arai>
+`help` in JS shell displays the usage of shell built-ins
+
+[07:26:22.0897] <arai>
+it's JS shell-only and not exposed to Firefox or devtools
+
+[07:27:06.0046] <arai>
+defined here: https://searchfox.org/mozilla-central/rev/7907fd85f6fd1cee3acaddbaf27a76b23d6d9993/js/src/shell/js.cpp#9664
+```cpp
+static bool Help(JSContext* cx, unsigned argc, Value* vp) {
+```
+
+[07:28:21.0558] <nchevobbe>
+okay, it might be something else then 🤔 ( on `data:text/html,<meta charset=utf8><script>var help = "myHelp";</script>`, evaluating `help` in the console throws with : `Uncaught TypeError: help is not a function`)
+
+[07:29:28.0131] <arai>
+it's here I think https://searchfox.org/mozilla-central/rev/7907fd85f6fd1cee3acaddbaf27a76b23d6d9993/devtools/server/actors/webconsole/eval-with-debugger.js#523-525
+```js
+if (trimmedString === "help" || trimmedString === "?") {
+  return "help()";
+}
+```
+
+[07:30:05.0402] <nchevobbe>
+argh, should have found it 🤦 , thanks arai!
+
+[14:31:56.0136] <iain>
+Is there a secret to building the shell as beta that I don't know about? Using my normal mozconfig with the latest beta checked out, I am getting errors about conflicting using declarations in some math headers:
+```
+In file included from /home/iain/src/central/intl/icu/source/i18n/astro.cpp:15:
+In file included from /home/iain/src/central/obj-scratch/dist/system_wrappers/math.h:3:
+/usr/bin/../lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/math.h:65:12: error: target of using declaration conflicts with declaration already in scope
+using std::isinf;
+           ^
+/usr/bin/../lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/cmath:592:3: note: target of using declaration
+  isinf(double __x)
+  ^
+/home/iain/.mozbuild/sysroot-x86_64-linux-gnu/usr/include/x86_64-linux-gnu/bits/mathcalls.h:201:19: note: conflicting declaration
+__MATHDECL_1 (int,isinf,, (_Mdouble_ __value)) __attribute__ ((__const__));
+```
+
+[16:40:58.0038] <wes>
+If it's any help, I built the shell off 50ee1aa4f843 tip without issues yesterday, using a mozconfig with`--enable-project=js  --enable-debug --enable-optimize` set.
+
+[16:41:24.0177] <wes>
+ * If it's any help, I built the shell off mozilla-central 50ee1aa4f843 tip without issues yesterday, using a mozconfig with`--enable-project=js  --enable-debug --enable-optimize` set.
+
+[16:42:15.0368] <wes>
+ * If it's any help, I built the shell off mozilla-central 50ee1aa4f843 tip without issues yesterday, using a mozconfig with`--enable-project=js  --enable-debug --enable-optimize` set. Linux, x86_64
+
+
+2023-07-05
+[03:09:33.0342] <jandem>
+> <@iain:mozilla.org> Is there a secret to building the shell as beta that I don't know about? Using my normal mozconfig with the latest beta checked out, I am getting errors about conflicting using declarations in some math headers:
+> ```
+> In file included from /home/iain/src/central/intl/icu/source/i18n/astro.cpp:15:
+> In file included from /home/iain/src/central/obj-scratch/dist/system_wrappers/math.h:3:
+> /usr/bin/../lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/math.h:65:12: error: target of using declaration conflicts with declaration already in scope
+> using std::isinf;
+>            ^
+> /usr/bin/../lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/cmath:592:3: note: target of using declaration
+>   isinf(double __x)
+>   ^
+> /home/iain/.mozbuild/sysroot-x86_64-linux-gnu/usr/include/x86_64-linux-gnu/bits/mathcalls.h:201:19: note: conflicting declaration
+> __MATHDECL_1 (int,isinf,, (_Mdouble_ __value)) __attribute__ ((__const__));
+> ```
+
+no secret, normally this just works. It's especially weird because beta branched a few days ago. Make sure it's a clobber build
+
+[11:50:59.0576] <iain>
+This turned out to be bug 1747150. Adding `--without-sysroot` to my mozconfig fixed it.
+
+[11:51:01.0953] <botzilla>
+https://bugzil.la/1747150 — NEW (nobody) — Configure should check that including C++ headers takes them from the sysroot
+
+
+2023-07-06
+[08:10:29.0668] <jonco>
+What's the difference between RegExpRealm and RegExpStatics - aren't these basically the same thing (per realm/global reg exp data)?
+
+[08:25:40.0206] <jandem>
+jonco: `RegExpStatics` is used for the legacy static properties on `RegExp` like `/abc/g.exec("abcdef"); assertEq(RegExp.input, "abcdef");`
+
+[08:26:13.0560] <jandem>
+the lifetime is similar to `RegExpRealm` I think? maybe it could live there
+
+[08:26:28.0802] <jonco>
+ah I see
+
+[08:27:14.0464] <jonco>
+yeah I think they could both be part of GlobalObjectData
+
+[08:27:40.0312] <jandem>
+makes sense
+
+[11:14:30.0658] <jlink>
+Question: Opening a _blank_ html file in Firefox results in ~1200 calls to either JSScript::fromStencil() or BaseScript::CreateRawLazy(). Is this expected? (To be clear, these are just the script objects that are created when I load this local html file and is after the wave of script objects that are created just upon Firefox start-up.)
+
+[11:18:20.0559] <arai>
+opening a file can create a new content process and that can run many scripts during its startup I think?
+
+[11:20:25.0956] <arai>
+and even a blank html can have JavaScript global and it can contain built-ins, where some of them are implemented with self-hosted JavaScript, and that can also go through that path
+
+[11:20:35.0070] <arai>
+ * and even a blank html can have JavaScript global and it contains built-ins, where some of them are implemented with self-hosted JavaScript, and that can also go through that path
+
+[11:21:19.0120] <arai>
+in which process and in which call stack do you observe them called?
+
+[11:22:19.0877] <jlink>
+Examples of the 'filenames' are:
+resource:///modules/BrowserSearchTelemetry.sys.mjs
+resource:///modules/URILoadingHelper.sys.mjs
+self-hosted:#:#
+resource://gre/modules/TelemetryControllerContent.sys.mjs
+resource://gre/modules/AppConstants.sys.mjs
+resource://gre/modules/Log.sys.mjs
+resource://gre/modules/XPCOMUtils.sys.mjs
+resource://gre/modules/extensionProcessScriptLoader.js
+resource://gre/modules/ExtensionUtils.sys.mjs
+resource://devtools/client/jsonview/Sniffer.sys.mjs
+resource:///actors/InteractionsChild.sys.mjs
+resource://gre/modules/PrivateBrowsingUtils.sys.mjs
+resource://gre/actors/TranslationsChild.sys.mjs
+resource:///actors/LinkHandlerChild.sys.mjs
+resource:///actors/AboutReaderChild.sys.mjs
+resource://gre/modules/Readerable.sys.mjs
+resource://gre/actors/ContentMetaChild.sys.mjs
+resource://gre/modules/BrowserTelemetryUtils.sys.mjs
+chrome://global/content/translations/language-id-engine-worker.js
+chrome://global/content/translations/fasttext.js
+chrome://global/content/translations/fasttext_wasm.js (whole bunch of this one)
+resource://gre/actors/FindBarChild.sys.mjs
+
+[11:23:48.0477] <jlink>
+Do those seem like the content process scripts that you mentioned? Or do any of those seem out of place?
+
+[11:24:10.0006] <jlink>
+Or do any of those seem out of place?
+
+[11:24:22.0790] <arai>
+mostly looks reasonable.  I don't know the exact set of files that runs during process startup tho
+
+[11:24:47.0872] <arai>
+and yeah, having "Child" sounds like it's for content process
+
+[11:26:17.0459] <arai>
+some of them are fundamental modules (AppConstants, Log, XPCOMUtils, etc),  some of them are for extensions, and some of them are UI-related (Translation, Readerable, FindBar)
+
+[11:26:26.0199] <arai>
+ * some of them are fundamental modules (AppConstants, Log, XPCOMUtils, etc),  some of them are for extensions-related, and some of them are UI-related (Translation, Readerable, FindBar)
+
+[11:26:32.0549] <mccr8>
+We do track the set of scripts that get loaded at process startup. https://searchfox.org/mozilla-central/source/browser/base/content/test/performance/browser_startup_content.js#21
+
+[11:26:45.0010] <jlink>
+Also, taking a look at the list more closely, the three "global/content/translations/..." ones actually account for around 800 of the 1200.
+
+[11:27:24.0589] <mccr8>
+> <@jlink:mozilla.org> Also, taking a look at the list more closely, the three "global/content/translations/..." ones actually account for around 800 of the 1200.
+
+When is your tree from? Translations is a very new feature and there's ongoing optimization work for it.
+
+[11:27:50.0212] <jlink>
+Let me check, it's at least several weeks old at this point.
+
+[11:27:50.0346] <mccr8>
+Specifically a number of fixes have landed recently that reduce how much the content scripts for it are doing.
+
+[11:28:13.0532] <jlink>
+Roughly three weeks old.
+
+[11:28:26.0332] <mccr8>
+Ah yeah you probably don't have the most recent fixes. There's the bugs blocking this one and some other ones: https://bugzilla.mozilla.org/show_bug.cgi?id=1840698
+
+[11:28:42.0448] <mccr8>
+They did notice some perf issues because of the massive amounts of scripts getting loaded, which I guess is what you are seeing.
+
+[11:29:20.0808] <jlink>
+Cool! It's not causing any real problem for me but I just wanted to find out if that was expected to others because ... it wasn't expected to me. :)
+
+[11:29:48.0664] <jlink>
+(I didn't want to walk right by a problem on my way to what I'm intending to look at.)
+
+[11:30:43.0502] <mccr8>
+We load a lot less content scripts than we used to. 😄
+
+
+2023-07-07
+[11:14:46.0851] <kevin_wang_22>
+Hello, 
+
+I want to call "uint64_t js::GetGCHeapUsage(JSContext* cx)" but my mozjs is 102 version, there is only "GetGCHeapUsageForObjectZone(JSObject* obj)". Can anyone tell me how to calculate the heap usage for a JSContext? 
+
+Thx
+
+[11:22:36.0221] <sfink>
+There is a [GCRuntime::heapSize](https://searchfox.org/mozilla-esr102/search?q=GCRuntime%3A%3AheapSize&path=&case=false&regexp=false) field, but I'm not sure how to get at through a public API.
+
+[11:24:15.0395] <sfink>
+in the shell, there's a `performance.mozMemory.gc.gcBytes` getter, but that is added via [NewMemoryInfoObject](https://searchfox.org/mozilla-esr102/source/js/src/gc/GCAPI.cpp#633) that doesn't look to be public.
+
+[11:25:45.0381] <sfink>
+it's also retrieved through [GCRuntime::getParameter](https://searchfox.org/mozilla-esr102/source/js/src/gc/GCRuntime.h#317) but again I don't think you can get directly at that.
+
+[11:26:57.0873] <sfink>
+oh wait, you can get that with `JS_GetGCParameter(JSGC_BYTES)`, it looks like
+
+[11:27:32.0198] <sfink>
+ * oh wait, you can get that with `JS_GetGCParameter(cx, JSGC_BYTES)`, it looks like
+
+[11:42:33.0090] <kevin_wang_22>
+Thank you!
+
+[11:53:17.0689] <sfink>
+note that this only includes direct GC heap usage, not malloc bytes owned by GC things. So it won't match anything you see from the system. A lot of memory is malloc memory, and at a glance I'm not seeing a way to get that (we might not even have been properly accounting that in 102?)
+
+
+2023-07-09
+[09:11:48.0149] <Redfire>
+Is there any way to have some sort of weak ref to an object? ie kinda like a `Heap` but not traced and you can attempt a deref to see if it hasn't been GC'ed yet?
+
+[10:25:42.0948] <sfink>
+I'm not sure how nice they are to use, but there are some APIs for that.
+
+[10:26:12.0206] <sfink>
+the basic thing is that you have to arrange for them to be swept, so that they can either be nulled out or updated (if the object moved).
+
+[10:27:01.0968] <sfink>
+[`WeakCache`](https://searchfox.org/mozilla-central/rev/31702d1881e54ac219d1ca3d50575fb9ea6d7f46/js/public/SweepingAPI.h#81-87) automates it for containers.
+
+[10:27:09.0327] <sfink>
+but you can see what it's doing.
+
+[10:28:05.0520] <sfink>
+hm, actually it's a little hard to see, because it (1) uses a magic internal list that is traversed during sweeping, and (2) goes through `GCPolicy<T>::traceWeak()` that you'd have to track down.
+
+[10:30:28.0103] <sfink>
+I guess that's [this](https://searchfox.org/mozilla-central/rev/31702d1881e54ac219d1ca3d50575fb9ea6d7f46/js/public/GCPolicyAPI.h#138-140) for `Heap<JSObject*>`
+
+[10:32:50.0234] <sfink>
+I'm not sure the underlying stuff is exposed for embedding. You may *have* to go through `WeakCache`.
+
+[11:58:30.0631] <wes>
+So here's a puzzling API regression.  When compile script, it used to be possible to set a negative line number in the compilation options.  This is really useful in the case where you're wrapping a source file in an IIFE and want the line numbers in the stack trace to line up with the line numbers of the source file.
+
+The new C++ API has &setLine(unsigned l) ........... why is it unsigned?
+
+[11:58:57.0176] <wes>
+ * So here's a puzzling API regression.  When compiling scripts, it used to be possible to set a negative line number in the compilation options.  This is really useful in the case where you're wrapping a source file in an IIFE and want the line numbers in the stack trace to line up with the line numbers of the source file.
+
+The new C++ API has &setLine(unsigned l) ........... why is it unsigned?
+
+[12:16:42.0362] <arai>
+line number has been unsigned from SpiderMonkey 1.6.0
+
+[12:20:22.0636] <arai>
+if the body needs to start from 1, you can use `setLine(0)` and put all the header into the line 0
+
+[12:20:33.0735] <arai>
+ * if the body needs to start from line 1, you can use `setLine(0)` and put all the header into the line 0
+
+[12:20:45.0267] <arai>
+similar thing is done in https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/dom/events/EventListenerManager.cpp#1183,1185
+```cpp
+// Use line 0 to make the function body starts from line 1.
+...
+    .setFileAndLine(url.get(), 0)
+```
+
+[12:42:42.0045] <wes>
+arai: Interesting...thanks. 1.6 is the first version of jsapi I embedded.  I worked heavily with 1.7 (array extras) through 1.8.5 (es5). I wonder if I'm getting mixed up with v8?  I haven't done a jsapi project until recently in ~8 years.  Now I want to dig up my code that ran on 1.8.5 and see how I solved this.
+
+What I wound up doing was ```pm.eval("""multiline string""".replace("\n", ";") + "\n" + moduleSourceCode.read() + "}", { 'lineno':0, 'filename': filename })``` ... pretty similar to what you suggested. This forces the whole IIFE preamble on to the zeroeth line and lines up the source code to start line 1, column 0. 
+
+[12:42:58.0553] <wes>
+ * arai: Interesting...thanks. 1.6 is the first version of jsapi I embedded.  I worked heavily with 1.7 (array extras) through 1.8.5 (es5). I wonder if I'm getting mixed up with v8?  I haven't done a jsapi project until recently in ~8 years.  Now I want to dig up my code that ran on 1.8.5 and see how I solved this.
+
+What I wound up doing was
+```pm.eval("""multiline string""".replace("\n", ";") + "\n" + moduleSourceCode.read() + "}", { 'lineno':0, 'filename': filename })```
+ ... pretty similar to what you suggested. This forces the whole IIFE preamble on to the zeroeth line and lines up the source code to start line 1, column 0.
+
+[12:43:12.0632] <wes>
+ * arai: Interesting...thanks. 1.6 is the first version of jsapi I embedded.  I worked heavily with 1.7 (array extras) through 1.8.5 (es5). I wonder if I'm getting mixed up with v8?  I haven't done a jsapi project until recently in ~8 years.  Now I want to dig up my code that ran on 1.8.5 and see how I solved this.
+
+What I wound up doing was
+`pm.eval("""multiline string""".replace("\n", " ") + "\n" + moduleSourceCode.read() + "}", { 'lineno':0, 'filename': filename })`
+... pretty similar to what you suggested. This forces the whole IIFE preamble on to the zeroeth line and lines up the source code to start line 1, column 0.
+
+[12:43:34.0191] <wes>
+We'll just have to make sure that our preamp doesn't include and // comments
+
+[12:43:44.0866] <wes>
+ * We'll just have to make sure that our preamble doesn't include and // comments
+
+[12:43:50.0401] <wes>
+ * We'll just have to make sure that our preamble doesn't include any // comments
+
+[12:49:27.0973] <wes>
+ * We'll just have to make sure that our preamble doesn't include any // comments or multiline strings
+
+[16:14:44.0257] <Redfire>
+sfink: It seems the main part of that is `js::gc::TraceWeakEdge`. If I just used that, would the `Heap<JSObject*>` just point to a null pointer which I could check for manually?
+
+[16:16:10.0184] <sfink>
+Yes. But (1) I don't think that's exported to embeddings (I don't see `JS_PUBLIC_API` on it, and the namespace suggests that it wouldn't be), and (2) you still need a way for it to be invoked during sweeping.
+
+[16:16:26.0888] <sfink>
+but yes, the effect would be that if the object dies, it would be set to nullptr
+
+[16:17:42.0569] <Redfire>
+Isn't it public?
+<https://searchfox.org/mozilla-central/source/js/src/gc/Marking.cpp#2493>
+
+[16:18:37.0850] <Redfire>
+Since on the rust side we already have traits for this kinda stuff, I'm thinking I can just add a `trace_weak` method and you can choose when you want to use it.
+
+[16:19:10.0916] <sfink>
+uh, it does rather look like it is. https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/js/public/TracingAPI.h#406-407 too.
+
+[16:19:48.0251] <sfink>
+not sure how I missed that
+
+[16:19:50.0388] <Redfire>
+I'll need to do some shims on the rust side because of templating but that shouldn't be too bad
+
+[16:21:34.0179] <sfink>
+looks like you can arrange to be called with `JS_AddWeakPointerZonesCallback` and/or `JS_RemoveWeakPointerZonesCallback` and/or `JS_AddFinalizeCallback`
+
+[16:22:49.0881] <sfink>
+[example callback](https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/js/xpconnect/src/XPCJSRuntime.cpp#938-954)
+
+[16:26:11.0770] <Redfire>
+Could I just call `TraceWeakEdge` from a regular `trace` function? I'd prefer not to need some form of global map to keep track of weak refs
+
+[16:52:49.0136] <sfink>
+No. It can't know at that point in time whether the object is dead or alive. Something later may trace it.
+
+[16:55:17.0408] <sfink>
+(also, you're not guaranteed to have that trace function called. Or rather, if you are then it's not really a weak edge.)
+
+[16:57:19.0590] <sfink>
+well, that might be overstating it. That particular edge may very well be weak even if you know the containing object will be traced. But consider a weak edge behind a weak edge. How do you ensure that the inner edge is updated when it moves, for example, if you can't guarantee that its holder is traced?
+
+[16:57:38.0137] <sfink>
+ * well, that might be overstating it. That particular edge may very well be weak even if you know the containing object will be traced. But consider a weak edge behind a weak edge. How do you ensure that the inner edge is updated when its target moves, for example, if you can't guarantee that its holder is traced?
+
+
+2023-07-10
+[01:51:42.0134] <liam_g>
+Within a native function, is there any possibility of finding out whether the function has been called with the "await" keyword? Like `JS::CallArgsFromVp(argc, vp).hasAwait()`?
+
+[01:52:33.0182] <liam_g>
+Or alternatively, of finding out whether the calling function uses `async`?
+
+[01:53:25.0155] <arai>
+`await` isn't tracked, but whether the return value is used or not can be used.  let me look for an example
+
+[01:53:34.0057] <arai>
+ * `await` isn't tracked, but whether the return value is used or not can be detected.  let me look for an example
+
+[01:54:41.0944] <arai>
+https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/js/src/builtin/Array.cpp#3130,3132,4065-4066,4072,4843,4856
+```cpp
+static bool array_splice_noRetVal(JSContext* cx, unsigned argc, Value* vp) {
+...
+}
+...
+static const JSJitInfo array_splice_info = {
+    {(JSJitGetterOp)array_splice_noRetVal},
+...
+};
+...
+static const JSFunctionSpec array_methods[] = {
+...
+    JS_FNINFO("splice", array_splice, &array_splice_info, 2, 0),
+```
+
+[01:55:15.0357] <arai>
+you can provide different function for "return value is not used" case, and that function is called instead for such case
+
+[01:55:53.0336] <liam_g>
+How does that help in the case of `await`?
+
+[01:56:06.0733] <arai>
+oh, I forgot one more related line https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/js/src/builtin/Array.cpp#4065-4066,4069,4072
+```cpp
+static const JSJitInfo array_splice_info = {
+    {(JSJitGetterOp)array_splice_noRetVal},
+...
+    JSJitInfo::IgnoresReturnValueNative,
+...
+};
+```
+
+[01:56:49.0624] <arai>
+okay, let me use other example:  https://searchfox.org/mozilla-central/rev/ada05ac4faf1f79944a35a9eb79083a684a98975/js/src/builtin/Promise.cpp#6573-6574,6577,6580
+```cpp
+const JSJitInfo promise_then_info = {
+    {(JSJitGetterOp)Promise_then_noRetVal},
+...
+    JSJitInfo::IgnoresReturnValueNative,
+...
+};
+```
+
+[01:57:38.0914] <arai>
+which is for `Promise.prototype.then`.  if the return value is not used, the function doesn't have to create the promise, and that reduces the cost of the function call
+
+[01:57:52.0301] <arai>
+isn't it similar to what you want to do with `await` case?
+
+[01:58:23.0796] <arai>
+if not, what do you want to use the condition for?
+
+[01:58:42.0651] <liam_g>
+The context to my question is this: I have a `wait()` function that is only ever supposed to be used with `await`. But it's very easy for the user to forget this. So I'd like to be able to print out a little help message if the user forgets "await".
+
+[01:59:07.0756] <liam_g>
+I don't think it has much to do with the return value, and I'm really just waiting for the event, rather than the value.
+
+[01:59:49.0832] <arai>
+so, the possible mis-use is just write `wait();` and ignore the value, right?
+
+[01:59:55.0813] <liam_g>
+yes
+
+[02:00:01.0090] <liam_g>
+no...
+
+[02:00:37.0374] <liam_g>
+`await wait()` is correct, `wait()` is a mistake
+
+[02:01:20.0856] <arai>
+yes, so, if the return value is ignored, it's mistake, and if the return value is somehow used, it's expected usage, right?
+
+[02:01:38.0981] <liam_g>
+I think I see what you're saying.
+
+[02:02:01.0399] <arai>
+for example, user can write `await Promise.race([p, wait()]);` and that is still correct even if it's not directly `await`-ed
+
+[02:02:09.0666] <liam_g>
+right
+
+[02:02:55.0415] <liam_g>
+OK, I'll dig into the examples that you've shared and see if I can use the return value checker to identify misuses.
+
+[02:03:44.0819] <liam_g>
+I have to use a JSJitInfo object, right?
+
+[02:03:54.0280] <arai>
+yes
+
+[02:03:58.0071] <jandem>
+wes: https://pythonmonkey.io/ looks interesting, thanks for sharing
+
+[03:25:57.0405] <Redfire>
+I should go set up spiderfire.dev to actually do something, I bought the domain and haven't done anything.
+
+[05:06:48.0349] <smaug>
+@allstarschh: I wonder if we should have a meeting about bug 1841363 and bug 1831583
+
+[05:06:51.0160] <botzilla>
+https://bugzil.la/1841363 — NEW (nobody) — WPT failures for workers/modules/[dedicated|shared]-worker-import-csp.html
+
+[05:06:51.0544] <botzilla>
+https://bugzil.la/1831583 — NEW (aiunusov) — WPT failures for dynamic import of script from data: URL in worker modules
+
+[05:07:30.0777] <smaug>
+or, hmm, perhaps first document somewhere what the current behavior is and what the specs say and then have a meeting
+
+[05:08:44.0771] <@allstarschh>
+smaug: I can quickly explain the first one, import-csp one
+
+[05:09:35.0856] <@allstarschh>
+So the spec says, for worker module script, the top-level module, and the static import, use the CSP from the parent document
+
+[05:09:56.0638] <@allstarschh>
+but for dynamic import and importScripts(), they use CSP on the worker
+
+[05:10:35.0584] <smaug>
+yes
+
+[05:10:40.0915] <smaug>
+and we fail the tests because?
+
+[05:11:10.0297] <@allstarschh>
+smaug: our implementation, for static-import it uses CSP from the worker
+
+[05:12:07.0107] <smaug>
+@allstarschh: doesn't the patch in the other bug fix that?
+
+[05:12:21.0708] <@allstarschh>
+https://searchfox.org/mozilla-central/source/dom/workers/ScriptLoader.cpp#886
+
+[05:12:31.0116] <@allstarschh>
+you mean the patch in the bug 1831583?
+
+[05:12:32.0417] <botzilla>
+https://bugzil.la/1831583 — NEW (aiunusov) — WPT failures for dynamic import of script from data: URL in worker modules
+
+[05:12:39.0267] <smaug>
+yes
+
+[05:14:42.0139] <@allstarschh>
+for the principal part it should fix the problem in static import as well
+
+[05:15:11.0645] <wes>
+> <@jandem:mozilla.org> wes: https://pythonmonkey.io/ looks interesting, thanks for sharing
+
+Thanks -- it's my very-long-play to avoid writing+maintaining a Python version of a very complex JS library that changes constantly. Hopefully it works out for us. Embedding jsapi again has been a lot of fun so far. :)
+
+[05:19:31.0740] <@allstarschh>
+smaug: but bug 1831583 seems to have other problems as well, which I am not sure
+
+[05:19:55.0237] <smaug>
+yeah, it is fixing also that security flag usage
+
+[05:21:29.0091] <@allstarschh>
+smaug: so do you agree that worker's static import should use the parent window's CSP ? because you asked in the github issue before
+
+[05:21:47.0325] <smaug>
+I think so
+
+[05:23:39.0756] <@allstarschh>
+smaug: there's another question raised by jonco,  for worker's static import, @jonco asks, maybe the worker's static import should use worker's CSP, just like the dynamic import()
+
+[05:24:36.0668] <@allstarschh>
+This is should be a separate question though
+
+[05:24:44.0168] <smaug>
+we (aiunusov and asuth) had a meeting about this two week ago, but we couldn't figure out why we have the copies of the cps tests under mozilla/tests
+
+[05:25:59.0356] <smaug>
+Oh, hmm, I think static import should use worker's csp
+
+[05:26:21.0912] <smaug>
+this all is a great confusion. dynamic vs static behaving differently
+
+[05:27:21.0456] <@allstarschh>
+smaug: I think, Yulia thought, for worker's static import, it should use Worker's CSP, just like dynamic import(), 
+
+[05:27:59.0671] <smaug>
+but our clones of the tests don't seem to pass right now, so I don't know what they are testing, and why we have them
+
+[05:28:00.0583] <@allstarschh>
+but I am sure, either:  She misunderstood the spec, but she had updated the WPTs,  she didn't have time to revert the changes
+
+[05:28:15.0518] <@allstarschh>
+ * but I am __NOT__ sure, either:  She misunderstood the spec, but she had updated the WPTs,  she didn't have time to revert the changes
+
+[05:28:42.0860] <@allstarschh>
+or she really thinks the worker's static import should use worker's CSP,
+
+[05:28:58.0578] <@allstarschh>
+which will require current spec change
+
+[05:29:39.0766] <smaug>
+One question is that what do the other browsers do?
+
+[05:29:58.0908] <@allstarschh>
+> <@smaug:mozilla.org> but our clones of the tests don't seem to pass right now, so I don't know what they are testing, and why we have them
+
+our clones should pass the static import part, she has updated the test scripts
+
+[05:30:08.0195] <smaug>
+(but I have now a meeting with hsinyi 🙂 )
+
+[05:31:30.0301] <jonco>
+> <@allstarschh:mozilla.org> but I am __NOT__ sure, either:  She misunderstood the spec, but she had updated the WPTs,  she didn't have time to revert the changes
+
+I don't think Yulia misunderstood the spec, although she did ask for clarification. 
+
+[05:32:17.0034] <jonco>
+I think her position is that static imports should use the worker's CSP
+
+[05:32:51.0850] <jonco>
+The WPT tests were cloned so they would test this behaviour, which is different to the spec
+
+[05:34:04.0184] <smaug>
+but we have lots of those cloned tests which don't pass currently, tests like https://searchfox.org/mozilla-central/source/testing/web-platform/mozilla/meta/content-security-policy/gen/top.http-rp/script-src-self/worker-import.http.html.ini
+
+[05:34:52.0472] <@allstarschh>
+> <@smaug:mozilla.org> One question is that what do the other browsers do?
+
+Chrome passes, Firefox and Safari both have failures
+
+[05:43:01.0971] <@allstarschh>
+> <@smaug:mozilla.org> but we have lots of those cloned tests which don't pass currently, tests like https://searchfox.org/mozilla-central/source/testing/web-platform/mozilla/meta/content-security-policy/gen/top.http-rp/script-src-self/worker-import.http.html.ini
+
+I'll check this one, the loading principal one fixs the https one, (this one is the http one)
+
+[05:43:16.0439] <@allstarschh>
+> <@smaug:mozilla.org> but we have lots of those cloned tests which don't pass currently, tests like https://searchfox.org/mozilla-central/source/testing/web-platform/mozilla/meta/content-security-policy/gen/top.http-rp/script-src-self/worker-import.http.html.ini
+
+ * I'll check this one, the loading principal fixs the https one, (this one is the http one)
+
+
+2023-07-11
+[04:15:37.0353] <liam_g>
+Can Maybe::emplace() trigger a garbage collection?
+
+[04:17:42.0579] <arai>
+`Maybe::emplace` itself cannot.  so it depends on what constructor it's calling
+
+[04:36:25.0552] <liam_g>
+I have a BaseProxyHandler that defines a custom JSObject called Cell. It's not constructable, but it's used very often in my code. Is it possible to set the BaseProxyHandler somehow so that I can run `cell instanceof Cell  // true`?
+
+[04:36:57.0017] <liam_g>
+Right now I have a native function `isCell()` which works fine. But it would be neater if I could use `instanceof`.
+
+[04:37:33.0559] <liam_g>
+I've tried overriding `BaseProxyHandler::className()`, but it doesn't seem to help.
+
+[04:43:13.0838] <arai>
+you can implement custom `instanceof` behavior by `Symbol.hasInstance` property https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance
+
+[04:49:45.0854] <liam_g>
+So I just need to add Symbol.hasInstance to my Proxy's properties?
+
+[04:50:15.0836] <arai>
+your Proxy needs to return a function if `get` handler is called with `Symbol.hasInstance`
+
+[04:51:32.0372] <liam_g>
+I see, and the function itself does the testing to see whether it belongs to the class?
+
+[04:51:42.0681] <l11d>
+the temporal api is still disabled by default, correct?
+
+[04:53:40.0053] <arai>
+yes https://searchfox.org/mozilla-central/rev/f03ce34731ff8d1f6c77d8241c41d10df13e9aca/js/moz.configure#1205
+```py
+option("--with-temporal-api", default=False, help="Enable ECMAScript Temporal API")
+```
+
+[04:54:07.0118] <arai>
+liam_g: yes
+
+[04:54:38.0449] <liam_g>
+Thanks again @arai!
+
+[06:51:57.0323] <dbezhetskov>
+ * Hi, I'm running my custom python script instead of shell for testing and my script is using python modules from the host system
+and when I run `./mach jstests --shell /path/to/js-wrapper.py test262` I get an exception `ModuleNotFoundError`.
+it looks like `mach` or tests are using some special environment to do their job
+so, my question is - how to add my custom module to that environment or where it can be declared or created?
+
+[08:16:56.0035] <yury>
+I see "PROCESS-CRASH | jsapi-tests | application crashed" at try server, and no other details.(e.g. https://treeherder.mozilla.org/logviewer?job_id=422281476&repo=try&lineNumber=215429) . Also not sure if it is me. Has anyone deal with something like that?
+
+[08:49:47.0189] <mgaudet>
+yury: So I opened the full log, `live_backing.log` and looked for jsapi-test stuff. I found this: 
+
+```
+[task 2023-07-11T14:49:21.319Z] testWasmCheckSlowCallMarkerHit
+[task 2023-07-11T14:49:21.342Z] Failed
+[task 2023-07-11T14:49:21.342Z] ExceptionHandler::GenerateDump cloned child 14974
+[task 2023-07-11T14:49:21.342Z] ExceptionHandler::SendContinueSignalToChild sent continue signal to child
+[task 2023-07-11T14:49:21.342Z] ExceptionHandler::WaitForContinueSignal waiting for continue signal...
+[task 2023-07-11T14:49:21.355Z] ExceptionHandler::GenerateDump cloned child 14975
+[task 2023-07-11T14:49:21.355Z] ExceptionHandler::SendContinueSignalToChild sent continue signal to child
+[task 2023-07-11T14:49:21.355Z] ExceptionHandler::WaitForContinueSignal waiting for continue signal...
+[task 2023-07-11T14:49:21.382Z] in directory /builds/worker/workspace/obj-spider, running ['make', 'check-jstests']
+``` 
+
+Which seems maybe relevant? 
+
+[08:50:14.0869] <mgaudet>
+(Why it doesn't get parsed properly, and why there's not much more info isn't clear to me... but maybe a pointer for you!)
+
+[08:50:40.0128] <yury>
+testWasmCheckSlowCallMarkerHit is mine
+
+[08:55:09.0933] <yury>
+thanks
+
+[10:14:58.0117] <mgaudet>
+https://lists.riscv.org/g/sig-managed-runtimes/message/29 (In case anyone wishes to weigh in on I/D cache coherency for RISC-V0 
+
+[10:15:00.0651] <mgaudet>
+ * https://lists.riscv.org/g/sig-managed-runtimes/message/29 (In case anyone wishes to weigh in on I/D cache coherency for RISC-V) 
+
+
+2023-07-12
+[02:47:37.0378] <nbp>
+I never understood … is this desirable to have stalled instructions, which might accidentally go away if you happen to load even more instructions.
+What is the point of invalidating instructions separately from data given that the instruction cache reads from the data cache at the end.
+
+[03:43:48.0613] <jonco>
+iain: when you're around, can you land the fix for bug 1842617 as this might be causing bug 1841650?
+
+[03:43:51.0996] <botzilla>
+https://bugzil.la/1842617
+
+[03:43:52.0276] <botzilla>
+https://bugzil.la/1841650 — NEW (nobody) — Intermittent wpts & browser chrome | uncaught exception - TypeError: can't access property "spec", tab.linkedBrowser.currentURI is null at tinfo@resource:///modules/AsyncTabSwitcher.sys.mjs:1187:7
+
+[06:51:27.0198] <yulia | Back in October>
+> <@smaug:mozilla.org> but we have lots of those cloned tests which don't pass currently, tests like https://searchfox.org/mozilla-central/source/testing/web-platform/mozilla/meta/content-security-policy/gen/top.http-rp/script-src-self/worker-import.http.html.ini
+
+These tests currently fail because they also fail for regular workers. my understanding was that this hasn't been implemented yet. It isn't just modules. See: https://searchfox.org/mozilla-central/search?q=context.%3A+securitypolicyviolation&path=&case=false&regexp=false
+
+[06:52:43.0425] <yulia | Back in October>
+> <@jonco:mozilla.org> I don't think Yulia misunderstood the spec, although she did ask for clarification.
+
+The discussion with smaug a few months ago, was that static imports should use the worker's CSP. There is an open issue about this in wpt where anne commented as well. The assumption was that we don't have worker CSP at the point of static import load, but we do. In addition, using the page csp complicates things for service workers iirc. 
+
+[06:53:30.0710] <yulia | Back in October>
+here is the comment thread again: https://github.com/w3c/webappsec-csp/issues/336#issuecomment-1274703333
+
+[06:55:27.0350] <yulia | Back in October>
+> <@smaug:mozilla.org> but we have lots of those cloned tests which don't pass currently, tests like https://searchfox.org/mozilla-central/source/testing/web-platform/mozilla/meta/content-security-policy/gen/top.http-rp/script-src-self/worker-import.http.html.ini
+
+ * These tests currently fail because they also fail for regular workers. my understanding was that this hasn't been implemented yet. It isn't just modules. These tests are copied because other tests are passing in this section. See: https://searchfox.org/mozilla-central/search?q=context.%3A+securitypolicyviolation&path=&case=false&regexp=false
+
+[06:57:32.0880] <yulia | Back in October>
+The reason we are deviating from the spec is 1) it doesn't make sense and 2) it is very difficult for us to do. So until we get clarification that using the window CSP is _REALLY_ what we want to do, we decided to defer it: https://searchfox.org/mozilla-central/source/dom/workers/loader/WorkerModuleLoader.cpp#44-49
+
+[06:57:40.0479] <yulia | Back in October>
+This is because of how we implement clientInfo
+
+[06:58:17.0772] <yulia | Back in October>
+Ok, im disappearing again, but i'll be checking in for the next couple of days because i have some parental leave stuff to handle so I will try to answer any other questions. this was a really hair part of worker modules to do.
+
+[06:58:37.0932] <smaug>
+ah, ok, so for now we should be following the current spec? For csp and for origin
+
+[06:58:58.0773] <smaug>
+(currently we don't follow it for origin or "settings object")
+
+[06:59:29.0689] <yulia | Back in October>
+the origin one may be a mistake, i was in a rush to finish
+
+[06:59:46.0998] <yulia | Back in October>
+settings object should be inherited by the static imports iirc?
+
+[06:59:51.0746] <smaug>
+but is it ok to start to pass those tests we fail now?
+
+[07:00:05.0799] <yulia | Back in October>
+yes, it is ok to pass those tests we fail now
+
+[07:00:07.0019] <smaug>
+csp tests
+
+[07:00:14.0067] <yulia | Back in October>
+wait which are passing?
+
+[07:00:53.0375] <yulia | Back in October>
+found them, one sec
+
+[07:00:55.0352] <smaug>
+https://treeherder.mozilla.org/jobs?repo=try&revision=8a23bb40829f7249d3b26ed90ac7ef2bda11536e has plenty of unexpected passes
+
+[07:02:11.0497] <yulia | Back in October>
+ok, you are running into the same issue i was
+
+[07:02:14.0385] <yulia | Back in October>
+when those tests pass
+
+[07:02:15.0982] <yulia | Back in October>
+this one fails
+
+[07:02:16.0481] <yulia | Back in October>
+service-workers/service-worker/dedicated-worker-service-worker-interception.https.html
+
+[07:02:42.0479] <yulia | Back in October>
+this is where the client info problem comes up, if you fix csp like this, we no longer have service worker interception on static imports
+
+[07:02:59.0003] <yulia | Back in October>
+we would need to do much more work to get both to pass
+
+[07:03:43.0229] <smaug>
+happen to recall why that fails?
+
+[07:03:44.0162] <yulia | Back in October>
+if we have the time budget to do that work, we certainly can. But I would also want to press the HTML editors about the behavior here, because it is a bit weird when you consider service workers, and Anne's question was never answered in the thread where I asked for clarification
+
+[07:03:53.0058] <yulia | Back in October>
+It is our ClientInfo implementation
+
+[07:04:04.0059] <yulia | Back in October>
+we would need to have two client infos, one for the csp, and then one for the service worker to use
+
+[07:04:21.0144] <yulia | Back in October>
+or some other hacky approach, or we would need to rethink how we are doing it
+
+[07:04:28.0278] <yulia | Back in October>
+asuth might remember the issue here
+
+[07:04:36.0263] <yulia | Back in October>
+im a little hazy on the specifics at the moment
+
+[07:05:10.0516] <yulia | Back in October>
+ * the issue that stops us from fixing this easily is our ClientInfo implementation
+
+[07:05:23.0958] <smaug>
+so it is not about csp but principal?
+
+[07:05:38.0670] <yulia | Back in October>
+i cannot remember at the moment if it was the principle...
+
+[07:06:43.0414] <smaug>
+Chrome doesn't pass that test either
+
+[07:07:09.0978] <yulia | Back in October>
+i think honestly the spec is mistaken, I believe our behavior (and apple's) is correct
+
+[07:07:41.0231] <yulia | Back in October>
+and that service workers should work to intercept correctly
+
+[07:08:21.0569] <yulia | Back in October>
+ok, i need to get back to the kid. I can take a look briefly again at this tomorrow
+
+[07:09:28.0765] <smaug>
+Thanks for the comments here. Stay on leave 🙂 
+
+[09:37:07.0483] <jonco>
+sfink: ping
+
+[09:39:35.0569] <iain>
+jonco: Sorry, I could have sworn that I clicked the button yesterday. Queued for landing!
+
+[09:40:16.0450] <yury>
+Trying to find an example to how to observe an effect `enableGeckoProfiling` (without `enableSingleStepProfiling` but similar). Do it even iterate/sample frames? /me wants see WasmFrameIter called at random instructions
+
+[09:41:06.0631] <mgaudet>
+✋ high-five to Iain for https://bugzilla.mozilla.org/show_bug.cgi?id=1829411#c19 
+
+[09:57:19.0136] <jonco>
+iain: thanks!
+
+[09:58:29.0009] <sfink>
+oops, sorry, was on a long phone call, totally missed the meeting
+
+[14:19:00.0489] <mgaudet>
+confession: I am hoist on my own petard -- reaches for functionality **I** removed from the parser 3 years ago. (Stencil makes this challenging too... hmm)
+
+[14:19:05.0450] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2023-07-13
+[23:58:04.0101] <nchevobbe>
+> <@mgaudet:mozilla.org> ✋ high-five to Iain for https://bugzilla.mozilla.org/show_bug.cgi?id=1829411#c19
+
+quite an impact on DevTools debugger pretty print and sourcemap: https://bugzilla.mozilla.org/show_bug.cgi?id=1829411#c23
+
+[04:11:57.0643] <liam_g>
+I have a problem with my custom implementation of `BaseProxyHandler` which I'm not able to figure out. My class `CellProxyHandler` derives from `BaseProxyHandler`, and it is supposed to behave similarly to 'js::Wrapper`, i.e. it is supposed to wrap an object stored in a reserved slot. I am compiling Javascript code to this object, by setting it to the scope chain and then running `JS_Evaluate`. This means that when I compile the code `var x = 10; this.y = 11` to the proxy object, I would expect to see properties x = 10 and y = 11 in the wrapped object. With `js::Wrapper`, this is exactly what I get. But when I run my own `CellProxyHandler` class, I get properties x = undefined and y = 11. So the `js::Wrapper` class accepts the `var x = 10` syntax, but my own `CellProxyHandler` class does not. Can anything see why this might be?
+
+[04:12:06.0989] <liam_g>
+ * I have a problem with my custom implementation of `BaseProxyHandler` which I'm not able to figure out. My class `CellProxyHandler` derives from `BaseProxyHandler`, and it is supposed to behave similarly to 'js::Wrapper`, i.e. it is supposed to wrap an object stored in a reserved slot. I am compiling Javascript code to this object, by setting it to the scope chain and then running `JS_Evaluate`. This means that when I compile the code `var x = 10; this.y = 11`to the proxy object, I would expect to see properties x = 10 and y = 11 in the wrapped object. With`js::Wrapper`, this is exactly what I get. But when I run my own `CellProxyHandler`class, I get properties x = undefined and y = 11. So the`js::Wrapper`class accepts the`var x = 10`syntax, but my own`CellProxyHandler\` class does not. Can anything see why this might be?
+
+[04:12:20.0764] <liam_g>
+ * I have a problem with my custom implementation of `BaseProxyHandler` which I'm not able to figure out. My class `CellProxyHandler` derives from `BaseProxyHandler`, and it is supposed to behave similarly to `js::Wrapper`, i.e. it is supposed to wrap an object stored in a reserved slot. I am compiling Javascript code to this object, by setting it to the scope chain and then running `JS_Evaluate`. This means that when I compile the code `var x = 10; this.y = 11`to the proxy object, I would expect to see properties x = 10 and y = 11 in the wrapped object. With`js::Wrapper`, this is exactly what I get. But when I run my own `CellProxyHandler`class, I get properties x = undefined and y = 11. So the`js::Wrapper`class accepts the`var x = 10`syntax, but my own`CellProxyHandler\` class does not. Can anything see why this might be?
+
+[04:12:38.0764] <liam_g>
+ * I have a problem with my custom implementation of `BaseProxyHandler` which I'm not able to figure out. My class `CellProxyHandler` derives from `BaseProxyHandler`, and it is supposed to behave similarly to `js::Wrapper`, i.e. it is supposed to wrap an object stored in a reserved slot. I am compiling Javascript code to this object, by setting it to the scope chain and then running `JS_Evaluate`. This means that when I compile the code `var x = 10; this.y = 11`to the proxy object, I would expect to see properties x = 10 and y = 11 in the wrapped object. With`js::Wrapper`, this is exactly what I get. But when I run my own `CellProxyHandler`class, I get properties x = undefined and y = 11. So the`js::Wrapper`class accepts the`var x = 10`syntax, but my own`CellProxyHandler` class does not. Can anything see why this might be?
+
+[04:14:10.0091] <liam_g>
+When I peak inside my `defineProperty()` method, the `js::PropertyDescriptor` for x is undefined. So the problem must be something that occurs before that method is called.
+
+[04:38:27.0651] <jandem>
+liam_g: maybe try inheriting from `ForwardingProxyHandler` instead of `BaseProxyHandler` to see if that changes anything
+
+[04:40:04.0339] <liam_g>
+I'm trying that right now. Feels weird though because I can't think what the difference could be.
+
+[04:50:35.0442] <liam_g>
+Yup, inheriting from `js::Wrapper` seems to work. I'm frustrated that I couldn't work it out myself, but I suppose that using `'js::Wrapper` is a good thing, since there's a bit less boilerplate code.
+
+[04:51:28.0217] <liam_g>
+I have one remaining doubt about `js::Wrapper` though. I need an extra reserve slot object (besides the one that holds the wrapped object).
+
+[04:52:01.0164] <liam_g>
+Is it safe just to pass this option in through the js::Wrapper constructor?
+
+[04:52:08.0709] <liam_g>
+`constexpr CellProxyHandler::CellProxyHandler() : js::Wrapper(JSCLASS_HAS_RESERVED_SLOTS(Slot::numSlots), true, false)
+{}`
+
+[04:52:19.0613] <liam_g>
+ * `constexpr CellProxyHandler::CellProxyHandler() : js::Wrapper(JSCLASS_HAS_RESERVED_SLOTS(1), true, false) {}`
+
+[04:52:50.0464] <liam_g>
+ * Yup, inheriting from `js::Wrapper` seems to work. I'm frustrated that I couldn't work it out myself, but I suppose that using `js::Wrapper` is a good thing, since there's a bit less boilerplate code.
+
+[04:53:03.0437] <jandem>
+I suspect you weren't overriding some proxy trap that affects behavior here
+
+[04:54:24.0163] <jandem>
+> <@liam_g:mozilla.org> Is it safe just to pass this option in through the js::Wrapper constructor?
+
+no, that won't work because proxy handler flags are unrelated to JSClass flags. I think you can still use your own JSClass with reserved slots?
+
+[04:54:49.0000] <liam_g>
+But how do I specify my own class?
+
+[04:55:47.0340] <jandem>
+with the `ProxyOptions` you pass to `NewProxyObject`
+
+[04:57:23.0565] <liam_g>
+I'm using `js::Wrapper::New`, not `js::NewProxyObject`.
+
+[04:57:54.0692] <liam_g>
+Perhaps if I dig into `js::Wrapper::New`, I'll find that I can bypass this function and supply my own class.
+
+[04:58:03.0750] <jandem>
+you can use the `WrapperOptions` then, it inherits from `ProxyOptions` so also lets you set the class
+
+[04:58:34.0670] <liam_g>
+Oh right, it inherits. That will work.
+
+[04:59:55.0009] <liam_g>
+Thanks jandem , this sounds like the right way forward for me. Using `js::Wrapper` will probably make for cleaner code than what I've been using anyway.
+
+[05:01:56.0013] <jandem>
+liam_g: great. Proxy handlers can be hard to reason about unfortunately because of the default trap implementations from `BaseProxyHandler` if you don't override them
+
+[05:12:27.0458] <smaug>
+@allstarschh: jonco I'm still trying to understand that modulepreload regression. Loading a module triggers disallowimportmap. Want to remind me why? What is the reason for that limitation (I know it is in the spec too)
+
+[05:14:12.0091] <@allstarschh>
+smaug: https://html.spec.whatwg.org/#fetch-a-modulepreload-module-script-graph step 1
+
+[05:14:41.0778] <smaug>
+@allstarschh: sure, but why?
+
+[05:15:30.0383] <jonco>
+Import maps need to be loaded first otherwise may not be able to resolve module imports, or will resolve them differently
+
+[05:15:41.0095] <smaug>
+It is the speculative load of modulepreload which triggers the regression, but I can't understand why we wouldn't have the same issue with speculative load of <script type=module src="...">. But perhaps I'm missing something
+
+[05:19:26.0713] <jonco>
+We don't use speculatively loaded modules if an import map is present: https://hg.mozilla.org/mozilla-central/rev/24f62f68f45a332fe856c9da02467ca6f95e38cd
+
+[05:19:29.0756] <smaug>
+Perhaps we need to disable speculative module loads if we see a importmap while parsing. So only loads before that would work
+
+[05:20:41.0469] <smaug>
+jonco: oh. Hmm, does that somehow not apply to modulepreload
+
+[05:20:51.0384] <smaug>
+That is a very recent change
+
+[05:20:57.0368] <jonco>
+I don't know how modulepreload works
+
+[05:20:59.0833] <jonco>
+Yes
+
+[05:23:27.0432] <smaug>
+This is interesting.  And it is the same bug basically, as @allstarschh said in the other bug.
+
+[05:23:43.0473] <smaug>
+Just that we need similar fix for modulepreload
+
+[05:23:57.0025] <smaug>
+on release
+
+[05:24:58.0583] <smaug>
+We could also just not do speculative loading if we see importmap during parsing, right?
+
+[05:30:56.0651] <@allstarschh>
+> <@smaug:mozilla.org> We could also just not do speculative loading if we see importmap during parsing, right?
+
+we could, but for <modulepreload> it would be a little bit weird, as it prevents the preloading of modules
+
+[05:31:33.0064] <smaug>
+how is that weird? This is only about speculative loads
+
+[05:31:46.0896] <smaug>
+not about loads done when <link modulepreload> is added to DOM
+
+[05:32:55.0224] <smaug>
+other option is to fix module resolving somehow
+
+[05:32:56.0728] <@allstarschh>
+oh, okay, I see
+
+[07:36:04.0342] <smaug>
+@allstarschh: jonco: want to take a look at https://phabricator.services.mozilla.com/D183421? It was already reviewed from DOM point of view, but since you're more familiar with importmap, might be good if you check that I'm not missing anything obvious. The patch is trying to be the minimal possible for the current release
+
+[07:38:40.0622] <@allstarschh>
+Will do that soon, I am picking up kids now
+
+[08:00:52.0704] <yury>
+There is `SamplerThread` that is run in ff during profiling. I do not see the obvious way to start it for testing. (There is `enableSingleStepProfiling` but it is supported only for ARM simulator) Am I missing some pref/build/env flag to start it?
+
+[08:04:22.0999] <mgaudet>
+yury: Looks like the root init call is this: https://searchfox.org/mozilla-central/search?q=symbol:_ZN7mozilla12baseprofiler13profiler_initEPv&redirect=false which we never call in shell -- in principle, we might be able to, but in the short term you -may- be able to succeed with xpcshell? 
+
+[08:05:33.0716] <yury>
+/me trying xpcshell
+
+[08:06:30.0369] <jandem>
+yeah the JS shell does not have a sampler thread, but you can use `readGeckoProfilingStack()`or `enableSingleStepProfiling()` (with the ARM simulator)
+
+[08:08:19.0774] <jandem>
+ * yeah the JS shell does not have a sampler thread, but you can use `readGeckoProfilingStack()`or `enableSingleStepProfiling()` (with the ARM simulator) to test our profiler integration code in many cases
+
+[08:10:19.0801] <jandem>
+for Wasm we mostly rely on `enableSingleStepProfiling` I think. It's nice that it can get a stack trace at every instruction we execute so it's very deterministic and complete. Unfortunately not available for every platform
+
+[08:11:44.0540] <yury>
+> Unfortunately not available for every platform
+
+Yep, it is available only for one platform that is used by developers
+
+[10:20:44.0584] <liam_g>
+jandem: my new proxy implementation using `Wrapper` is working well--definitely cleaner code than before. There's just one thing that's bugging me, which is `let` and 'const` values. In my old implementation of `BaseProxyHandler`, any values declared using `let` or `const` would only be accessible from within the scope of that object, whereas `var` and `this.` would be accessible from anywhere. This was surprising behavior, but it was also very useful, because it meant I could implement public and private values. Do you have any idea why this would have happened, and how I could get it back with my implementation of `Wrapper`?
+
+[10:29:20.0369] <liam_g>
+ * jandem: my new proxy implementation using `Wrapper` is working well--definitely cleaner code than before. There's just one thing that's bugging me, which is `let` and 'const`values. In my old implementation of`BaseProxyHandler`, any values declared using `let`or`const` would only be accessible from within the scope of that object, whereas`var`and`this.`would be accessible from anywhere. This was surprising behavior, but it was also very useful, because it meant I could implement public and private values. Do you have any idea why this would have happened, and how I could get it back with my implementation of`Wrapper\`?
+
+[10:29:38.0598] <liam_g>
+ * jandem: my new proxy implementation using `Wrapper` is working well--definitely cleaner code than before. There's just one thing that's bugging me, which is `let` and `const`values. In my old implementation of`BaseProxyHandler`, any values declared using `let`or`const` would only be accessible from within the scope of that object, whereas`var`and`this.`would be accessible from anywhere. This was surprising behavior, but it was also very useful, because it meant I could implement public and private values. Do you have any idea why this would have happened, and how I could get it back with my implementation of`Wrapper\`?
+
+[10:29:50.0373] <liam_g>
+ * jandem: my new proxy implementation using `Wrapper` is working well--definitely cleaner code than before. There's just one thing that's bugging me, which is `let` and `const`values. In my old implementation of`BaseProxyHandler`, any values declared using `let`or`const` would only be accessible from within the scope of that object, whereas`var`and`this.`would be accessible from anywhere. This was surprising behavior, but it was also very useful, because it meant I could implement public and private values. Do you have any idea why this would have happened, and how I could get it back with my implementation of`Wrapper`?
+
+[11:58:33.0495] <yury>
+heh, now looking for xpcshell experts... so test suppose to crash-crash, but I see: 
+
+```
+ 0:00.60 TEST_END: Test FAIL. Subtests passed 1/1. Unexpected 0
+ 0:00.60 INFO js/xpconnect/tests/unit/test_wasm_tailcalls_profiler.js failed or timed out, will retry.
+...
+xpcshell
+~~~~~~~~
+Ran 2 checks (1 subtests, 1 tests)
+Expected results: 2
+Unexpected results: 0
+OK
+
+```
+Is it really OK?
+
+[12:02:52.0005] <Treviño>
+hey, if I've to wrap a C++ struct inside a js::value, but also providing a destroy function, is there any shortcut class for that? Or should I go through JSClassOps? As I'd ideally just need to set a reserved slot, but there's not a way to trigger a callback when the owner value of it gets destroyed, right?
+
+[12:11:31.0671] <mgaudet>
+yury: That looks like a failure of some sort for sure -- it's been a while since I've written an xpcshell-test; iirc they are grumpy if you don't ever do any Asserting
+
+[12:13:45.0212] <yury>
+aight, will poke it more. I was seeing CRASH before I recompile or change something, but now it is mute and not showing anything
+
+[12:13:59.0221] <mgaudet>
+Treviño: Can you get by with [`FinalizationRegistry`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/FinalizationRegistry)?
+
+[12:21:07.0524] <Treviño>
+mgaudet: you mean by SetHostCleanupFinalizationRegistryCallback ? It's the only public API I see, but it doesn't seem to be tied to any value
+
+[12:22:02.0819] <mgaudet>
+Treviño: More like wrapping your creation of these objects in JS that registers them in a finalization registry and does cleanup JS side
+
+[12:22:21.0536] <mgaudet>
+otherwise, a finalize class op is definitely the more traditional way
+
+[12:22:35.0775] <Treviño>
+yeah, that seems clearer
+
+[12:23:24.0289] <Treviño>
+was wondering if there was some thing to avoid rewriting the some stuff many times, allowing allocating data of a type, cgenerate a JSObject of it, and define the proper destructor in one step
+
+[12:29:43.0118] <mgaudet>
+Usually the C++ answer there is templates, macros, or other code-generation tooling. I don't think there's a generic solution here that's going to clean up everything
+
+[14:17:00.0554] <mgaudet>
+Bryan Thrall [:bthrall]: Is there a metabug for followup work on the FrontendContext related error handling stuff? 
+
+[14:17:15.0179] <mgaudet>
+(Ran into an awkward thing which maybe already has a bug open and otherwise I'd like to open one) 
+
+[14:20:45.0077] <arai>
+bug 1759123 I think
+
+[14:20:46.0157] <botzilla>
+https://bugzil.la/1759123 — NEW (nobody) — Remove helper thread JSContexts
+
+[14:25:20.0639] <mgaudet>
+Thank you!
+
+[14:57:57.0190] <Treviño>
+mgaudet: I ended up sketching this https://www.pastery.net/avhrgd/ (cpp https://www.pastery.net/hhqtmq/) which allows to handle this in matter of seconds :)
+
+[14:59:31.0591] <mgaudet>
+Scans sensibly! Glad you figured something out. 
+
+[15:05:12.0732] <sfink>
+yeah, that seems like the right way to go about it. We ought to have something like that in the examples repo. 
+
+
+2023-07-14
+[18:05:21.0749] <dheitbrink>
+I am having issues with modules, basically I have a map<string,JS::PersistentRootedObject> to store each module, for each global I have, after creating new global with a new module-map, after a while, I am getting a seg-fault on GetObjectCompartment(JSObject* obj). Any advice? I have some concern that my module is getting GC'ed. This after creating and releasing about 45ish globals, and like 50 models or so.
+
+[01:24:57.0741] <jandem>
+liam_g: you mean var bindings weren't stored in your wrapper/target object but on the global?
+
+[03:08:53.0477] <liam_g>
+> <@jandem:mozilla.org> liam_g: you mean var bindings weren't stored in your wrapper/target object but on the global?
+
+I think you're right, it's got to do with global vs. lexical scopes. I've actually gone back to using BaseProxyHandler now, and I seem  to be getting the behaviour I'm expecting.
+
+[03:10:03.0725] <liam_g>
+Sorry for the stream of semi-nonsense questions. I do have one more question though that is hopefully more straight forward. Does using lazyProto have any adverse performance cost?
+
+[03:12:43.0026] <liam_g>
+Or in general, is there anything I can do to ensure that my Proxy class is more jittable / more efficient?
+
+[03:14:23.0989] <liam_g>
+When I inherit from Wrapper, i notice a lot fewer calls to getOwnPropertyDescriptor than when i inherit from BaseProxyHandler. This got me wondering about the efficiency of my Proxy class.
+
+[03:31:42.0476] <@allstarschh>
+> <@yulia:mozilla.org> settings object should be inherited by the static imports iirc?
+
+smaug, jonco : so after yulia's explanation, so worker's static import should use document's CSP ?
+
+[03:36:12.0718] <jonco>
+@allstarschh: no, worker's static import should use worker CSP
+
+[03:36:48.0172] <jonco>
+as described in her comment here: https://searchfox.org/mozilla-central/source/dom/workers/loader/WorkerModuleLoader.cpp#44-49
+
+[05:43:01.0841] <smaug>
+jonco: but that comment talks about csp
+
+[05:43:12.0018] <smaug>
+we have two things to play with here, settings object and csp
+
+[05:43:34.0948] <smaug>
+or, in our code, principal and csp
+
+[05:45:11.0060] <smaug>
+so, at least in theory, the inheritance of those doesn't have to be the same
+
+[05:46:55.0245] <jonco>
+oh did I miss the point here?  yoshi did ask about CSP
+
+[05:48:50.0174] <smaug>
+right, but yulia was talking about settings object 🙂 
+
+[05:56:12.0864] <jonco>
+OK so I find this all pretty confusing.  I thought I understood what was going on with CSP.  What are the implications of the comment "settings object should be inherited by the static imports"?
+
+[05:57:03.0684] <jonco>
+As far as I can understand the discussion with Yulia above, we have decided not to follow the spec and instead use worker CSP for worker static imports.  But I don't follow the settings object part.
+
+[07:06:44.0121] <dheitbrink>
+If I want to check if a module is getting GC'ed, would it make sense to add a object JS::SetModulePrivate, with a finalizer?
+
+[07:51:15.0627] <jonco>
+dheitbrink: sure, as long as your module loader isn't using that for something else
+
+[12:23:09.0642] <dheitbrink>
+I am storing the modules references in a map with JS::PersistentRootedObject similar to (https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/examples/modules.cpp), the global is still alive.....and I am finding its getting GC'ed, is there a better to stop that than storing a reference as a JS::PersistentRootedObject? This is JS78 
+
+[13:15:37.0501] <arai>
+dheitbrink: what's the backtrace of the segfault?  I wonder if it's something else than the module object itself that gets GC-ed
+
+[13:18:47.0162] <arai>
+also, I wonder if `JS::PersistentRootedObject` works inside `map`'s buffer, especially when the buffer is extended and copy happens
+
+[13:20:02.0956] <arai>
+in case the copy causes the issue,  using `JS::PersistentRootedObjectVector` + map to the index inside the vector might help
+
+[13:20:48.0845] <arai>
+oh, but the example directly uses map...
+
+[13:21:20.0289] <arai>
+(maybe `std::map` doesn't copy the underlying buffer?
+
+[13:31:25.0138] <dheitbrink>
+yeah ok thanks, I will give it a try, I don't have the back trace, but its failing on: static MOZ_ALWAYS_INLINE JS::Compartment* GetObjectCompartment(JSObject* obj) {                                                                                                                                                                                                                             
+  JS::Realm* realm = reinterpret_cast<shadow::Object*>(obj)->group->realm;                                                                                                                                                                                                                                  
+  return JS::GetCompartmentForRealm(realm);                                                                                                                                                                                                                                                                 
+}  
+
+[13:33:57.0628] <dheitbrink>
+ * yeah ok thanks, I will give it a try, I don't have the back trace, but its failing on: 
+static MOZ_ALWAYS_INLINE JS::Compartment* GetObjectCompartment(JSObject* obj) {                                                                                                                                                                                                                             
+  JS::Realm* realm = reinterpret_cast<shadow::Object*>(obj)->group->realm;                                                                                                                                                                                                                                  
+  return JS::GetCompartmentForRealm(realm);                                                                                                                                                                                                                                                                 
+}  , basically called via my callback for : SetModuleDynamicImportHook
+
+[13:39:40.0664] <arai>
+looks like `std::map` doesn't move or copy the element
+
+[13:53:16.0044] <dheitbrink>
+I am correct in my understanding, if I hold a JS::PersistentRootedObject, it should not be getting GC'ed right?
+
+[13:53:32.0426] <arai>
+yes
+
+[13:54:52.0963] <arai>
+so, the possibility is that it's a different object that gets GC-ed
+
+[14:08:29.0037] <dheitbrink>
+Yeah maybe, I will need to check.......but when I go through and remove the item in the map.....with the same name, I don't get a segfault, I will need to check if what I am deleting in my map, is  the same thing, not just the private object I added to the module has the same name as to what is in the map. 
+
+
+2023-07-15
+[20:20:16.0912] <ewlsh>
+dheitbrink: GJS stores its modules in a JS map, we store that map in a global slot though: https://gitlab.gnome.org/GNOME/gjs/-/blob/master/gjs/global.cpp#L200
+
+[20:20:21.0408] <ewlsh>
+(if that helps)
+
+[04:24:03.0003] <cassio.neri>
+I'm sorry to bother you but my PR (https://phabricator.services.mozilla.com/D175569) has been waiting for review since 6 June. Is there any chance this can be reviewed? Thanks.
+
+[07:10:41.0731] <wes>
+mgaudet: love https://mgaudet.github.io/SpiderMonkeyBibliography/!  FYI - I have been hosting historic releases on github for a few years now; makes for easy spelunking if you're interested in that sort of thing.. https://github.com/Historic-Spidermonkey-Source-Code
+
+[08:38:47.0444] <arai>
+anba: ^ can you take a look at bug 1828326 patch?
+
+[08:38:49.0239] <botzilla>
+https://bugzil.la/1828326 — ASSIGNED (cassio.neri) — Improve performance of date algorithms
+
+
+2023-07-17
+[23:23:02.0383] <iain>
+arai: anba is almost never on Matrix
+
+[01:35:18.0861] <jandem>
+I asked him in bugzilla
+
+[03:18:21.0992] <arai>
+thanks
+
+[05:47:37.0904] <smaug>
+jonco: not that this should block landing the patches, but just wondering why https://phabricator.services.mozilla.com/D183589 has still the main thread (right?) issue "should not drain the microtask queue". Do we perhaps have some extra nsAutoMicroTask on stack somewhere?
+
+[05:49:29.0152] <jonco>
+I'll look into that.  I don't know why the other tests should time out either.  
+
+[08:11:17.0270] <mgaudet>
+> <@wes:mozilla.org> mgaudet: love https://mgaudet.github.io/SpiderMonkeyBibliography/!  FYI - I have been hosting historic releases on github for a few years now; makes for easy spelunking if you're interested in that sort of thing.. https://github.com/Historic-Spidermonkey-Source-Code
+
+That's a great repository for history -- also, [this link to Chris Leary's blog](https://web.archive.org/web/20190318024148/http://blog.cdleary.com/2011/06/mapping-the-monkeysphere/) I'd never seen before and is a fascinating view of SpiderMonkey's evolution at the time
+
+
+2023-07-18
+[02:29:21.0300] <@allstarschh>
+> <@jonco:mozilla.org> OK so I find this all pretty confusing.  I thought I understood what was going on with CSP.  What are the implications of the comment "settings object should be inherited by the static imports"?
+
+smaug: hi, have you replied to jonco's question? I am also a little bit lost about the conclusion about worker's CSP
+
+[02:32:14.0237] <smaug>
+I don't think I answered to that. I am also lost with settings objects and CSP.  Some implications from settings objects, at least when thinking from our side and nsIPrincipals is that who is triggering a new load. If you create a worker using data: url, it gets opaque principal. Should that be used for static import or should one use the principal of the caller of new Worker("data:...") ?
+
+[02:35:38.0398] <smaug>
+or I'm lost on what we want, and what we test
+
+[02:37:19.0088] <@allstarschh>
+smaug: I'll check data URI, but for the basic case, a worker loads a same-origin worker module script
+
+[02:37:46.0512] <@allstarschh>
+so in this case, the top-level module worker script uses the document's CSP,
+
+[02:38:17.0677] <smaug>
+What if you use CORS? The testcases for bug 1831583 are tricky
+
+[02:38:19.0024] <botzilla>
+https://bugzil.la/1831583 — NEW (aiunusov) — WPT failures for dynamic import of script from data: URL in worker modules
+
+[02:42:13.0697] <@allstarschh>
+I'll check about that wpt, will back to you later, thanks : )
+
+[03:09:17.0646] <jonco>
+smaug: this has all got rather confusing - can you state which CSP you think worker static imports should use?
+
+[03:14:51.0315] <smaug>
+I think worker static imports should not inherit csp from the parent (normally Window)
+
+[03:15:06.0234] <smaug>
+But the spec says differently
+
+[03:15:11.0093] <smaug>
+I believe
+
+[03:16:06.0354] <jonco>
+so they should use worker CSP
+
+[03:16:11.0608] <jonco>
+thanks, I agree
+
+[06:16:15.0656] <@allstarschh>
+> <@smaug:mozilla.org> But the spec says differently
+
+smaug:can you file a spec issue on that ? 
+
+[06:16:39.0508] <@allstarschh>
+ I don't know the full story, as one thing that I am not sure is the creation of worker part, although spec doesn't define this (or shouldn't define this), but the implementation can still use main thread to do the all module script graph fetching
+
+[06:17:12.0890] <@allstarschh>
+in that case it makes sense to me that use the document's settings object to do so
+
+[06:18:57.0025] <smaug>
+@allstarschh: isn't there that spec issue already but it was closed for reasons I can't understand
+
+[06:19:49.0704] <smaug>
+https://github.com/w3c/webappsec-csp/issues/336
+
+[06:20:07.0787] <@allstarschh>
+smaug: I explained in https://bugzilla.mozilla.org/show_bug.cgi?id=1841363#c1, so the original issue was filed against the older spec, but it is fixed so the issue is closed
+
+[06:20:31.0063] <smaug>
+but how is that fixed?
+
+[06:21:08.0236] <@allstarschh>
+smaug: the issue is to fix https://web.archive.org/web/20180826085420/https://w3c.github.io/webappsec-csp/#initialize-global-object-csp
+
+[06:22:35.0106] <smaug>
+But https://github.com/w3c/webappsec-csp/issues/336 was filed to not sure parent's csp for imports
+
+[06:22:39.0184] <smaug>
+so why was that closed?
+
+[06:23:17.0956] <smaug>
+if the spec still says that parent's csp should be used for imports, but that is not what we've wanted
+
+[06:25:50.0724] <@allstarschh>
+smaug: I also mentioned that in https://bugzilla.mozilla.org/show_bug.cgi?id=1841363#c1
+
+[06:26:33.0042] <@allstarschh>
+smaug: for the static import, we should file a new bug on that
+
+[06:26:44.0144] <smaug>
+and the bug is about what?
+
+[06:27:09.0679] <@allstarschh>
+the new bug ?  
+
+[06:28:29.0509] <smaug>
+I mean, what  the new bug would be about?
+
+[06:28:39.0274] <smaug>
+I don't understand what the issue 336 didn't cover?
+
+[06:28:43.0088] <smaug>
+ * I don't understand what the issue 336 didn't cover
+
+[06:29:02.0525] <smaug>
+It was about csp handling in general and how static and dynamic imports work
+
+[06:29:05.0286] <@allstarschh>
+https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-worklet/module-worker-script-graph,  step 2, `Fetch a single module script given url, fetch client settings object,`
+
+[06:30:41.0342] <@allstarschh>
+in step 2, you can see the the `fetch client settings object` is used to fetch the top-level and the descendants
+
+[06:31:23.0232] <@allstarschh>
+but now we're purposing to use a different settings object for fetching the descedants
+
+[06:32:26.0000] <@allstarschh>
+in https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-worklet/module-worker-script-graph, step 2,   onSingleFetchComplete , step 2, `Fetch the descendants of and link result given fetch client settings object, destination, and onComplete. If performFetch was given, pass it along as well.`
+
+[06:33:29.0084] <@allstarschh>
+the CSP is stored inside the `policy container` of the `settings object`
+
+[06:41:35.0189] <@allstarschh>
+> <@smaug:mozilla.org> I don't understand what the issue 336 didn't cover
+
+issue 336 is related to importScripts(), dynamic import() on workers,  Gecko has fixed this back in 2015, https://bugzilla.mozilla.org/show_bug.cgi?id=1223647
+
+[06:48:24.0170] <@allstarschh>
+I am be back in 1 hr as I need to pick up kids now 😅
+
+[07:55:39.0107] <bvisness>
+where can I find standalone spidermonkey shell downloads?
+
+[07:59:46.0381] <Ryan Hunt>
+bvisness: https://github.com/GoogleChromeLabs/jsvu is one that I know of. you might be able to use treeherder too
+
+[08:00:11.0489] <bvisness>
+oh  neat
+
+[08:00:13.0596] <bvisness>
+ * oh neat
+
+[08:10:18.0779] <@allstarschh>
+smaug: hi, so you agree the problem is in https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-worklet/module-worker-script-graph?
+
+[08:11:05.0402] <arai>
+I sometimes use `mozregression -n jsshell --launch YYYY-MM-DD`
+
+[08:14:43.0506] <mgaudet>
+arai: Oh neat! I sort of forgot that existed -- I think it was broken once upon a time, and didn't realize it worked again :) 
+
+[10:05:16.0767] <smaug>
+jonco: I couldn't immediately see where the asynchronousness comes from in the spec, but I'll re-read again. (the specs for modules are _complicated_)
+
+[10:09:22.0507] <yury>
+> <@bvisness:mozilla.org> where can I find standalone spidermonkey shell downloads?
+
+Also at https://ftp.mozilla.org/pub/firefox/nightly/latest-mozilla-central/ or sibling subfolders, scroll to jsshell.zip files
+
+[10:12:10.0048] <jonco>
+smaug: Sorry, it is complicated and even more so because the JS specs have been rewritten since our implementation and don't match up well with what we have. This asynchronicity comes from ContinueDynamicImport in the JS spec with performs the link and evaluate steps in response to a load promise being resolved
+
+[10:12:26.0120] <jonco>
+ * smaug: Sorry, it is complicated and even more so because the JS specs have been rewritten since our implementation and don't match up well with what we have. This asynchronicity comes from ContinueDynamicImport in the JS spec which performs the link and evaluate steps in response to a load promise being resolved
+
+[10:12:40.0944] <smaug>
+aha, ecma
+
+[10:13:03.0137] <smaug>
+it is this combinations of ecma and html which makes this all particularly hard
+
+[10:13:28.0511] <jonco>
+yeah
+
+[10:15:55.0364] <smaug>
+at least I was close. ContinueDynamicImport was open in one tab 🙂 
+
+[10:18:01.0510] <smaug>
+jonco: so what there is truly async?
+
+[10:18:37.0157] <smaug>
+ * it is this combination of ecma and html which makes this all particularly hard
+
+[10:22:13.0806] <smaug>
+(and not just microtask, aka Promise resolving)
+
+[10:24:07.0840] <jonco>
+hmm, I guess it should really be a microtask
+
+[10:49:14.0386] <sfink>
+fun, test is only failing when compiled with optimization. I'm probably violating mysterious C++ rules or something. 
+
+[11:21:42.0192] <nicolo-ribaudo>
+> <@smaug:mozilla.org> jonco: so what there is truly async?
+
+The only truly async part is fetching modules
+
+
+2023-07-19
+[02:51:18.0629] <jonco>
+For structured cloning, there is a spec but does it define the data format or are we free to use whatever clever representation we like?
+
+[02:59:49.0775] <padenot>
+in general web specs describe how things should behave, not how they are to be implemented. as long as the observable behaviour matches the spec it's fine
+
+[03:00:21.0186] <padenot>
+(that's the theory -- bad implementations and incomplete specs and bugs that the web rely on exist)
+
+[03:01:22.0570] <padenot>
+e.g. if the spec says "copy xxx and yyy" and you implement it with copy-on-write because that saves a lot of time in the common case, it's valid
+
+[04:19:21.0539] <jandem>
+for structured cloning we also need to be able to read data from older versions, so we also try to make it easy to extend later
+
+[06:33:39.0694] <jonco>
+I'm wondering whether we can avoid repeatedly serialising the same property name strings over and over
+
+[07:31:07.0648] <jandem>
+good point, that'd be nice to optimize
+
+[08:13:58.0628] <nbp>
+# Context
+
+JSContext were introduced in HelperThread as a way to handle Parsing in additional threads named Helpers. The content produced by these threads were produced in their own zones which were then merged back into the zone of the requester.
+
+Work had been done on the GC side the remove the zone merging, and Stencil ground work challenged the fact that the Parser required the GC, but the parsers still remained dependent on having a JSContext around.
+
+# What changed?
+
+Lately, with the work from Bryan and Arai, with the introduction of the FrontendContext and the removal of the JSContext from HelperThread Task, we now have plenty of tasks which are able to run out of the main thread, and even without a JSContext / JSRuntime around.
+
+# What are the implications?
+
+This first thing is that this simplifies the JSContext, which no longer has to check whether it can access the JSRuntime, or whether it is called on the Main thread or not.
+
+In addition, our parsing tasks, delazification tasks, compilations tasks are now future proof candidates for moving to a different threading mechanism. In sight, Gecko's TaskController.
+While the TaskController is still young, being rooted in Gecko offer appealing prospects, such as a better thread scheduling policy and the ability to put some tasks on hold to schedule more urgent tasks.
+Interrupting tasks temporarily can have multiple benefits, such as in cases of long compilation, delazifications or even maybe enable some form of streaming parsing.
+
+
+[10:51:56.0833] <sfink>
+> <@jonco:mozilla.org> For structured cloning, there is a spec but does it define the data format or are we free to use whatever clever representation we like?
+
+To add to what padenot and jandem said:
+
+
+[10:52:08.0824] <sfink>
+- we must maintain backward compatibility of the forStorage formats (scope==DifferentProcess in the code)
+
+
+[10:52:22.0653] <sfink>
+- we must follow exact sequence of operations in the spec. `var x; x = {a: 1, get b() { x.c = 2; delete x.a; return 3; }}` has to end up with `{a: 1, b: 3}`
+
+
+[10:52:45.0976] <sfink>
+- not everything is forStorage. We could consider a very different format for things that never need to be boiled down to a sequence of bytes.
+
+[10:53:09.0519] <sfink>
+There is a lot of flexibility within those constraints. Backwards compatibility can be a bit painful, we don't want to embed too much of our current data representations. (Though I'm somewhat tempted to serialize Shapes to optimize object representations.)
+
+[11:16:38.0891] <mccr8>
+chromium bug for a JIT zero day from April is public now which might be interesting to read over. https://bugs.chromium.org/p/chromium/issues/detail?id=1432210
+
+[11:19:49.0296] <mccr8>
+> We can probably fix this by breaking the JS spec
+
+[12:00:41.0389] <iain>
+sfink: Do you happen to know why 16 is the maximum number of fixed slots in an object?
+
+[12:02:04.0581] <sfink>
+when the High Priest of Zogthwump bequeathed the Spider Reliquary of Monkeys to the original disciples, he... uh, never mind. No, I don't.
+
+[12:03:24.0094] <sfink>
+but I guess not a lot of those objects fit into a 4KB page, so maybe that was getting close to a point of diminishing returns?
+
+[12:03:57.0434] <sfink>
+4KB arena, I guess is what I mean
+
+[12:06:36.0132] <sfink>
+`4096 / sizeof(JSObject_Slots16)` is 28
+
+[12:08:24.0433] <sfink>
+(there's a 40 byte header too, but that doesn't change the `28`)
+
+[12:32:16.0292] <iain>
+sfink: Hypothetically speaking, if we wanted to allocate objects with more fixed slots (maybe in a special dynamically sized arena, instead of adding `JSObjects_Slots32/64/128/etc`), what fraction of the GC would immediately explode?
+
+[12:33:02.0461] <iain>
+("4096 / sizeof(JSObject_Slots16) is 28" is a very believable explanation, btw)
+
+[12:33:34.0449] <iain>
+I've already noticed that shapes can't represent objects with more than 31 fixed slots
+
+[12:34:03.0415] <iain>
+ * I've already noticed that shapes can't represent objects with more than [31 fixed slots](https://searchfox.org/mozilla-central/source/js/src/vm/Shape.h#337)
+
+[12:36:54.0732] <sfink>
+Hm. We use masking to get to an Arena header, but that would still work because it's a header. I think there are some Arena-granularity bitmaps in the chunk header or footer that would need to be reworked. I believe there are some constexprs that use ArenaSize to calculate things, which could get tricky. The definitions are already somewhat recursive, like the number of arenas in a chunk depends on the space available after subtracting the size of the bitmaps, that depend on the number of arenas in a chunk.
+
+[12:39:34.0013] <sfink>
+there's an `ArenasPerPage` that is used in the memory management stuff, which wouldn't work very well if the answer were 1/4 or whatever.
+
+[12:40:09.0451] <sfink>
+though perhaps we ought to be using 64KB pages everywhere in the first place...
+
+[12:40:48.0458] <iain>
+Does everything in the GC currently use 4K chunks?
+
+[12:41:37.0969] <sfink>
+(we have something called a "chunk" which is 1MB, btw)
+
+[12:42:52.0853] <sfink>
+I think so? On OSX, I think the system page size is 64KB iirc. @allstarschh did the work to support that, but I think it kind of fakes it to look like a bunch of 4KB pages. So it's not *really* 4KB at the base level.
+
+[12:44:20.0310] <sfink>
+I may be mixing up platforms.
+
+[12:45:38.0952] <Treviño>
+Hey, I was trying to reuse a property descriptor to define multiple property aliases, so basically I was doing JS_GetOwnPropertyDescriptorById to get the property that was already defined and then use that descriptor to re-define a new one via JS_DefinePropertyById... However, while the property seems to be defined the getters and setters are defintely not being considered... Is this somehting not supported?
+
+[12:48:11.0897] <Treviño>
+so basically this snippet https://www.pastery.net/mrepkm/
+
+[12:48:25.0574] <sfink>
+Bleh, I was a ways off. https://bugzilla.mozilla.org/show_bug.cgi?id=1660006 is about 16KB pages on OSX on ARM64.
+
+[12:48:49.0118] <sfink>
+that's where `ArenasPerPage` appeared.
+
+[12:58:32.0040] <Treviño>
+same reusing just the getters/setters as per JS_DefinePropertyById(cx, obj, id, rooted_desc.getter(), rooted_desc.setter(), flags);
+
+[12:59:56.0233] <evilpie>
+> <@3v1n0:matrix.org> same reusing just the getters/setters as per JS_DefinePropertyById(cx, obj, id, rooted_desc.getter(), rooted_desc.setter(), flags);
+
+you should use the overload that takes  `JS::Handle<JS::PropertyDescriptor>` directly
+
+[13:00:35.0321] <Treviño>
+yes that's what I did (see the pasted snipped above) first
+
+[13:01:00.0014] <Treviño>
+but for some reason setters/getters are not invoked
+
+[13:01:05.0622] <evilpie>
+no?
+
+[13:01:19.0115] <Treviño>
+nope
+
+[13:01:33.0274] <evilpie>
+https://searchfox.org/mozilla-central/source/js/src/vm/PropertyAndElement.cpp#60
+
+[13:01:42.0484] <sfink>
+are you trying to make an object where if you do `obj.name1 = 7`, you want `obj.name2` to evaluate to `7`? What do you mean by "property aliases"?
+
+[13:01:54.0130] <evilpie>
+oh I see
+
+[13:02:56.0315] <Treviño>
+sfink: yeah, that... now for values that's basically the same I can imagine
+
+[13:03:41.0120] <Treviño>
+sfink: but when it comes to more complex properties, where I have getter/setter objects with added data, I wanted to try to reuse the ones I've instead of defininig multiple doing the same
+
+[13:05:42.0579] <sfink>
+SM doesn't allow multiple names for the same property store. I would expect the getter/setter ones to be easier, since they don't need to share a store.
+
+[13:11:02.0267] <Treviño>
+sfink: I see, but then why reusing the desc setter/getter to create a property instead wouldn't work either?
+
+[13:11:31.0664] <evilpie>
+no that should totally work
+
+[13:12:07.0253] <evilpie>
+How do you know it doesn't work? Is the getter/setter not invoked?
+
+[13:12:22.0684] <evilpie>
+What is the result of Object.getOwnPropertyDescriptor on the copied prop?
+
+[13:15:31.0733] <Treviño>
+evilpie: oh, I check that... The setters/getters are c++ funcs eventually and well... I don't get that called. Also in this case the setter is calling a C library that should emit a signal and that doesn't come as soon I try this
+
+[13:15:42.0699] <Treviño>
+Ideally I'd just like to do as https://www.pastery.net/bqgqnh/
+
+[13:15:48.0924] <Treviño>
+but from the c++ side..
+
+[13:16:06.0493] <evilpie>
+actually just to be sure, what is your spidermonkey version?
+
+[13:19:24.0533] <Treviño>
+102
+
+[15:11:22.0885] <Treviño>
+evilpie: I found the issue, I wasn't marking the property as "resolved" -_-
+
+[16:39:51.0760] <jrmuizel>
+iain: so I've been looking at dynamic slots thing in v8 some more
+
+[16:40:25.0419] <jrmuizel>
+iain: and the object that we're working with is not a regular JS object, but instead a FunctionContext
+
+[16:40:36.0247] <jrmuizel>
+are FunctionContext's resizable?
+
+[16:41:46.0189] <iain>
+I don't know about FunctionContext, but if that's the same as our CallObject, I believe you can define new properties with `eval`
+
+[16:42:18.0804] <iain>
+It would be uncommon, though
+
+[16:42:25.0053] <jrmuizel>
+can you give an example of how to do that?
+
+[16:44:13.0900] <jrmuizel>
+it seems like this talking about that kind of thing: https://source.chromium.org/chromium/chromium/src/+/refs/heads/main:v8/src/objects/contexts.h;l=474;drc=a328097ef1d47f51e76917b80110863037f4f744
+
+[16:46:34.0545] <iain>
+I think something like
+```
+var x = 1;
+function foo(s) {eval(s); return () => print(x); }
+foo("var x = 2")()
+```
+might do it, although I haven't popped it open in a debugger to verify
+
+[16:47:25.0082] <iain>
+We also have a bunch of code to handle the ability of the debugger to evaluate an arbitrary expression in an arbitrary stack frame
+
+[16:47:36.0920] <iain>
+None of these paths is hot, though
+
+[16:48:36.0636] <iain>
+Call objects and other environment objects are generally going to have a fixed size
+
+[16:48:55.0188] <iain>
+The problem is that the GC is not set up to allocate arbitrarily large fixed-size objects
+
+[16:49:45.0634] <iain>
+ * jrmuizel: I think something like
+
+```
+var x = 1;
+function foo(s) {eval(s); return () => print(x); }
+foo("var x = 2")()
+```
+
+might do it, although I haven't popped it open in a debugger to verify
+
+[16:50:11.0961] <jrmuizel>
+What do we do for arrays?
+
+[16:50:27.0235] <iain>
+We allocate an out-of-line elements array
+
+[16:50:46.0957] <jrmuizel>
+I guess that makes sense
+
+[16:51:00.0125] <iain>
+(By "arbitrarily large fixed size objects" I mean "arbitrarily large fixed size objects where all the data is stored inline")
+
+[16:52:02.0164] <jrmuizel>
+yeah
+
+[16:59:34.0441] <Treviño>
+JS_EncodeStringToUTF8 is deprecated, but I can't find any proper replacement for it... Any suggestion? Like alternative implies allocation from the caller iirc.
+
+
+2023-07-20
+[17:11:04.0769] <arai>
+iiuc, the "invalid UTF-16" mentioned there means "lone surrogate", and UTF-8 cannot represent it
+
+[17:16:59.0630] <arai>
+err, maybe I misunderstood the reasoning of deprecation
+
+[17:19:55.0137] <arai>
+in term of "allocation from the caller", [GetDeflatedUTF8StringLength](https://searchfox.org/mozilla-central/rev/4537bb2abc8eb49506bbad27b89ab364ac3062d3/js/public/CharacterEncoding.h#288) and [JS::DeflateStringToUTF8Buffer](https://searchfox.org/mozilla-central/rev/4537bb2abc8eb49506bbad27b89ab364ac3062d3/js/public/CharacterEncoding.h#306) would be alternative
+
+[17:49:30.0830] <Treviño>
+arai: yeah thanks those are the ones I was considering in fact
+
+[19:00:45.0801] <arai>
+what's the possibility to support global script with non-syntactic scope in warp?  the following comment mentions it's not supported right now.  I'm experimenting improving `Debugger.Object.prototype.executeInGlobalWithBindings` performance in bug 1842701, and wondering if supporting non-syntactic scope with known bindings is reasonable approach  https://searchfox.org/mozilla-central/rev/4537bb2abc8eb49506bbad27b89ab364ac3062d3/js/src/jit/Ion.cpp#1767-1770
+```cpp
+// Support functions with a non-syntactic global scope but not other
+// scripts. For global scripts, WarpBuilder currently uses the global
+// object as scope chain, this is not valid when the script has a
+// non-syntactic global scope.
+```
+
+[19:00:48.0964] <botzilla>
+https://bugzil.la/1842701 — ASSIGNED (arai) — Experiment with dedicate compilation/execution mode for Debugger.Object.prototype.executeInGlobalWithBindings
+
+[00:29:06.0255] <liam_g>
+Is there any mechanism in Spidermonkey which would help me receive automatic callbacks whenever a particular value changes? Or is the best option just to ping it continuously?
+
+[01:19:00.0882] <jandem>
+if it's about changes from JS code you could consider using a proxy
+
+[01:35:29.0302] <liam_g>
+It is changes from JS code that I'm looking for, but it's changes to "any given" value, so I can't use a proxy.
+
+[01:36:47.0843] <liam_g>
+It's for a UI component that will display some given value, and update if the value changes.
+
+[01:38:04.0349] <liam_g>
+My guess is that there is no such feature in Spidermonkey, and I'll have to just ping the value frequently to see if it changes. Which is OK, but I'd like to know if there are any alternatives.
+
+[06:52:59.0701] <freddy>
+does spidermonkey have a capability to export / dump code while (or after) it is being executed? wouldn't really matter if this is JavaScript or an intermediate representation
+
+[06:55:24.0428] <arai>
+do you mean the JS source code (such like `Function.prototype.toString`), or something that also contains the runtime data such as variable and object?
+
+[06:58:23.0251] <arai>
+in other words, what do you want to do with the exported thing?
+
+[07:00:56.0085] <freddy>
+The goal is dynamic code analysis. Kind of like a debugger trace for a single run through a program (so, variables that contain values)
+
+[07:08:29.0991] <arai>
+can you provide an example input and output?
+
+[07:12:53.0309] <arai>
+variables could be logged by running the code under debugger, performing step execution and get variables from environments for each time
+
+[07:16:33.0485] <arai>
+if you need code coverage, that's already there. setting `JS_CODE_COVERAGE_OUTPUT_DIR` environment variable will generate the coverage data in the directory
+
+[07:21:45.0199] <freddy>
+In compiler speak, I was wondering if Spidermonkey is converting JS into some sort of Intermediate Representation before it is executed. Maybe that only happens for JITted code and not all executed code?
+
+[07:24:11.0933] <arai>
+the JS source is converted into bytecode for all execution
+
+[07:24:28.0987] <nchevobbe>
+(since you mention tracing, the DevTools debugger does have a trace feature, under `devtools.debugger.features.javascript-tracing` pref)
+
+[07:25:31.0107] <freddy>
+nchevobbe: what would the output look like?
+
+[07:26:25.0371] <freddy>
+arai: would that bytecode just be a different language or does the bytecode contain values?
+
+[07:27:34.0418] <arai>
+the bytecode contains the almost same info as the JS code itself
+
+[07:28:35.0938] <arai>
+what do you mean by "values" here?  literals written in the JS code?
+
+[07:29:20.0225] <nchevobbe>
+hovering the menu items on mozilla.org, I'm getting this kind of thing:
+
+
+```
+—interpreter⟶λ n.onMouseEnter ui.ef9ab0413ef0.js:1:6199
+—interpreter⟶λ n.onMouseEnter/e< ui.ef9ab0413ef0.js:1:6246
+——interpreter⟶λ n.close ui.ef9ab0413ef0.js:1:5403
+——interpreter⟶λ n.open ui.ef9ab0413ef0.js:1:5180
+—interpreter⟶λ n.onMouseLeave ui.ef9ab0413ef0.js:1:6310
+—interpreter⟶λ n.onMouseEnter ui.ef9ab0413ef0.js:1:6199
+—interpreter⟶λ n.onMouseEnter/e< ui.ef9ab0413ef0.js:1:6246
+——interpreter⟶λ n.close ui.ef9ab0413ef0.js:1:5403
+——interpreter⟶λ n.open ui.ef9ab0413ef0.js:1:5180
+—interpreter⟶λ n.onMouseLeave ui.ef9ab0413ef0.js:1:6310
+—interpreter⟶λ n.onMouseLeave/e< ui.ef9ab0413ef0.js:1:6351
+——interpreter⟶λ n.close ui.ef9ab0413ef0.js:1:5403
+```
+
+[07:30:01.0203] <freddy>
+Yeah, literals (strings, numbers). Also, I wonder what function calls would look like (for DOM APIs e.g.)
+
+[07:30:22.0961] <freddy>
+thank you!
+
+[07:31:20.0376] <arai>
+perhaps you want an AST of the JS code?
+
+[07:31:41.0635] <arai>
+so that you can traverse the tree and see each literals and also see what function it calls?
+
+[07:33:21.0780] <freddy>
+That wouldn't help with obfsucation, e.g., `window[something]()` This is why I thought of bytecode inspection or some other dynamic analysis..
+
+[07:38:10.0423] <arai>
+what's the goal with the dynamic analysis?    for example, I need similar thing when investigating web-compat issue, to see what the website's code does and how it works and where it goes wrong.  the trace above (and bug 1835089) will help figuring out what API the website calls
+
+[07:38:11.0949] <botzilla>
+https://bugzil.la/1835089 — NEW (nobody) — Trace calls to native functions
+
+[08:00:02.0494] <freddy>
+could be used for deobfuscation :)
+
+[08:07:58.0192] <arai>
+so, you're looking into deobfuscating JS code?  or is it just an example application of what you're trying to develop?  I'm still not sure what the goal and requirements are
+
+[08:32:23.0411] <freddy>
+I could see someone developing heuristics on top of this to detect undesirable code (trackers? malware? exploits? cryptominers? fingerprinters?)
+
+[08:32:54.0653] <freddy>
+could also be useful for addons review process? I'm just thinking out loud here and trying to find out what capabilities exist
+
+[08:41:14.0513] <iain>
+freddy: When we parse JS, we turn it into bytecode. For example, this is what the bytecode looks like for a simple function:
+```
+js> function foo(a,b) { return a + b; }
+js> dis(foo)
+
+loc   line  op
+----- ----  --
+main:
+00000:  43  GetArg 0                    # a
+00003:  43  GetArg 1                    # a b
+00006:  43  Add                         # (a + b)
+00007:  43  Return                      # 
+```
+The bytecode expresses the same information as the source code, but in a form that is possible to execute. Once we have bytecode, we have several different ways to run it, depending on how hot it is / how much effort we can afford to put into making it go fast.
+
+[08:41:36.0866] <iain>
+The bytecode doesn't have any information about the dynamic behaviour of the program.
+
+[08:47:48.0243] <iain>
+If you're interested in dynamic behaviour, we have a variety of hooks in different places. The problem with tracking dynamic behaviour is that we run a *lot* of code. It's hard to imagine a general "log everything that happens in SpiderMonkey" system, because it would be too much information.
+
+[08:49:18.0351] <iain>
+If you have a sense of what sorts of events during JS execution you would be interested in analyzing, that would help us figure out whether that information is already available, or whether we can easily make it available
+
+[09:16:11.0714] <arai>
+for debugger-related things, https://searchfox.org/mozilla-central/source/js/src/doc/Debugger contains documents for Debugger API and you could look into it what kind of information can be retrieved during executing code
+
+[09:17:02.0395] <kevin_wang_22>
+Hi, 
+
+I have a assertion failure when global data is removed: 
+
+Assertion failure: isInList(),
+What is it? How could it happen? How to fix? 
+
+Can anyone help?
+Thx
+
+[09:18:11.0906] <arai>
+is it happening in your embedding?  can you run it under debugger and get backtrace of it?
+
+[09:19:47.0422] <arai>
+`isInList()` assertion appears in multiple places, and it's hard to say without knowing which one fails  https://searchfox.org/mozilla-central/search?q=ASSERT%28isInList%28%29&path=&case=false&regexp=false
+
+[09:41:17.0869] <arai>
+also, can you provide more information about "global data is removed" situation?  what do you mean with "global data" and what operation does "remove" mean?
+
+[09:41:43.0859] <arai>
+if you can provide a small testcase or codelet, that will help investigating what's happening
+
+[10:58:45.0475] <sfink>
+how can I run `mach jstestbrowser` in a way that outputs... well, anything useful. Even whether a test failed or not would be good. Right now, I can see the test output and failures flash up briefly on the screen, but there's nothing in the log (or the return code) that I can look at.
+
+[11:00:15.0992] <sfink>
+`console.log` and `console.error` don't go anywhere. I tried doing `printErr` via `SpecialPowers.Cu.getJSTestingFunctions().printErr`, but it didn't seem to work, possibly because that isn't right but it's hard to tell with no output.
+
+[11:49:30.0770] <arai>
+I see the output from `print`, as `TEST-INFO | ...` line in stdout https://searchfox.org/mozilla-central/rev/d35b3fe3d8230a255b988afb0ebda1176fc2f50b/js/src/tests/non262/global/parseInt-01.js#8
+```js
+print(BUGNUMBER + ": " + summary);
+```
+
+[11:50:45.0874] <kfjvj>
+I have a general question about mozjs.  Almost all of the functions in the API have a bool return value.  If they return false, is that always the result of either an exception or some other error condition like out-of-memory?
+
+[11:58:27.0985] <iain>
+That is generally the convention, yes. I don't know off the top of my head if there are any exceptions. Functions that don't take a JSContext would be one exception: we can't return an error if we don't have the context to store it on. Another exception could be functions whose names end in "Pure", which is a convention that says "try to do this operation if you can do so without triggering GC / having arbitrary side effects", in which case returning false means that we gave up, not that we threw an error. I'm not sure that we expose any of those in the API, though.
+
+[11:59:19.0195] <kfjvj>
+> <@iain:mozilla.org> That is generally the convention, yes. I don't know off the top of my head if there are any exceptions. Functions that don't take a JSContext would be one exception: we can't return an error if we don't have the context to store it on. Another exception could be functions whose names end in "Pure", which is a convention that says "try to do this operation if you can do so without triggering GC / having arbitrary side effects", in which case returning false means that we gave up, not that we threw an error. I'm not sure that we expose any of those in the API, though.
+
+OK, thanks.  Do you happen to have any pre-defined macros in the library that do something like "try this and return if false"?
+
+[12:00:41.0430] <iain>
+There's MOZ_TRY and MOZ_TRY_VAR for functions that return Result
+
+[12:01:27.0843] <iain>
+But generally we just write `if (!foo()) { return false; }` or `if (!foo()) { return nullptr; }`, depending on the return type of the function
+
+[12:01:39.0755] <kfjvj>
+I saw that result stuff before, but I wasn't clear on what it was used for
+
+[13:16:39.0809] <sfink>
+> <@arai:mozilla.org> I see the output from `print`, as `TEST-INFO | ...` line in stdout https://searchfox.org/mozilla-central/rev/d35b3fe3d8230a255b988afb0ebda1176fc2f50b/js/src/tests/non262/global/parseInt-01.js#8
+> ```js
+> print(BUGNUMBER + ": " + summary);
+> ```
+
+Huh. I don't know why I'm not getting that. But I'm definitely not.
+
+[13:16:57.0269] <sfink>
+On the other hand, it looks like Pernosco reproduced my run, so I'll just use that instead.
+
+
+2023-07-24
+[14:41:34.0656] <kfjvj>
+I've been using PersistentRooted quite a bit lately, and I'm not clear on exactly what the risks for it are as compared to Rooted.  Can someone enlighten me?
+
+[14:47:30.0967] <iain>
+kfjvj: A Rooted value lives on the stack. It can only survive as long as the current stack frame; as soon as the function returns, it's gone. A PersistentRooted is more like a HeapPtr, in the sense that you can store it inside a heap-allocated object.
+
+[14:48:06.0027] <iain>
+Unlike HeapPtr, though, a PersistentRooted is always considered reachable.
+
+[14:50:27.0811] <iain>
+The big risk of PersistentRooted is that if you store it inside an object whose lifetime depends in some way on a GC thing, you can end up with a memory leak
+
+[14:50:38.0073] <kfjvj>
+But what would be the problem with using PersistentRooted everywhere, including the stack? 
+
+[14:51:41.0268] <iain>
+I believe it's more expensive to create a PersistentRooted than a regular Rooted
+
+[14:51:47.0707] <kfjvj>
+oh, ok
+
+
+2023-07-25
+[19:58:07.0137] <liam_g>
+> <@kfjvj:mozilla.org> But what would be the problem with using PersistentRooted everywhere, including the stack?
+
+Here's an important line from the embedder's guide:
+
+But note that `JS::PersistentRooted` in a struct or class is a rather
+dangerous thing to use — it will keep a GC thing alive, and most GC
+things end up keeping their global alive, so if your class/struct is
+reachable in any way from that global, then nothing will ever be cleaned
+up by the GC.
+
+[19:58:18.0208] <liam_g>
+> <@kfjvj:mozilla.org> But what would be the problem with using PersistentRooted everywhere, including the stack?
+
+ * Here's an important note from the embedder's guide:
+
+But note that `JS::PersistentRooted` in a struct or class is a rather
+dangerous thing to use — it will keep a GC thing alive, and most GC
+things end up keeping their global alive, so if your class/struct is
+reachable in any way from that global, then nothing will ever be cleaned
+up by the GC.
+
+[23:30:35.0119] <jandem>
+interesting news for our JIT backends today: Intel APX will increase the number of registers from 16 to 32 and add more 3-operand (and conditional) instructions: https://www.phoronix.com/news/Intel-APX
+
+[23:31:21.0677] <jandem>
+"a new 64-bit absolute direct jump instruction" sounds useful too
+
+[03:49:20.0675] <nbp>
+Well … [x86-64 started in 2001](https://en.wikipedia.org/wiki/X86) … and we still [provide x86 builds](https://www.mozilla.org/fr/firefox/all/#product-desktop-release) as of today.
+So, who is ready for a third x86 backend? 😁
+
+[03:51:31.0607] <l11d>
+> <@nbp:mozilla.org> Well … [x86-64 started in 2001](https://en.wikipedia.org/wiki/X86) … and we still [provide x86 builds](https://www.mozilla.org/fr/firefox/all/#product-desktop-release) as of today.
+> So, who is ready for a third x86 backend? 😁
+
+"Compiler enabling is straightforward" 🤓
+
+[05:32:57.0373] <l11d>
+is it possible to do a PGO-build for spidermonkey only (instead of the full browser)?
+
+[05:46:17.0960] <nbp>
+I am not aware of such a thing.
+
+[05:46:56.0933] <nbp>
+It might be possible to generate pgo info from the browser, and then later compile a pgo-build of spidermonkey.
+
+[06:56:57.0786] <mccr8>
+Does PGO help spidermonkey that much? Back in the day PGO was disabled entirely on Windows for SpiderMonkey due to compiler issues. 😄
+
+[07:05:42.0389] <jandem>
+it depends a lot on the workload. If we spend most time in JIT/Wasm code PGO doesn't help much but that's not very common outside of certain benchmarks
+
+[07:16:12.0143] <jandem>
+but yeah MSVC's PGO used to be pretty buggy, like when it miscompiled our NaN-canonicalization code resulting in security issues (bug 977538)
+
+[07:16:14.0505] <botzilla>
+https://bugzil.la/977538 — VERIFIED (jandem) — MSVC with PGO still miscompiles/nops CanonicalizeNaN
+
+[08:47:08.0295] <kfjvj>
+Is there a preferred way to "catch" a JS exception from C++ code?  The best I can come up with right now is to check for pending exception and clear it.
+
+[08:53:42.0316] <Bryan Thrall [:bthrall]>
+kfjvj: that is the expected way to do it.
+
+[08:54:19.0489] <kfjvj>
+Any pitfalls I should watch out for?
+
+[09:26:49.0047] <iain>
+If you've set up interrupt handling, terminating execution in the interrupt handler results in returning false/nullptr with no pending exception. (This is how the slow-script dialog in Firefox works.)
+
+[10:04:44.0649] <kfjvj>
+> <@iain:mozilla.org> If you've set up interrupt handling, terminating execution in the interrupt handler results in returning false/nullptr with no pending exception. (This is how the slow-script dialog in Firefox works.)
+
+I don't believe we have set that up.  As a side-note, is there any documentation on interrupt handling?  Is it part of your API, or are you talking about some external interrupt?
+
+[10:08:19.0087] <iain>
+kfjvj: See [here](https://searchfox.org/mozilla-central/source/js/public/Interrupt.h#17-40)
+
+[10:29:41.0301] <kfjvj>
+Another question: Does anyone know of a situation where a module is imported into JS, but that module isn't actually defined in another JS file?  Like a situation where some API is built into the JS engine but is imported by a script.
+
+[10:30:52.0073] <kfjvj>
+We're binding a huge C++ API to JS, and I want to be able to do something like `import {foo} from "a.b.c"`, where "a.b.c" isn't a JS file, but a namespace in our built-in API
+
+[10:34:22.0975] <arai>
+not directly.  there are bug 1426690 and bug 1722802 for the API
+
+[10:34:24.0276] <botzilla>
+https://bugzil.la/1426690 — NEW (nobody) — Add support for defining ES6 modules via JSAPI
+
+[10:34:24.0636] <botzilla>
+https://bugzil.la/1722802 — UNCONFIRMED (nobody) — Add JSAPI functions to create JS modules w/ custom exports
+
+[10:36:38.0114] <arai>
+similar thing had been done by adding a thin wrapper module script around native function. so, a module script that exports a result of the native function.  (it was JSM tho, technically the same thing can be done with ESM) https://searchfox.org/mozilla-esr102/rev/d2f5f3fdc3faf117b3ffe62ba2f327f8bf337ef7/toolkit/modules/Services.jsm#7
+```js
+var Services = Cu.createServicesCache();
+```
+
+[10:46:47.0772] <arai>
+so, something like `export const foo = native_function_that_returns_foo();`,  or simply `export const foo = native_foo;`
+
+[11:00:21.0812] <kfjvj>
+thanks
+
+
+2023-07-26
+[06:39:29.0989] <evilpie>
+How do you feel about removing the `JSLocaleCallbacks`? We don't use in the browser anymore and I doubt any embedding uses it.
+
+[06:40:00.0392] <evilpie>
+(I am looking into making some more localization stuff per-realm, similar to what I did for Timezones)
+
+[06:43:47.0266] <ptomato (at GUADEC, limited availability)>
+GJS has not used them since we started requiring a build of SpiderMonkey `--with-intl-api` (because they are never called if Intl API is present)
+
+[06:45:45.0431] <evilpie>
+> <@pchimento:igalia.com> GJS has not used them since we started requiring a build of SpiderMonkey `--with-intl-api` (because they are never called if Intl API is present)
+
+Thanks for confirming that. The situation in Firefox is the same, we just use ICU.
+
+[07:24:46.0859] <kevin_wang_22>
+Hi team, 
+I have a question here. If I don't use internal queue initialized by "UseInternalJobQueues()", but use boost::asio::io_context instead for asynchronized operations
+1. can mozjs work well?
+2. need I abandon in-build components(eg. JS::NewPromiseObject()), and encapsulate my own?
+3. Does js::RunJobs() still work
+4. Which components are affected by js::RunJobs(), if I abandon internal job queue, should I encapsulate them all?
+
+Thx 
+
+
+[07:48:28.0832] <jandem>
+evilpie: probably fine. Maybe also time to consider removing `--without-intl-api`...
+
+[08:05:34.0990] <arai>
+kevin_wang_22: job queue is simply a queue of a JSFunction which executes a reaction to each promise resolution, and the embedding is supposed to call those functions at certain point, such as after executing a top-level script.  in order to use job queue with `RunJobs`, you need to either call `UseInternalJobQueues`, or call `JS::SetJobQueue` with your own job queue implementation.
+
+[08:07:21.0227] <arai>
+are you trying to implement your own job queue as a subclass of [JS::JobQueue](https://searchfox.org/mozilla-central/rev/b6b8ff043e944a5e32ea63208d3ba7cb6b16191d/js/public/Promise.h#34) using `io_context` ?  or trying to do it without `JS::JobQueue` ?
+
+[08:09:23.0151] <arai>
+if you don't use `JS::JobQueue`, then `Promise` and any other promise-based things (async function, etc) don't work
+
+[08:14:31.0168] <kevin_wang_22>
+> <@arai:mozilla.org> if you don't use `JS::JobQueue`, then `Promise` and any other promise-based things (async function, etc) don't work
+
+I just want to use without JS::JobQueue, because there are 2 queues running in a single thread if I add io_context , not easy to handle events. But as you say Promise will not work, are there other components will be affected?
+
+[08:19:21.0018] <arai>
+`Promise`, async function, async generator, module's top-level await, and dynamic import
+
+[08:19:59.0577] <arai>
+and `Array.fromAsync`
+
+[08:20:42.0500] <arai>
+to be clear, "doesn't work" here means, if it's used inside the script, it crashes with nullptr dereference
+
+[08:21:18.0625] <kevin_wang_22>
+> <@arai:mozilla.org> `Promise`, async function, async generator, module's top-level await, and dynamic import
+
+Is there method to post a callback into a job queue, just like boost::asio::io_context::post()
+
+[08:25:54.0847] <arai>
+when you implement your own job queue based on `JS::JobQueue`, you can do anything you want there.  `JS::JobQueue` doesn't force what kind of storage or algorithm it uses
+
+[08:26:43.0148] <arai>
+so, for example, if you want to handle the promise reaction job and other job created by your embedding in the same way, your job queue needs to have a job class that holds either promise reaction job or your custom job
+
+[08:26:54.0525] <arai>
+and execute them when `runJobs` is called
+
+[08:27:22.0604] <arai>
+https://searchfox.org/mozilla-central/rev/b6b8ff043e944a5e32ea63208d3ba7cb6b16191d/js/public/Promise.h#34,56-59,76
+```cpp
+class JS_PUBLIC_API JobQueue {
+...
+  virtual bool enqueuePromiseJob(JSContext* cx, JS::HandleObject promise,
+                                 JS::HandleObject job,
+                                 JS::HandleObject allocationSite,
+                                 JS::HandleObject incumbentGlobal) = 0;
+...
+  virtual void runJobs(JSContext* cx) = 0;
+```
+
+[08:28:10.0598] <kevin_wang_22>
+> <@arai:mozilla.org> so, for example, if you want to handle the promise reaction job and other job created by your embedding in the same way, your job queue needs to have a job class that holds either promise reaction job or your custom job
+
+Thx, let me do some investigation
+
+[08:38:31.0231] <arai>
+[mozilla::CycleCollectedJSContext](https://searchfox.org/mozilla-central/rev/b6b8ff043e944a5e32ea63208d3ba7cb6b16191d/xpcom/base/CycleCollectedJSContext.h#134) is an example of `JS::JobQueue` subclass, which is used inside Firefox.  (it implements many other things tho...)
+
+[08:38:49.0630] <kevin_wang_22>
+> <@arai:mozilla.org> [mozilla::CycleCollectedJSContext](https://searchfox.org/mozilla-central/rev/b6b8ff043e944a5e32ea63208d3ba7cb6b16191d/xpcom/base/CycleCollectedJSContext.h#134) is an example of `JS::JobQueue` subclass, which is used inside Firefox.  (it implements many other things tho...)
+
+Thx
+
+[09:10:36.0267] <Ryan Hunt>
+Is there an idiomatic way to ensure a JS function gets compiled with Ion for a jit-test? I was able to do it by calling it in a loop that runs a million times, but I think that's overkill
+
+[09:14:29.0581] <iain>
+If you add `// |jit-test| --fast-warmup; --ion-offthread-compile=off` as the first line, then we decrease the warmup thresholds so that Ion compilation happens on iteration 30 (see [here](https://searchfox.org/mozilla-central/source/js/src/jit/JitOptions.cpp#407)), and avoid the need to race the compilation with the main thread.
+
+[09:14:39.0971] <iain>
+ * Ryan Hunt: If you add `// |jit-test| --fast-warmup; --ion-offthread-compile=off` as the first line, then we decrease the warmup thresholds so that Ion compilation happens on iteration 30 (see [here](https://searchfox.org/mozilla-central/source/js/src/jit/JitOptions.cpp#407)), and avoid the need to race the compilation with the main thread.
+
+[09:15:12.0900] <iain>
+There's also an `inIon()` testing function that returns true iff the code calling it is running in Ion
+
+[09:19:31.0009] <Ryan Hunt>
+iain: perfect, that will work nicely
+
+[09:23:18.0772] <Bryan Thrall [:bthrall]>
+I also see `--ion-eager` is available, which seems even better than `--fast-warmup`
+
+[09:24:42.0152] <iain>
+`--ion-eager` will set the threshold to 0, but you'll usually bail out immediately because if we never run in baseline, we don't have any CacheIR to transpile, so a bunch of code looks unreachable. It will eventually stabilize, but `--fast-warmup` gets there more smoothly
+
+[10:29:23.0602] <kevin_wang_22>
+> <@arai:mozilla.org> so, for example, if you want to handle the promise reaction job and other job created by your embedding in the same way, your job queue needs to have a job class that holds either promise reaction job or your custom job
+
+I browse the source code of ```InternalJobQueue```, so does it mean when calling ```Promise, async function, async generator, module's top-level await, dynamic import, Array.fromAsync``` will automatically invoke ```JS::JobQueue::enqueuePromiseJob()```?
+
+If so, I think I can implement a customized queue with boost::asio::io_context like this:
+```
+class MyJobQueue : public JS::JobQueue{
+public: 
+      bool enqueuePromiseJob(JSContext* cx, JS::HandleObject promise,
+                         JS::HandleObject job, JS::HandleObject allocationSite,
+                         JS::HandleObject incumbentGlobal) override    {
+              ioContext.post([cx, promise, job, allocationSite, incumbentGlobal](){
+                        // execute the job
+              });
+              return;
+      }  
+
+      void runJobs(JSContext * cx) override{
+             ioContext.run();
+      }
+private:
+     boost::asio::io_context ioContext;
+};
+```
+
+is that right?
+
+[10:31:41.0652] <arai>
+calling Promise itself doesn't enqueue job, but when a Promise is resolved, a job for reaction (like, when you've called `promise.then(fun)`, a reaction job that calls `fun` will be enqueued).  but yeah, `enqueuePromiseJob` is called by JS engine automatically whenever a job is created
+
+[10:32:30.0973] <arai>
+ * calling Promise itself doesn't enqueue job, but when a Promise is resolved, a job for reaction is enqueued (like, when you've called `promise.then(fun)`, a reaction job that calls `fun` will be enqueued).  but yeah, `enqueuePromiseJob` is called by JS engine automatically whenever a job is created
+
+[10:33:40.0092] <kevin_wang_22>
+> <@arai:mozilla.org> calling Promise itself doesn't enqueue job, but when a Promise is resolved, a job for reaction is enqueued (like, when you've called `promise.then(fun)`, a reaction job that calls `fun` will be enqueued).  but yeah, `enqueuePromiseJob` is called by JS engine automatically whenever a job is created
+
+Thx
+
+[10:33:44.0792] <arai>
+and yes, if the `ioContext`'s job is called at appropriate timing, it will work
+
+[10:34:10.0447] <arai>
+then, what you need to make sure is to root the `job` object until you call it
+
+[10:34:40.0188] <arai>
+otherwise the `job` object will be GC-ed
+
+[10:34:53.0517] <kevin_wang_22>
+> <@arai:mozilla.org> then, what you need to make sure is to root the `job` object until you call it
+
+Can I just follow InternalJobQueue to execute the job?
+
+[10:36:00.0118] <arai>
+yes
+
+[10:36:50.0005] <arai>
+if the ioContext is on heap, you can use [JS::PersistentRooted](https://searchfox.org/mozilla-central/rev/b6b8ff043e944a5e32ea63208d3ba7cb6b16191d/js/public/RootingAPI.h#1401)
+
+[13:57:58.0110] <dminor>
+I'm importing the test262 decorators tests, using a feature check. I have two that fail because I don't yet support private decorators, how can I skip just these tests? The README says to update jstests.list to skip the tests, but the top of that file says it's automatically generated and not to edit it. It's not super important in that I'm the only one working on decorators, but it would be nice to keep things clean.
+
+[13:59:22.0945] <Bryan Thrall [:bthrall]>
+I'm trying to understand how the `!xulRuntime.shell` condition in [this test](https://searchfox.org/mozilla-central/source/js/src/tests/non262/Array/from_async.js#1) gets evaluated, but I haven't had any luck tracking it down. The test is executed by `./mach jstests` and is not skipped when I run it locally. Is there another test harness that runs it where `!xulRuntime.shell` would cause it to be skipped?
+
+[14:19:07.0663] <mgaudet>
+> <@bthrall:mozilla.org> I'm trying to understand how the `!xulRuntime.shell` condition in [this test](https://searchfox.org/mozilla-central/source/js/src/tests/non262/Array/from_async.js#1) gets evaluated, but I haven't had any luck tracking it down. The test is executed by `./mach jstests` and is not skipped when I run it locally. Is there another test harness that runs it where `!xulRuntime.shell` would cause it to be skipped?
+
+This skips the tests when run in the browser via `./mach jstestbrowser`
+
+[14:19:25.0808] <mgaudet>
+> <@dminor:mozilla.org> I'm importing the test262 decorators tests, using a feature check. I have two that fail because I don't yet support private decorators, how can I skip just these tests? The README says to update jstests.list to skip the tests, but the top of that file says it's automatically generated and not to edit it. It's not super important in that I'm the only one working on decorators, but it would be nice to keep things clean.
+
+Use https://searchfox.org/mozilla-central/source/js/src/tests/jstests.list 
+
+[14:20:17.0365] <mgaudet>
+(there are two files with identical names which causes no end of confusion) 
+
+[14:49:50.0080] <Bryan Thrall [:bthrall]>
+> <@mgaudet:mozilla.org> This skips the tests when run in the browser via `./mach jstestbrowser`
+
+Thanks!
+I think I'm still missing something, though. When I try to run `./mach jstestbrowser`, I get the following error:
+```
+ 0:00.48 W Clobber not needed.
+  Parallelism determined by memory: using 63 jobs for 64 cores based on 62.6 GiB RAM and estimated job size of 1.0 GiB
+ 0:00.48 /usr/bin/gmake -j63 -s stage-jstests
+ 0:00.49 gmake: *** No rule to make target 'stage-jstests'.  Stop.
+ 0:00.49 W 6 compiler warnings present.
+Hey! Builds initiated with `mach build $A_SPECIFIC_TARGET` may not always work, even if the code being built is correct. Consider doing a bare `mach build` instead.
+REFTEST WARNING | runreftest.py | Failed to copy /home/bryan/src/mozilla-unified/obj-debug-x86_64-pc-linux-gnu/dist/plugins to profile
+REFTEST WARNING | runreftest.py | Failed to copy /home/bryan/src/mozilla-unified/obj-debug-x86_64-pc-linux-gnu/dist/test-stage/jsreftest/tests/js/src/tests/user.js to profile
+REFTEST INFO | Running with e10s: True
+REFTEST INFO | Running with fission: True
+REFTEST INFO | Application command: /home/bryan/src/mozilla-unified/obj-debug-x86_64-pc-linux-gnu/dist/bin/js -marionette -profile /tmp/tmpf40npcf6.mozrunner
+Error: Short option followed by junk: -marionette
+
+```
+Should I be using a browser build instead of a SM build?
+
+[14:50:49.0070] <arai>
+yes, it's for browser build
+
+[14:52:41.0360] <arai>
+also, if you want to run specific test, you'll need to run something like `./mach jstestbrowser --filter=non262/Array/from_async.js` .   directly passing the test's path as TEST_PATH parameter doesn't work as expected (bug 1844656)
+
+[14:52:42.0866] <botzilla>
+https://bugzil.la/1844656 — NEW (nobody) — ./mach jstestbrowser's TEST_PATH parameter help message doesn't match the behavior
+
+[14:53:49.0763] <arai>
+it uses reftest's framework to run jstests in browser environment
+
+
+2023-07-27
+[17:30:49.0128] <arai>
+is there any non-Gecko embedding that uses SpiderMonkey's off-thread compilation API or off-thread decoding API ? such as `JS::CompileToStencilOffThread`.  I'm wondering if those APIs can be removed (bug 1773339)
+
+[17:30:52.0096] <botzilla>
+https://bugzil.la/1773339 — NEW (nobody) — Use TaskController directly for off-thread JS parsing
+
+[02:04:46.0260] <jandem>
+arai: I think we should remove them if there are no uses in Gecko left. The new APIs are likely better for embedders too, and this is complicated enough that we don't want to maintain two different APIs
+
+[02:05:11.0490] <jandem>
+ * arai: I think we should remove them if there are no uses in Gecko left. The new APIs are likely better for embedders too, and this is complicated enough that we don't want to maintain two different sets of APIs
+
+[02:05:43.0304] <arai>
+okay :)
+
+[02:08:26.0301] <jandem>
+it's exciting to see these changes, we've come such a long way
+
+[07:37:09.0923] <Bryan Thrall [:bthrall]>
+> <@arai:mozilla.org> yes, it's for browser build
+
+Thanks! I got it to work 😸
+
+[10:12:53.0300] <sfink>
+Bryan Thrall [:bthrall]: just to be sure, you know you can run test262 with just the JS shell too, right? eg `mach jstests initial` will run the 355 tests that have the substring "initial" in their names.
+
+[12:16:01.0058] <Bryan Thrall [:bthrall]>
+Oh yes, I know; my interest in this case was with running tests where the `xulRuntime.shell` condition evaluates to true. Thanks, for checking, though!
+
+[12:29:59.0529] <sfink>
+Ok. That variable is set in a [fairly normal way](https://searchfox.org/mozilla-central/rev/50588a0b728b365afdd298debd35e8302efe7850/layout/tools/reftest/manifest.jsm#476)  when running in the browser (or xpcshell). For shell tests, it is [faked](https://searchfox.org/mozilla-central/rev/50588a0b728b365afdd298debd35e8302efe7850/js/src/tests/lib/manifest.py#41).
+
+[12:31:02.0154] <sfink>
+which is confusing, because it's only used to test if you're running in the JS shell.
+
+[12:31:38.0846] <sfink>
+er, ok, it's used for other things too. But much less commonly.
+
+[13:41:46.0159] <iain>
+Stupid question: If I have a build id (eg 20230608152955), what's the simplest way to find the set of patches that went into that build?
+
+[13:42:15.0214] <iain>
+ * Stupid question: If I have a Nightly build id (eg 20230608152955), what's the simplest way to find the set of patches that went into that build?
+
+[13:47:22.0585] <mccr8>
+> <@iain:mozilla.org> Stupid question: If I have a Nightly build id (eg 20230608152955), what's the simplest way to find the set of patches that went into that build?
+
+There's a few ways, but I use this page: https://setphaserstostun.org/crashes-by-build.html
+
+[13:48:16.0905] <mccr8>
+Find the row for the build you want (by hovering over the links which is awkward), then click on "choose regression window", click on the row for your build, then click on the next row.
+
+[13:50:44.0900] <mccr8>
+Well, you first get the date out of the build to find one of the two or so rows it can be, then match up the final digits by hovering over it.
+
+[14:09:10.0797] <iain>
+mccr8: Ah, thanks! I had even found that page, I just didn't understand how it worked.
+
+[14:09:21.0867] <mccr8>
+It is not an intuitive UI.
+
+
+2023-07-28
+[09:35:35.0839] <mstange>
+mgaudet: The ICs show up as siblings because we don't call them, we jump to them
+
+[09:36:05.0159] <mstange>
+mgaudet: also, there's another issue which may lead to confusing profiles for shallowEqual: https://bugzilla.mozilla.org/show_bug.cgi?id=1842224
+
+[09:40:28.0622] <mgaudet>
+mstange: thank you for the heads up!
+
+[14:42:06.0880] <mgaudet>
+iain: Yeah -- looking at the cacheIR health report if you squint you can sort of extract similar info, though it's not quite understandable initially
+
+
+2023-07-31
+[09:23:20.0642] <nitwel>
+Hi, I'm currently messing around with https://github.com/mozilla-spidermonkey/sm-wasi-demo and got it to work with the latest version of wasmer, which did a complete rework of their js api. Now I'm wondering how I can import things like functions into the WASM+spidermonkey environment so I can communicate from inside the the wasm js runtime to the outsite nodejs runtime in order to request data or do other things. Thanks in advance for the help!
+
+[09:44:26.0570] <jandem>
+nitwel: one option is to use files on the in-memory file system, that's how we pass the input source code (in /input.js), or stdout/stderr
+
+[09:45:20.0503] <jandem>
+keep in mind that this is just a quick demo. I've been thinking about doing something similar with https://github.com/bytecodealliance/componentize-js but these components don't run in the browser yet last I heard
+
+[09:45:39.0127] <kfjvj>
+Can anyone point me to some good examples of how to use modules in mozjs?  I've looked through the code and I don't fully understand how they're used
+
+[09:48:02.0928] <jandem>
+nitwel: was it hard to make it work with latest wasmer? I ran into some issues when I tried this last year or so but maybe they've fixed those since then
+
+[09:52:49.0640] <nitwel>
+Was fairly easy, they had a few good examples, only thing I wasn't able to find was how to do bindings, maybe they got rid of that. Feel free to have a look at the code here: https://github.com/directus/directus/blob/ext-secure/api/src/extensions/wasm.ts
+
+How would I communicate over the file system / how do I watch for changes in these virtual files?
+
+[09:55:16.0944] <jandem>
+nitwel: there's also `readline()` that reads from stdin, but I don't know if that works in the wasi environment
+
+[09:56:16.0730] <nitwel>
+Haha, I tried using that too and that works fine aswell. ^^
+
+[09:57:24.0593] <jandem>
+ideally you probably want an embedding that's not the JS shell that's easier to pass data from/to
+
+[09:58:51.0405] <jandem>
+maybe we could add something to the wasi build of the shell
+
+[10:02:12.0169] <jandem>
+doesn't the wasi host expose callbacks for the file system? I thought it was using that for stdout/stderr
+
+[10:03:20.0292] <jandem>
+oh nevermind, it's just using `readFileSync`. Hm
+
+[10:04:05.0800] <nitwel>
+I'm not able to follow what a js shell embedding is? Is that what spidermonkey is when build to wasm?
+https://github.com/wasmerio/wasmer-js#typescript-api has all methods accessible through wasmer-js. I can't see any way to watch for file changes.
+
+[10:06:44.0008] <jandem>
+nitwel: we have a command line application that we use for testing SpiderMonkey called the JS shell, and that's the one we compile to WASI. It's typically just running a single script and using stdin/stdout, that makes this a bit tricky
+
+[10:08:12.0235] <jandem>
+maybe we could add a builtin function to the wasi shell build that calls a function in the host environment? I'm not sure how hard that is though
+
+[10:10:47.0457] <nitwel>
+Ah, thanks for the clarification, that makes sense!
+As far as I know, we are able to provide imports to the wasm environment with wasmer on the instantiate method. What probably has to be done is to pass them down to the js runtime or as you mentioned to have a function that checks for their existance and calls them if present.
+
+[10:12:09.0976] <jandem>
+agreed. We could probably make it work for passing/returning strings and numbers at least..
+
+[10:12:55.0945] <nitwel>
+That would be more than enough for most usecases as it enables 1 or 2 way communication while wasm is running.
+
+[10:20:08.0422] <jandem>
+I don't have time to work on this anytime soon, but feel free to file a bug. It could also be nice for the online demo (to request user input or so)
+
+[10:23:41.0241] <jandem>
+ * I don't have time to work on this anytime soon, but feel free to file a bug. It could also be nice for the online demo (to request user input or access a canvas or something)
+
+[10:25:09.0688] <nitwel>
+No worries. I'm not very familiar with SpiderMonkey, but do you think I would be able to implement this myself and add it to the JS Shell? The reason being that this is a requirement for what I need for work, otherwise I would have to look into different solutions of running arbitrary js code securely which probably aren't as sophisticated as SpiderMonkey + WASM.
+
+[10:27:01.0919] <jandem>
+also note that the JS shell has a pretty large number of builtin functions (see `help()`) that are normally unsafe to expose to arbitrary JS code, but at least Wasm/WASI sandboxes those too...
+
+[10:37:11.0381] <jandem>
+nitwel: you could try [these instructions](https://firefox-source-docs.mozilla.org/js/build.html) to build the JS shell locally for WASI with [this mozconfig](https://paste.mozilla.org/UhirYPB3). The JS shell code is in js/src/shell/js.cpp. The `print(..)` builtin for example uses `PrintInternal`, maybe you could do something similar to that
+
+[10:41:06.0169] <nitwel>
+Thanks for all the help, really appreciate it! Will have a look at this tomorrow, hopefully I will be able to manage my way through it.
+
+[10:42:27.0610] <jandem>
+good luck. I have to run now too but usually people will be around in this channel if you get stuck
+
+[14:21:35.0341] <kfjvj>
+What happens in SpiderMonkey when running code with an import statement.  Is a file automatically searched for in the current directory, or is there some way of adding hooks to import statements?
+
+[14:25:27.0750] <arai>
+kfjvj: the file handling is done in embedder's side, by providing [HostResolveImportedModule ](https://searchfox.org/mozilla-central/rev/e4fa79ba05364da0d6ec40d3f9dbe0d15ce6f902/js/public/Modules.h#53)
+
+[14:26:30.0074] <arai>
+when SpiderMonkey finds import, the hook is called, and the embedder is supposed to fetch a corresponding resource and compile the module
+
+[14:26:38.0808] <kfjvj>
+thanks
+
+[14:27:02.0491] <kfjvj>
+And it loooks like this operation is synchronous.  I know some of the imports are sync and some are async
+
+[14:27:25.0745] <arai>
+example in JS shell https://searchfox.org/mozilla-central/rev/e4fa79ba05364da0d6ec40d3f9dbe0d15ce6f902/js/src/shell/ModuleLoader.cpp#62,75
+```cpp
+  JS::SetModuleResolveHook(rt, ModuleLoader::ResolveImportedModule);
+...
+JSObject* ModuleLoader::ResolveImportedModule(
+```
+
+[14:31:03.0764] <arai>
+dynamic import is handled with `JS::SetModuleDynamicImportHook` call below
+
+[14:50:10.0301] <kfjvj>
+What exactly is the distinction between normal and dynamic import?
+
+[15:06:36.0125] <arai>
+normal one is [import declaration](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import), which can appear only at module the top level, and handled before executing the module top-level script.  [dynamic import](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import) is function-call-style import that can appear anywhere, and returns a promise for the module namespace object
+

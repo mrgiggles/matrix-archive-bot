@@ -1,0 +1,1761 @@
+2022-12-01
+[17:39:04.0725] <ptomato>
+I'm a bit overdue updating the spidermonkey-embedding-examples repo to esr102 - could someone with admin on that repo please take a look at https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/64 and then update the default branch in the repo settings from esr91 to esr102?
+
+[17:44:14.0193] <tcampbell>
+ptomato: merged and default branch updated. Thanks!
+
+[17:44:29.0742] <ptomato>
+that was fast! Thanks!
+
+[17:46:24.0890] <tcampbell>
+hopefully the CI stuff doesn't fall over completely
+
+[17:57:19.0282] <ptomato>
+ah, the CI works on `esr102` - I have a branch to try to get it working on `next`, but it's not done yet (https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/48)
+
+[01:55:50.0978] <smaug>
+jandem: remind me, where do we have the runner for the matrix benchmark ?
+
+[02:08:16.0048] <jandem>
+smaug: here: https://github.com/mozilla-spidermonkey/matrix-react-bench
+
+[02:08:38.0057] <smaug>
+ah, not in m-c. thanks
+
+[02:09:31.0095] <smaug>
+I'm just curious how it measures stuff
+
+[02:22:15.0876] <smaug>
+ok, setTimeout, but looks like Element is rather setTimeout based anyhow, not requestAnimationFrame.
+
+[03:17:40.0015] <jonco>
+nbp: I have a patch for bug 1803233
+
+[03:17:41.0448] <botzilla>
+https://bugzil.la/1803233 — NEW (jonco) — Frequent Assertion failure: ok, at /builds/worker/checkouts/gecko/js/src/gc/Scheduling.cpp:746
+
+[03:18:10.0294] <jonco>
+just running tests...
+
+[03:19:30.0702] <nbp>
+Sweet, do you want me to test Bug 1803256 as well. I was not able to reproduce it every time, but rr was helpful here.
+
+[03:19:31.0927] <botzilla>
+https://bugzil.la/1803256 — ASSIGNED (nbp) — Intermittent js/src/jit-test/tests/basic/bug1219128-7.js | Unhandled rejection: "out of memory" (code 3, args "--ion-eager --ion-offthread-compile=off --more-compartments") [0.5 s]
+
+[03:39:49.0434] <jonco>
+nbp: sure, patch is here: https://hg.mozilla.org/try/rev/a61351fb2ec7db104ca2d1b86dd647ff09fecfb9
+
+[06:33:21.0196] <davidj361>
+Apparently you are not able to utilize SM API on a context while in a different thread? Is there no way to deal with this? Ideally I would like to avoid being restricted to only execute SM API while being on the same thread as the JSContext.
+
+[06:39:55.0606] <nbp>
+Create a new Runtime / Context for the new thread?
+
+[06:43:45.0588] <davidj361>
+I mean I have a collection of JSContexts already made and running. I would like to bind more stuff lets say to a JSContext from another thread where I don't wish to create another runtime/context
+
+[06:43:59.0093] <davidj361>
+ * I mean I have a collection of JSContexts already made and running. I would like to bind more stuff lets say to a JSContext while I'm in another thread where I don't wish to create another runtime/context
+
+[07:09:55.0453] <mccr8>
+SpiderMonkey is not threadsafe in that way and it would require an immense amount of work to support it.
+
+[07:25:54.0689] <davidj361>
+So basically all SM API calls are only executable on a JSContext if it's the same thread of the JSContext?
+
+[07:26:06.0467] <davidj361>
+ * So basically all SM API calls are only executable on a JSContext if it's the same thread of the JSContext? There are no tricks to deal with this?
+
+[07:26:43.0199] <davidj361>
+ * So basically all SM API calls are only executable on a JSContext if it's done in the same thread of the JSContext? There are no tricks to deal with this?
+
+[07:32:19.0266] <mccr8>
+In general, yes. The main consumer of SpiderMonkey is Firefox, and the runtime model of the web is based around running everything for a particular global on a single thread, so I think that's why the focus is there. If you start making your engine multithreaded, there's a lot of overhead in terms of runtime performance and implementation cost.
+
+[07:32:59.0541] <davidj361>
+Thanks you mccr8
+
+[07:33:02.0014] <davidj361>
+ * Thank you mccr8
+
+[07:33:41.0491] <mccr8>
+There's some kind of support needed for things like parsing off the main thread but it is very limited.
+
+[07:34:46.0353] <davidj361>
+parsing off the main thread?
+
+[07:58:35.0946] <tcampbell>
+The biggest restriction for being on a single thread at a time is that the garbage collected memory heap is not threadsafe (since there is a lot of bookkeeping needed that is constantly updated). Spidermonkey does allow creating alternate gc heaps for use by other threads, but these threads are then independent from eachother. Their communication goes through message passing using serialized data instead of bare objects. This is what underlies web `Worker`s and `postMessage`.
+
+[08:00:31.0524] <tcampbell>
+In certain engine-internal cases some work can be done on a different thread from the JSContext as long as it doesn't involve the GC heap. This includes the ability to parse JS to an intermediate `JS::Stencil` format, and doing some JIT compile work (once the prep process that reads from the heap is done on the original thread and saved).
+
+[08:22:09.0289] <jonco>
+How do I print to stderr in the shell such that it works on Android and gets captured in test logs?  
+
+[08:24:15.0859] <Ms2ger 💉💉💉>
+That's up there with naming things and cache invalidation, as I recall
+
+[08:32:00.0406] <nbp>
+jonco: doesn't stderr shows up in logcat? Is that in the CI or locally?
+
+[08:32:21.0484] <jonco>
+Trying to get this to work in CI
+
+[08:33:32.0174] <nbp>
+> <@davidj361:matrix.org> parsing off the main thread?
+
+https://searchfox.org/mozilla-central/source/js/public/CompileOptions.h#75-103
+
+[08:35:43.0036] <nbp>
+jonco: https://searchfox.org/mozilla-central/source/js/src/tests/lib/tasks_adb_remote.py#66-77 Would this help, maybe the comment is outdated?
+
+[08:37:05.0588] <nbp>
+the `stdout_lines` are aliasing the `adb_process` from https://searchfox.org/mozilla-central/source/js/src/tests/lib/tasks_adb_remote.py#241-247
+
+[08:40:13.0800] <nbp>
+jonco: one alternative might be to redirect stderr to stdout. Try adding `set 2>&1` in https://searchfox.org/mozilla-central/source/js/src/tests/lib/tasks_adb_remote.py#135-179 , which is the script executed on the device for running all test cases.
+
+[08:46:40.0690] <jonco>
+nbp: yeah I can try that
+
+[08:47:05.0151] <jonco>
+from a very brief scan of the python it seems like it's redirecting stderr to stdout so I don't know why it wouldn't show up anyway
+
+[08:57:07.0795] <jandem>
+that sounds similar to bug 1532654
+
+[08:57:09.0462] <botzilla>
+https://bugzil.la/1532654 — NEW (nobody) — Teach the jit-test harness about the Android log
+
+[09:00:54.0949] <nbp>
+so stderr is redirected to the system log, which explains why we can't see it …
+
+[09:16:09.0240] <sfink>
+ugh, I need to finish up my patches to move printf_stderr + friends to mozglue so we can use them from SM. I just need to rewrite a handful of Gecko users to get it past review.
+
+[09:19:28.0727] <jonco>
+looks like mozglue does provide a version of printf_stderr, but it doesn't know about the android log: https://searchfox.org/mozilla-central/source/mozglue/misc/Debug.h#37
+
+[09:51:02.0477] <mgaudet>
+jonco: https://bugzilla.mozilla.org/show_bug.cgi?id=1706395 try [`__android_log`](https://developer.android.com/ndk/reference/group/logging#functions_1) 
+
+[10:10:20.0056] <sfink>
+bug 1790873 is my (incomplete) attempt
+
+[10:10:21.0726] <botzilla>
+https://bugzil.la/1790873 — ASSIGNED (sfink) — Cannot use printf_stderr from within js/src/
+
+
+2022-12-02
+[16:48:23.0301] <ptomato>
+here's an attempt to set up a new `next` branch in spidermonkey-embedding-examples! https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/48 review appreciated
+
+[19:58:50.0798] <mayankleoboy1>
+One of the patches landed yesterday from :anba have improved scores by 20%-50% on some of the AWFY sub-benchmarks:
+Jeststream:  base64-SP* , crypto-md5-SP*, crypto-sha1-SP*, pdfjs*
+
+[22:02:08.0603] <liam_g>
+Is it possible to add your own "GC Thing" to the Garbage collector, which aren't derived from JSValue?
+
+[22:26:04.0645] <iain>
+liam_g: GC things inherit from [gc::Cell](https://searchfox.org/mozilla-central/source/js/src/gc/Cell.h#167-182). There's no inherent connection to JSValue, except that JSValue has a PrivateGCThing variant so that you can store pointers to GC things in reserved slots of objects, and they will be traced along with all the other object slots.
+
+[02:53:38.0517] <liam_g>
+So if I inherit from gc::Cell and then do a tracing operation, will I automatically have garbage collection?
+
+[02:54:02.0895] <liam_g>
+I'm guessing it's not that simple.
+
+[02:55:40.0056] <jandem>
+no you can't easily add your own GC things outside the engine
+
+[02:56:14.0080] <jandem>
+ * no you can't add your own GC things outside the engine
+
+[02:58:46.0381] <jandem>
+the simplest option would be to use a JS object to 'wrap' your own data structure
+
+[03:03:17.0377] <liam_g>
+I was thinking about that also. My basic idea was if I could utilise the SM garbage collector for other parts of my program that don't have anything to do with javascript.  
+
+[03:04:19.0538] <liam_g>
+Seems like it might be possible by hooking into a jsobject, but it also seems like a design choice I might come to regret later. 
+
+[03:07:11.0384] <jandem>
+yeah this is an area we're thinking about improving
+
+[08:36:43.0341] <jonco>
+sfink: Thanks for all the reviews!  Currently trying to work out why weak map marking is actually correct.
+
+[09:28:28.0525] <elliottt>
+is it possible to bundle subsets of the `dom` subtree in gecko-dev into a spidermonkey build? i work at fastly and we'd like to upgrade our javascript compute runtime to a newer version of spidermonkey, but we rely on the old implementation of the streams api which has since moved into the `dom` subtree.
+
+[09:34:18.0033] <mgaudet>
+> <@elliottt:mozilla.org> is it possible to bundle subsets of the `dom` subtree in gecko-dev into a spidermonkey build? i work at fastly and we'd like to upgrade our javascript compute runtime to a newer version of spidermonkey, but we rely on the old implementation of the streams api which has since moved into the `dom` subtree.
+
+We have aspirations to head in that direction one day, but there's nothing concrete possible at the moment. 
+
+[09:40:03.0305] <sfink>
+jonco: that makes a big assumption (that it is correct) ;-)
+
+[09:42:43.0782] <sfink>
+liam_g: Firefox kind of does that, but it uses ref counting for the outside-of-SM objects and then has its own cycle collector that relies on the GC for finding cycles that go through the JS Cell graph
+
+[09:42:54.0838] <sfink>
+it's... not simple
+
+[09:43:00.0640] <elliottt>
+> <@mgaudet:mozilla.org> We have aspirations to head in that direction one day, but there's nothing concrete possible at the moment.
+
+do you know how far off that might be? also, is it the sort of project that a well-motivated external contributor could undertake?
+
+[09:44:16.0018] <sfink>
+you'd probably be better off with something more like what you're thinking of, using the SM mark/sweep collector somehow
+
+[09:44:43.0409] <mgaudet>
+> <@elliottt:mozilla.org> do you know how far off that might be? also, is it the sort of project that a well-motivated external contributor could undertake?
+
+Can't promise things, but my guess would be 1-2 years from our side before we had anything super complete. 
+
+
+[09:46:45.0186] <mgaudet>
+could a contributor tackle something; the barrier is very high. This will need a lot of collaboration on the moving parts. The first cut version of this about what needs to be done to get started here: 
+
+1. The cycle collector would need to be extracted into a library / module that can exist outside of gecko. This is because the Streams code uses the ref-counting cycle collector to figure out what is a live and what is dead on the C++ side. 
+
+2. The streams code needs to be isolated from gecko; so bits which talk about gecko internals would need to be turned into interfaces 
+
+[09:48:28.0079] <elliottt>
+not having the cycle collector isn't a deal breaker for our use-case if it doesn't control closing streams -- we try very hard to avoid having the garbage collector run at all when running a javascript application at the edge
+
+[09:50:01.0977] <mgaudet>
+Well. In that case. 
+
+I would start by hacking the build system a bit to get the webIDL generator code to build you the interfaces required from the DOM streams code, then just start stubbing pieces out until you get something that compiles... ? 
+
+[09:50:34.0300] <mgaudet>
+It's deeply unclear to me where the cuts will actually be, but it certainly seems... potentially possible. 
+
+[09:50:58.0776] <mgaudet>
+(ie, get https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/ReadableStreamBinding.cpp generated) 
+
+[09:51:10.0749] <elliottt>
+i'll start investigating, thank you so much for the pointers! :)
+
+[09:52:21.0849] <elliottt>
+is extracting the cycle collector separately something that mozilla is interested in doing, or would it only serve to help splitting out parts of dom as libraries?
+
+[09:52:37.0016] <mgaudet>
+This, I expect, will be a big task. Nevertheless, I'd be interested in seeing what it looks like at the other end, as you're walking a bit ahead of where we'd potentially like to go. 
+
+[09:53:35.0730] <mgaudet>
+elliottt: We think that making cycle collection something recyclable in other projects makes sense, but it's far from clear how soon we'd be able to get to it or how possible it'd be.
+
+[09:55:09.0681] <elliottt>
+if extracting the streams implementation from the dom tree proves to be too much, do you think it would be possible for us to back-port the old streams implementation to the current release, or has too much changed since it was moved?
+
+[10:01:27.0120] <mgaudet>
+elliottt: I expect reverting https://phabricator.services.mozilla.com/D159610 will remain almost trivial for a while yet.
+
+[10:02:14.0569] <elliottt>
+oh that's great to know, thank you!
+
+[10:03:48.0606] <mgaudet>
+(`hg backout bf1bc477f95d` _just worked_ for me) 
+
+[10:04:56.0491] <elliottt>
+in the short-term that seems like it might be our best bet for getting to a more current spidermonkey
+
+[10:05:30.0883] <mgaudet>
+Strongly agreed. It is absolutely the lowest energy path
+
+[10:20:57.0719] <sfink>
+my understanding is that changing sm -> dom streams was more "rewrite" than "move"
+
+[10:33:36.0275] <mgaudet>
+Yeah; it's a totally separate implementation now hosted in gecko. 
+
+It would be nice if we could take some pieces of CC'd interface and host them in an SM shell (and expose the underlying ability to have CC'd C++ objects to embedders) 
+
+[10:45:42.0782] <elliottt>
+mgaudet: do you foresee any problems with also reverting https://phabricator.services.mozilla.com/D139858?
+
+[10:46:57.0262] <mgaudet>
+elliottt: Uh, AFAIK those were never in good shape. At best leaky, at worst potentially incorrect in places. 
+
+[10:47:19.0538] <mgaudet>
+elliottt: But in principle... no reason they should rot any more than the rest of the streams code
+
+[10:47:47.0565] <mgaudet>
+(Firefox never shipped Writable or PipeTo because they never hit our quality bar )
+
+[10:47:59.0707] <elliottt>
+well good to know. maybe we can use them in the short term and spin up some work in the background to get the dom streams without the cycle collector working
+
+[10:48:19.0091] <elliottt>
+> <@mgaudet:mozilla.org> (Firefox never shipped Writable or PipeTo because they never hit our quality bar )
+
+that's helpful background, thank you!
+
+
+2022-12-05
+[03:21:07.0575] <hogoww>
+Hello,
+I know it's probably an inappropriate for this channel, but I wasn't able to find another way of asking.
+I'm wondering whether Spidermonkey takes job applications and/or who to contact about such a topic ?
+Thank you in advance :)
+
+[03:23:46.0938] <hogoww>
+ * Hello,
+I know it's probably an inappropriate for this channel, but I wasn't able to find another way of asking.
+I'm wondering whether Spidermonkey takes spontaneous job applications and/or who to contact about such a topic ?
+Thank you in advance :)
+
+[05:26:57.0452] <yulia>
+The best place to look would be https://www.mozilla.org/en-US/careers/
+
+[06:36:33.0900] <hogoww>
+> <@yulia:mozilla.org> The best place to look would be https://www.mozilla.org/en-US/careers/
+
+I haven't seen offers related to SpiderMonkey yet.
+Guess I'll keep checking, thank you ! =]
+
+[07:58:06.0441] <davidj361>
+Do we have to provide a parent runtime when creating a new context for a new thread to introduce multithreading with multiple contexts? Or can you just avoid creating a `JSContext*` on the main thread that did `JS_Init()` and instead just do`JS_NewContext(8L * 1024L * 1024L)` for each new thread instead without providing any parent runtime?
+
+[07:59:02.0135] <davidj361>
+ * Do we have to provide a parent runtime when creating a new context for a new thread to introduce multithreading with multiple contexts? Or can you just avoid creating a `JSContext*` on the main thread that did `JS_Init()` and instead just do`JS_NewContext(8L * 1024L * 1024L)` for each new thread without providing any parent runtime?
+
+[08:00:32.0559] <jandem>
+davidj361: providing a parent runtime helps a bit with memory usage, but you don't have to provide one
+
+[08:02:12.0642] <davidj361>
+Thank you jandem
+
+[08:05:19.0742] <nbp>
+tcampbell: what is the `[orb:m1]` whiteboard annotation?
+
+[08:06:07.0374] <tcampbell>
+nbp: https://bugzilla.mozilla.org/show_bug.cgi?id=1532642
+
+[08:06:42.0729] <tcampbell>
+M1 is the first milestone where most cases are working end to end
+
+[08:06:59.0220] <tcampbell>
+this is DOM Core team leading effort
+
+[08:07:20.0181] <tcampbell>
+it just happens they want the same parse-without-jscontext API that we want for the caching work :)
+
+[08:10:45.0702] <nbp>
+is that for network validation of non-CORS domains case we discussed before?
+
+[09:06:06.0097] <gijs>
+I have a dumb question... I'm converting some ancient `foo.prototype.__proto__ = ...` "class" extension code to "new" ES6/2015/whatever `class` syntax. As part of this, I switched `SuperClass.apply(this, arguments)` to actually invoking `super`, and doing so at the start of the subclass's constructor.
+
+In the resulting subclasses I'm seeing errors where their instance properties are not accessible. What appears to happen is that if subclass A invokes superclass constructor for B, it ends up calling some method on subclass A, which expects its properties to be there, but they're not, at that point in time.
+
+Is this expected?
+
+[09:20:45.0588] <jandem>
+gijs: yeah class fields are initialized in the derived class constructor right after the `super()` call
+
+[09:21:13.0651] <gijs>
+jandem: huh, OK. Sorry, I did try searching the web but didn't find much about initialization order, maybe my search query was not very good.
+
+[09:21:27.0980] <gijs>
+jandem: don't suppose you have suggestions on how to avoid this being a problem?
+
+[09:21:55.0208] <gijs>
+(tbf this was a prototype property before, but changing it to a static property breaks `this.foo` access which means rewriting a bunch of code which is a bit tedious)
+
+[09:24:01.0527] <jandem>
+gijs: something like [this](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=class%20B%20%7B%0A%20%20%20%20constructor()%20%7B%0A%20%20%20%20%20%20%20%20this.init()%3B%0A%20%20%20%20%20%20%20%20print(this.getProp())%3B%0A%20%20%20%20%7D%0A%7D%0Aclass%20A%20extends%20B%20%7B%0A%20%20%20%20%2F%2Fprop%20%3D%201%3B%0A%20%20%20%20init()%20%7B%0A%20%20%20%20%20%20%20%20this.prop%20%3D%201%3B%0A%20%20%20%20%7D%0A%20%20%20%20constructor()%20%7B%0A%20%20%20%20%20%20%20%20super()%3B%0A%20%20%20%20%7D%0A%20%20%20%20getProp()%20%7B%0A%20%20%20%20%20%20%20%20return%20this.prop%3B%0A%20%20%20%20%7D%0A%7D%0Anew%20A()%3B%0A) maybe?
+
+[09:24:35.0319] <gijs>
+jandem: ah, right, so switching from constructor to `init` calls?
+
+[09:25:21.0012] <jandem>
+yeah. I don't know if there's a better way to do this
+
+[09:25:38.0900] <gijs>
+I'm actually surprised, thinking about it
+
+[09:25:50.0295] <gijs>
+eslint at least yells at me if I try to access `this.foo` prior to calling `super()`
+
+[09:26:01.0396] <gijs>
+but `super()` can call class methods that end up messing with `this.foo`
+
+[09:26:19.0659] <gijs>
+ * eslint at least yells at me if I try to access `this.foo` in the constructor prior to calling `super()`
+
+[09:28:44.0340] <jandem>
+in the derived class, `this` doesn't exist yet because it's allocated when `super()` is called
+
+[09:29:38.0001] <gijs>
+I see. I guess that makes sense...
+
+[09:33:06.0337] <jandem>
+ * in the derived class, `this` isn't allowed prior to calling `super()` because the object is allocated by `super()`
+
+[09:42:02.0585] <jandem>
+gijs: yeah derived class constructors are pretty weird in JS... was a pain to implement too back then 
+
+[09:52:21.0860] <gijs>
+I can believe it!
+
+
+2022-12-06
+[16:07:35.0129] <gijs>
+>  0:01.26 FAIL test_override_super_multiple - [test_override_super_multiple : 99] "overridden-property" == "overridden-overridden-overridden-overridden-property"
+
+
+Oh god this is going to be fun isn't it.
+
+[16:08:14.0665] <gijs>
+/me looks forward to discovering all the subtle ways `Object.create` + `Object.getOwnPropertyDescriptors` differs from just assigning to `__proto__`
+
+[16:53:29.0333] <gijs>
+OK, it's too late for me to dig into this more, but I'm looking at some gnarly code and how it treats prototype chains and I'm getting lost. Specifically, from reading the docs, I thought that using `Object.setPrototypeOf(x, superclass)` and `Object.create(superclass, Object.getOwnPropertyDescriptors(x))` would behave more or less the same (apart from, I guess, the second not modifying x, whereas the first _does_) - the outcome object should be basically x with its proto set to superclass. But I'm seeing confusing differences. See [this example](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=%2F%2F%20Welcome%20to%20the%20SpiderMonkey%20JS%20shell%20compiled%20to%20WebAssembly!%0A%2F%2F%0A%2F%2F%20JS%20code%20on%20this%20side%20is%20evaluated%20in%20a%20Web%20Worker%20as%20you%20type.%0A%2F%2F%20The%20output%20is%20printed%20on%20the%20right-hand%20side.%0A%2F%2F%0A%2F%2F%20The%20JS%20shell%20has%20various%20builtin%20functions%20for%20testing%20purposes.%0A%2F%2F%20help()%20will%20print%20a%20list%20of%20them.%0A%0Aprint(%22Hello%2C%20world!%22)%3B%0Aprint(%22%3D%22.repeat(13))%3B%0A%0Aconst%20TestIntegration%20%3D%20%7B%0A%20%20get%20property()%20%7B%0A%20%20%20%20return%20this._property%3B%0A%20%20%7D%2C%0A%20%20set%20property(value)%20%7B%0A%20%20%20%20this._property%20%3D%20value%3B%0A%20%20%7D%2C%0A%7D%3B%0A%0Alet%20overrideFn%20%3D%20base%20%3D%3E%20(%7B%0A%20%20get%20property()%20%7B%0A%20%20%20%20return%20%22overridden-%22%20%2B%20base.__lookupGetter__(%22property%22).call(this)%3B%0A%20%20%7D%2C%0A%0A%20%20set%20property(value)%20%7B%0A%20%20%20%20base.__lookupSetter__(%22property%22).call(this%2C%20%22overridden-%22%20%2B%20value)%3B%0A%20%20%7D%2C%0A%7D)%3B%0A%0Alet%20superOverrideFn%20%3D%20base%20%3D%3E%20%7B%0A%20%20let%20rv%20%3D%20%7B%0A%20%20%20%20get%20property()%20%7B%0A%20%20%20%20%20%20return%20%22overridden-%22%20%2B%20super.property%3B%0A%20%20%20%20%7D%2C%0A%0A%20%20%20%20set%20property(value)%20%7B%0A%20%20%20%20%20%20super.property%20%3D%20%22overridden-%22%20%2B%20value%3B%0A%20%20%20%20%7D%2C%0A%20%20%7D%3B%0A%20%20%2F%2F%20XXX%20this%20branching%20point%20changes%20behaviour%20and%20I%20do%20not%20understand%20why.%0A%20%20if%20(true)%20%7B%0A%20%20%20%20let%20descriptors%20%3D%20Object.getOwnPropertyDescriptors(rv)%3B%0A%20%20%20%20rv%20%3D%20Object.create(base%2C%20descriptors)%3B%0A%20%20%7D%20else%20%7B%0A%20%20%20%20Object.setPrototypeOf(rv%2C%20base)%3B%0A%20%20%7D%0A%20%20return%20rv%3B%0A%7D%3B%0A%0Alet%20getCombined%20%3D%20function(root)%20%7B%0A%20%20%20%20%2F%2F%20In%20addition%20to%20enumerating%20all%20the%20registered%20integration%20overrides%20in%0A%20%20%20%20%2F%2F%20order%2C%20we%20want%20to%20keep%20any%20state%20that%20was%20previously%20stored%20in%20the%0A%20%20%20%20%2F%2F%20combined%20object%20using%20the%20%22this%22%20reference%20in%20integration%20methods.%0A%20%20%20%20let%20overrideFnArray%20%3D%20%5BoverrideFn%2C%20superOverrideFn%2C%20()%20%3D%3E%20(%7B%7D)%5D%3B%0A%0A%20%20%20%20let%20combined%20%3D%20root%3B%0A%20%20%20%20for%20(let%20overrideFn%20of%20overrideFnArray)%20%7B%0A%20%20%20%20%20%20try%20%7B%0A%20%20%20%20%20%20%20%20%2F%2F%20Obtain%20a%20new%20set%20of%20methods%20from%20the%20next%20override%20function%20in%20the%0A%20%20%20%20%20%20%20%20%2F%2F%20list%2C%20specifying%20the%20current%20combined%20object%20as%20the%20base%20argument.%0A%20%20%20%20%20%20%20%20let%20override%20%3D%20overrideFn(combined)%3B%0A%0A%20%20%20%20%20%20%20%20%2F%2F%20Retrieve%20a%20list%20of%20property%20descriptors%20from%20the%20returned%20object%2C%20and%0A%20%20%20%20%20%20%20%20%2F%2F%20use%20them%20to%20build%20a%20new%20combined%20object%20whose%20prototype%20points%20to%20the%0A%20%20%20%20%20%20%20%20%2F%2F%20previous%20combined%20object.%0A%20%20%20%20%20%20%20%20let%20descriptors%20%3D%20%7B%7D%3B%0A%20%20%20%20%20%20%20%20for%20(let%20name%20of%20Object.getOwnPropertyNames(override))%20%7B%0A%20%20%20%20%20%20%20%20%20%20descriptors%5Bname%5D%20%3D%20Object.getOwnPropertyDescriptor(override%2C%20name)%3B%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20combined%20%3D%20Object.create(combined%2C%20descriptors)%3B%0A%20%20%20%20%20%20%7D%20catch%20(ex)%20%7B%0A%20%20%20%20%20%20%20%20%2F%2F%20Any%20error%20will%20result%20in%20the%20current%20override%20being%20skipped.%0A%20%20%20%20%20%20%20%20print(ex)%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%7D%0A%0A%20%20%20%20return%20combined%3B%0A%20%20%7D%0A%0Alet%20total%20%3D%20getCombined(TestIntegration)%3B%0Atotal.property%20%3D%20%22prop%22%3B%0Aprint(total.property)%3B%0A%0A%0A%0A%0A) and specifically the `XXX` comment.
+
+[16:54:16.0872] <gijs>
+if someone has time to help enlighten me I would appreciate it (after sleep :) )
+
+[02:04:48.0664] <jandem>
+gijs: I think what's happening is that `super.property` in a getter does something like `HomeObject(getter).prototype.property`. The "home object" will continue to be the object that the getter was defined on originally (`rv`), even if we move the getter to a different object
+
+[02:04:59.0922] <jandem>
+ * gijs: I think what's happening is that `super.property` in a getter does something like `HomeObject(getter).__proto__.property`. The "home object" will continue to be the object that the getter was defined on originally (`rv`), even if we move the getter to a different object
+
+[02:07:27.0740] <jandem>
+so `super.property` will refer to `Object.prototype.property` in this case if you don't mutate the proto of `rv`
+
+[03:02:19.0008] <gijs>
+jandem: hm, ok. I think what I don't understand is that I thought `superclass` would end up as the proto of `rv` in both of these examples...
+
+[03:02:48.0130] <gijs>
+are you saying that's not the case?
+
+[03:02:57.0588] <gijs>
+oh, wait
+
+[03:03:28.0182] <gijs>
+I guess you're saying that because the second option doesn't modify the input object `x` on which we call `getOwnPropertyDescriptors`
+
+[03:03:45.0588] <gijs>
+and the getter gets called on the original input object rather than the output object because of the `HomeObject` thing
+
+[03:03:59.0891] <gijs>
+it gets `x`'s original proto chain instead of `rv`?
+
+[03:04:12.0425] <gijs>
+ * it gets `x`'s original proto chain instead of `rv`'s?
+
+[03:07:27.0311] <gijs>
+Hm, but I'm looking at [this](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=%2F%2F%20Welcome%20to%20the%20SpiderMonkey%20JS%20shell%20compiled%20to%20WebAssembly!%0A%2F%2F%0A%2F%2F%20JS%20code%20on%20this%20side%20is%20evaluated%20in%20a%20Web%20Worker%20as%20you%20type.%0A%2F%2F%20The%20output%20is%20printed%20on%20the%20right-hand%20side.%0A%2F%2F%0A%2F%2F%20The%20JS%20shell%20has%20various%20builtin%20functions%20for%20testing%20purposes.%0A%2F%2F%20help()%20will%20print%20a%20list%20of%20them.%0A%0Aprint(%22Hello%2C%20world!%22)%3B%0Aprint(%22%3D%22.repeat(13))%3B%0A%0Ax%20%3D%20%7Bget%20b()%20%7B%20return%20this.a%7D%20%7D%3B%0Ay%20%3D%20%7Ba%3A%2042%7D%3B%0Az%20%3D%20Object.create(y%2C%20Object.getOwnPropertyDescriptors(x))%0Aprint(z.b)%3B%0Aprint(x.b)%3B%0A) and that doesn't seem to be what's happening.
+
+[03:07:36.0137] <gijs>
+I'm probably misunderstanding your explanation!
+
+[03:10:26.0130] <gijs>
+ah, wait, I'm using `this.foo` and not `super.foo`
+
+[03:11:06.0260] <gijs>
+[this shows `undefined`](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=%2F%2F%20Welcome%20to%20the%20SpiderMonkey%20JS%20shell%20compiled%20to%20WebAssembly!%0A%2F%2F%0A%2F%2F%20JS%20code%20on%20this%20side%20is%20evaluated%20in%20a%20Web%20Worker%20as%20you%20type.%0A%2F%2F%20The%20output%20is%20printed%20on%20the%20right-hand%20side.%0A%2F%2F%0A%2F%2F%20The%20JS%20shell%20has%20various%20builtin%20functions%20for%20testing%20purposes.%0A%2F%2F%20help()%20will%20print%20a%20list%20of%20them.%0A%0Aprint(%22Hello%2C%20world!%22)%3B%0Aprint(%22%3D%22.repeat(13))%3B%0A%0Ax%20%3D%20%7Bget%20b()%20%7B%20return%20super.a%7D%20%7D%3B%0Ay%20%3D%20%7Ba%3A%2042%7D%3B%0Ax%20%3D%20Object.create(y%2C%20Object.getOwnPropertyDescriptors(x))%3B%0Aprint(x.b)%3B%0A) which matches that explanation
+
+[03:11:33.0271] <gijs>
+and [this](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=%2F%2F%20Welcome%20to%20the%20SpiderMonkey%20JS%20shell%20compiled%20to%20WebAssembly!%0A%2F%2F%0A%2F%2F%20JS%20code%20on%20this%20side%20is%20evaluated%20in%20a%20Web%20Worker%20as%20you%20type.%0A%2F%2F%20The%20output%20is%20printed%20on%20the%20right-hand%20side.%0A%2F%2F%0A%2F%2F%20The%20JS%20shell%20has%20various%20builtin%20functions%20for%20testing%20purposes.%0A%2F%2F%20help()%20will%20print%20a%20list%20of%20them.%0A%0Aprint(%22Hello%2C%20world!%22)%3B%0Aprint(%22%3D%22.repeat(13))%3B%0A%0Ax%20%3D%20%7Bget%20b()%20%7B%20return%20super.a%7D%20%7D%3B%0Ay%20%3D%20%7Ba%3A%2042%7D%3B%0A%2F%2F%20x%20%3D%20Object.create(y%2C%20Object.getOwnPropertyDescriptors(x))%3B%0AObject.setPrototypeOf(x%2C%20y)%3B%0Aprint(x.b)%3B%0A) works "correctly" (uses `super.a` and doesn't print undefined)
+
+[03:11:44.0801] <gijs>
+thanks, that really helped! Would have been stuck a long time without that.
+
+[03:14:44.0268] <jandem>
+no problem!
+
+[07:01:37.0008] <liam_g>
+Trying to construct JS::PersistentRootedIdVector, I'm getting a compiler error saying "js::TempAllocPolicy: no appropriate default constructor available". I don't see any option for this in the constructor though.
+
+[07:02:22.0643] <liam_g>
+Any suggestions for how to construct it? All I'm doing right now is JS::PersistentRootedIdVector(CX)
+
+[07:14:08.0320] <jonco>
+liam_g: it looks like that should work.  could you pastebin the source and the error you're getting?
+
+[07:21:22.0749] <liam_g>
+I was wrong, it's not the constructor that's the problem, it's the .init() call from the PersistentRooted class.
+
+[07:22:37.0514] <liam_g>
+So if i call persistent.init(CX), i get the above error message.
+
+[07:22:58.0143] <liam_g>
+I'm assuming if i don't call init at all, I'll get a dynamic assertion.
+
+[07:23:30.0543] <liam_g>
+How should I initialise the vector?
+
+[07:32:49.0926] <davidj361>
+I'm seeing everything depreciated in esr68, what should I be using instead of (JS_EncodeStringToLatin1)[https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/public/CharacterEncoding.h#361]?
+
+[07:33:02.0363] <davidj361>
+ * I'm seeing everything depreciated in esr68, what should I be using instead of [JS\_EncodeStringToLatin1](https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/public/CharacterEncoding.h#361)?
+
+[07:34:41.0618] <liam_g>
+> <@lgoodacre:matrix.org> How should I initialise the vector?
+
+Actually, it seems to work fine without the init call. I guess init is for objects or something. Problem solved.
+
+[07:42:45.0250] <davidj361>
+> <@davidj361:matrix.org> I'm seeing everything depreciated in esr68, what should I be using instead of [JS\_EncodeStringToLatin1](https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/public/CharacterEncoding.h#361)?
+
+Because I assume this is how you get the C/C++ value out of a JSString. https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/cookbook.cpp#L900-L901
+yet it seems to be used depreciated functions
+
+[07:50:25.0632] <ptomato>
+I've had a similar question as well. the answer as far as I can tell is that there isn't yet anything to replace it
+
+[07:51:11.0080] <ptomato>
+I guess that means avoid using it to convert to a C string if you're just converting it back to a JSString, but if you need the C string then you don't really have another choice
+
+[07:55:58.0273] <davidj361>
+> <@davidj361:matrix.org> I'm seeing everything depreciated in esr68, what should I be using instead of [JS\_EncodeStringToLatin1](https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/public/CharacterEncoding.h#361)?
+
+ * Because I assume this is how you get the C/C++ value out of a JSString. https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/cookbook.cpp#L900-L901
+yet it seems to be using depreciated functions
+
+[08:00:13.0431] <evilpie>
+I wasn't aware that we deprecated `JS_EncodeStringToUTF8`. Just `Latin1`
+
+[08:01:16.0071] <jonco>
+liam_g: you don't need to call init() if you use the constructor that takes a context
+
+[08:02:48.0272] <evilpie>
+uh we did https://searchfox.org/mozilla-central/source/js/public/CharacterEncoding.h#366-382
+
+[08:27:08.0812] <jonco>
+sfink: do you have more comments about parallel marking?  I'd like to start landing patches
+
+[09:27:10.0163] <sfink>
+jonco: I'll do a final pass through now. I haven't found any problems so far.
+
+[09:27:39.0322] <jonco>
+great, cheers!
+
+
+2022-12-07
+[07:38:26.0153] <liam_g>
+Is it possible to set a JS::RootedVector as an argument to a JS Function, so that it can be accessed inside JavaScript? Or do I have to copy it to a Javascript array?
+
+[07:40:21.0408] <Ms2ger 💉💉💉>
+The latter
+
+[09:06:08.0475] <sfink>
+jonco: @allstarschh : meet now?
+
+[09:06:22.0020] <jonco>
+sfink: sure
+
+[09:06:38.0237] <@allstarschh>
+sfink: coming
+
+
+2022-12-08
+[13:59:06.0399] <kfjvj>
+If I call JS_ReportErrorASCII, does it erase any existing pending exception?
+
+[14:02:48.0771] <iain>
+kfjvj: Looks like it, yes
+
+[14:04:27.0666] <kfjvj>
+Here's an example of the use case I'm looking at:
+```
+if (!JS::MapGet(ctx, jsMapObj, JS::RootedValue(ctx, ToJs(ctx, item.first)), &val)) {
+            JS_ReportErrorASCII("Error with operation JS::MapGet");
+            return false;
+        }
+```
+
+Is there any way I can access both the error message reported here and also whatever was reported by the failure of JS::MapGet?
+
+[14:44:20.0894] <iain>
+confession: Just solved bug 1801794, which turned out to be a poorly written webpage that may or may not get stuck in an infinite loop on page load *depending on the width of your display*
+
+[14:44:24.0077] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:44:24.0886] <botzilla>
+https://bugzil.la/1801794 — NEW (nobody) — Js1k demo (https://js1k.com/2017-magic/demo/2900) doesnt complete loading, and slows down the whole browser
+
+[14:46:43.0206] <iain>
+kfjvj: https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#3696-3704
+
+[14:47:31.0080] <kfjvj>
+> <@iain:mozilla.org> kfjvj: https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#3696-3704
+
+That doesn't really answer my question
+
+[14:50:53.0942] <kfjvj>
+> <@iain:mozilla.org> kfjvj: https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#3696-3704
+
+ * That doesn't really answer my question.
+
+If an exception is created by the failure of JS::MapGet, will that error still be accessible after I call JS_ReportErrorASCII, or will it be overwritten?
+
+[15:01:26.0877] <iain>
+No, you should get the exception before calling JS_ReportErrorASCII.
+
+
+2022-12-09
+[16:14:17.0272] <tcampbell>
+sfink: [this](https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/testGCHeapBarriers.cpp#107) is the last use of I have of the AutoSuppressNurseryCellAlloc. I'm wondering if you have any good ideas how to get rid of it? For other cases we cared about strings which already had APIs to pass `gc::InitialHeap::TenuredHeap`, but we don't really have that for typed arrays.
+
+[16:16:03.0051] <tcampbell>
+The only TypedArray creation APIs seem to be going through JSAPI which avoids concept of gc::InitialHeap as well. I could just add an internal API to create a typedarray that takes an InitialHeap but wondering if there is something else that might work
+
+[16:19:29.0525] <tcampbell>
+I guess there are a few internal APIs already for JITs so maybe it isn't bad to add another one https://searchfox.org/mozilla-central/rev/9423bbd90c59ef7739c8453c265d04d8cf07ce73/js/src/vm/TypedArrayObject.h#167-175
+
+[16:33:44.0684] <tcampbell>
+I'll just add the one internal API with a gc::InitialHeap argument. It seems less sketchy than the nursery-suppress mechanism anyways and then I can remove a bunch of junk from string allocation paths
+
+[16:38:32.0286] <tcampbell>
+This lets me remove a bunch of mostly dead code from the string allocation code https://searchfox.org/mozilla-central/rev/9423bbd90c59ef7739c8453c265d04d8cf07ce73/js/src/gc/Allocator.cpp#205-212
+
+[16:44:20.0004] <tcampbell>
+There are so many layers from `substring` through the engine. Trying to finally untangle some of them.. 
+
+[07:09:15.0503] <jonco>
+sfink: here's the semispace bug I mentioned in the meeting on Wednesday, maybe something useful in there: bug 1008473
+
+[07:09:17.0234] <botzilla>
+https://bugzil.la/1008473 — RESOLVED (jonco) — Implement a two-generation nursery
+
+[09:12:45.0311] <sfink>
+jonco: I saw that, thanks. I'll take a look. Though I'm buried pretty deep in hazard-land at the moment.
+
+[09:13:51.0291] <sfink>
+tcampbell: I feel like we're slowing moving toward plumbing the heap parameter through everything. I'm not sure if that's a good thing or not. jonco ?
+
+[09:15:26.0511] <jonco>
+tcampbell: what do you mean?  probably not a good idea
+
+[09:16:35.0504] <jonco>
+oh you mean gc::InitialHeap?  I thought you meant passing references to Heap<T>.  Yeah, passing InitialHeap is fine as long as it doesn't muddy the APIs and we have something sensible to pass it
+
+[09:19:10.0822] <tcampbell>
+jonco: there is the patch https://phabricator.services.mozilla.com/D164301
+
+[09:24:37.0652] <jonco>
+I don't love passing the extra parameter through everywhere, but it's OK if we need to do this.
+
+[09:25:39.0735] <jonco>
+The test consumer of the API is there to help fuzzers find problems though.  It would be good to keep that I think.  sfink do you if JSString::fillWithRepresentatives actaully did catch anything?
+
+[09:26:01.0069] <jonco>
+ * The test consumer of the API is there to help fuzzers find problems though.  It would be good to keep that I think.  sfink do you know if JSString::fillWithRepresentatives actaully did catch anything?
+
+[09:26:04.0283] <sfink>
+heh, I was just contemplating that question in reviewing https://phabricator.services.mozilla.com/D164299
+
+[09:26:45.0185] <sfink>
+the quick answer to your question is that tcampbell is maintaining that API
+
+[09:27:02.0291] <sfink>
+I don't actually know whether it has caught anything
+
+[09:27:30.0761] <sfink>
+I know it was a little bit of a pain to add in the nursery stuff there
+
+[09:28:08.0371] <jonco>
+doesn't appear in any test cases, so I guess no
+
+[09:28:10.0329] <sfink>
+(I think I added the heap parameter to the string stuff later?)
+
+[09:28:27.0412] <jonco>
+most string creation APIs take InitialHeap already so perhaps could be written to use that
+
+[09:28:47.0710] <jonco>
+that would make sense
+
+[09:29:36.0420] <sfink>
+that's what the patch does
+
+[09:29:44.0994] <sfink>
+there are 2 jit-tests that use it
+
+[09:30:16.0984] <sfink>
+but no regression tests have appeared with it, which argues that it's not that important for fuzzing
+
+[09:31:05.0762] <jonco>
+I still think it's good to have some way of exposing these things to fuzzers
+
+[09:31:40.0660] <tcampbell>
+What I really want to figure out is if I can avoid JSDependentString::new_ from calling allocation with NoGC and then CanGC versions just to avoid a single root
+
+[09:33:47.0361] <tcampbell>
+oops.. that was definitely supposed to be TenuredHeap. I checked in my test-that-the-wrong-thing-fails-tests version instead :(
+
+[09:35:40.0222] <jonco>
+Yes it may be better just to root. People were very worried about regressing perf when adding rooting, however it was necessary to avoid roots in some places.
+
+[09:40:25.0172] <sfink>
+oh wow, bug 1804936 makes a good point.
+
+[09:40:26.0219] <botzilla>
+https://bugzil.la/1804936 — ASSIGNED (jonco) — ZoneData still exists even though we removed the concept of zone exclusive access
+
+[09:41:02.0112] <nbp>
+Renamed it to ZombieData then?
+
+[09:41:06.0685] <nbp>
+ * Rename it to ZombieData then?
+
+[09:46:03.0876] <jonco>
+off-thread parsing, the feature that can never die
+
+[09:48:39.0545] <tcampbell>
+so many vestiges left..
+
+[10:03:53.0617] <kfjvj>
+I have a question about the various JS_GetObjectAs***Array functions (https://searchfox.org/mozilla-esr68/source/js/src/jsfriendapi.h#1709)
+
+[10:05:04.0143] <kfjvj>
+The documentation isn't completely clear on exactly what it's checking.
+1) Does it check whether the object *is* of the specified type, or if it can be *viewed* as the specified type, and what's the difference?
+2) On success, is the parameter obj always returned directly, or is there sometimes a conversion?
+
+[10:21:44.0553] <sfink>
+yeah, the terminology is sloppy. There's no conversion. The only variation allowed is that they will unwrap cross-compartment wrappers. So you have to pass in either an object of exactly the right kind of typed array, or a cross-compartment wrapper to one.
+
+[11:55:46.0044] <tcampbell>
+woah.. removing the nogc call for strings and directly calling gc version is noticeably faster. I guess stuff really doesn't optimize away as well as we might want
+
+
+2022-12-11
+[03:32:51.0712] <gschwind>
+Hello, I would like to make a JS wrapper to C++ object, and I wonder if JSFunction has private data, as far as I undestand in JS Functions are Object thus in SpiderMonkey I guess JSFunction are some how JSObject. Do JSFunction have private stuff ?
+
+
+2022-12-12
+[04:05:14.0104] <jonco>
+tcampbell: Thanks for looking into this. It's good to know we can tidy the code and improve performance.
+
+[06:02:09.0201] <liam_g>
+I have a proxy object which I use to find properties using something like this:
+
+`````
+bool getOwnPropertyDescriptor(...MutableMaybePropertyDescriptor pd)
+{
+   pd.set(JS::PropertyDescriptor::Data(value);
+}
+`````
+
+I can access the properties, but they don't seem to be editable. So when I do something like `proxy.property = 3` in Javascript, the property doesn't get updated. Any ideas about why this might happen?
+
+[06:02:50.0369] <liam_g>
+I've tried playing around with the `PropertyAttributes` argument in the Data constructor, but it doesn't seem to help.
+
+[06:35:30.0100] <liam_g>
+Nevermind, it looks like it's a scope / envchain thing. Probably Javascript protecting me from myself. I'll find a way around using accessor functions.
+
+[11:26:19.0513] <kfjvj>
+What kind of value should I expect to be returned from JS::MapEntries?
+
+[11:31:44.0240] <iain>
+kfjvj: Looks like `rval` is set to a [MapIteratorObject](https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.h#243)
+
+[11:33:14.0175] <kfjvj>
+> <@iain:mozilla.org> kfjvj: Looks like `rval` is set to a [MapIteratorObject](https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.h#243)
+
+How can I use that within spidermonkey?
+
+[12:06:31.0423] <iain>
+kfjvj: It's an [iterator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_protocol) with a `next` method. If you call that method, it will return an object with a "done" property and a "value" property.
+
+[12:06:41.0977] <iain>
+It's much more ergonomic to work with it in JS than in C++
+
+[12:20:17.0770] <kfjvj>
+> <@iain:mozilla.org> kfjvj: It's an [iterator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_protocol) with a `next` method. If you call that method, it will return an object with a "done" property and a "value" property.
+
+Is there not an easier or more straightforward way to work with JS map objects in C++?  I really just need to iterate over the keys/values.
+
+[12:28:24.0313] <iain>
+There are [easier ways](https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.h#133), they just aren't exposed in the public API
+
+[12:29:50.0648] <iain>
+Map is mostly designed to be used from JS. If you want a C++-friendly hashtable, there's [GCHashMap](https://searchfox.org/mozilla-central/source/js/public/GCHashTable.h#60).
+
+[12:30:20.0137] <kfjvj>
+> <@iain:mozilla.org> Map is mostly designed to be used from JS. If you want a C++-friendly hashtable, there's [GCHashMap](https://searchfox.org/mozilla-central/source/js/public/GCHashTable.h#60).
+
+I'm working on converting between std::unordered_map and JS maps.
+
+[13:00:45.0416] <iain>
+kfjvj: I don't see any technical obstacle to a public function that returns a GCVector of the keys (or values) of a Map, similar to [SetObject::keys](https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.cpp#1341) with better error handling, but previous embedders never needed it
+
+[13:01:06.0717] <iain>
+Patches welcome 😀
+
+[13:01:24.0115] <kfjvj>
+> <@iain:mozilla.org> Patches welcome 😀
+
+I think I'll just go with the slightly more tedious option.
+
+[13:02:04.0916] <iain>
+(IIRC you are on an old, possibly unsupported ESR, which might also be an obstacle for landing a patch)
+
+
+2022-12-13
+[20:31:52.0975] <luyahan>
+```
+
+[20:32:05.0362] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+
+
+[20:34:05.0084] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+ I call putint to emit a instr. But putU32Aligned failed and return BufferOffset(). putInt don't emit a instr sucessly.  What i can do?
+
+[20:34:57.0915] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+
+I call putint to emit an instr. But putU32Aligned failed and return BufferOffset(). putInt doesn't emit successively an instr.  What I can do?
+
+[20:35:13.0794] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+
+I call putInt to emit an instr. But putU32Aligned failed and return BufferOffset(). putInt doesn't emit successively an instr.  What I can do?
+
+[20:35:46.0321] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+
+I call putInt to emit an instr. But putU32Aligned failed and return BufferOffset(). putInt doesn't emit successfully an instr.  What I can do?
+
+[21:20:19.0884] <luyahan>
+ * ```
+  BufferOffset putU32Aligned(uint32_t value) {
+    if (!ensureSpace(sizeof(value))) {
+      return BufferOffset();
+    }
+
+    BufferOffset ret = nextOffset();
+    tail->putU32Aligned(value);
+    return ret;
+  }
+```
+
+I call putInt to emit an instr. But putU32Aligned failed and return BufferOffset(). putInt doesn't emit successfully .  What I can do?
+
+[23:09:24.0027] <arai>
+luyahan: where do you call it?  is it the first instruction you're trying to emit, or are there any other successfully-emitted instructions before that?
+
+[23:28:25.0359] <luyahan>
+I call it on assembler. It's not first instr to emit. There are many instrs had been emitted before.
+
+[23:31:32.0474] <arai>
+the call can fail if memory allocation fails. does it sound possible in your case?
+
+[23:32:35.0285] <arai>
+such like, emitting too many  instructions (allocating too long buffer) compared to the memory space allowed for the process
+
+[23:36:22.0910] <luyahan>
+arai: In one case, it put it again such as 
+
+[23:37:10.0986] <luyahan>
+ * arai: In one case, it put it again such as
+```
+    auto offset = m_buffer.putInt(x);
+    if (!offset.assigned()) {
+      offset = m_buffer.putInt(x);
+    }
+    if (!offset.assigned()) {
+      MOZ_CRASH("can't put");
+    }
+```
+It work again.But there are ten cases failed.
+
+[23:37:20.0587] <luyahan>
+ * arai: In one case, I put it again such as
+
+```
+    auto offset = m_buffer.putInt(x);
+    if (!offset.assigned()) {
+      offset = m_buffer.putInt(x);
+    }
+    if (!offset.assigned()) {
+      MOZ_CRASH("can't put");
+    }
+```
+
+It work again.But there are ten cases failed.
+
+[23:38:16.0469] <arai>
+how are you testing? running existing testsuite, or some small testcase?
+
+[23:40:47.0853] <luyahan>
+I test it  on jit-tests, but I am porting sp to riscv64. so it 
+maybe only occurs riscv64
+
+[23:40:53.0646] <luyahan>
+ * I test it  on jit-tests, but I am porting sp to riscv64. so it 
+maybe only occurs on riscv64
+
+[23:41:35.0875] <arai>
+jit-tests contains OOM test, that checks if the program doesn't hit critical issue when memory allocation fails on certain point
+
+[23:41:47.0370] <arai>
+so, it's expected that allocation fails there
+
+[23:42:13.0691] <arai>
+which testcase fails?
+
+[23:42:28.0093] <arai>
+jit-test shows the path of the testcase that fails
+
+[23:42:39.0107] <arai>
+you can check if the file contains `oomTest`
+
+[23:42:56.0742] <luyahan>
+Ok thanks very muach
+
+[23:42:59.0473] <luyahan>
+ * Ok thanks very much
+
+[23:43:08.0831] <arai>
+if that's the case, the allocation failure is expected to happen there.  and what you need to do is, gracefully abort the JIT compilation
+
+[23:43:59.0073] <arai>
+ * if that's the case, the allocation failure is expected to happen there.  and what you need to do is, gracefully abort the JIT compilation if some operation such as putInt fails
+
+[23:46:38.0289] <luyahan>
+I also have a question about how to abort jit? I can't find any abort code in  about Emit func of arm64.
+
+[00:05:58.0102] <luyahan>
+I get it. Only process oom()
+
+[00:37:39.0065] <arai>
+basically, early return with propagating error to the caller
+
+[04:15:55.0982] <smaug>
+Does spidermonkey have an API for incremental parsing?
+
+[04:25:07.0289] <jandem>
+smaug: I don't think so, just off-thread parsing
+
+[07:44:18.0986] <jonco>
+Parallel marking has landed but is disabled by default.  If you want to try it out you can set javascript.options.mem.gc_parallel_marking to true in about:config.  Let me know (or file a bug) if you find any problems!
+
+[07:48:05.0831] <mccr8>
+Neat! I have enabled it.
+
+[07:54:08.0616] <jandem>
+very exciting :)
+
+
+2022-12-14
+[08:14:26.0483] <dheitbrink>
+I was asked a question by a JS dev.....is there some kind of general rule for what gets reported as warning vs an exception, i.e. what calls the handler set by JS::SetWarningReporter?
+
+[08:15:06.0911] <dheitbrink>
+ * I was asked a question by a JS dev.....is there some kind of general rule for what gets reported as warning vs an exception, i.e. what calls the handler set by JS::SetWarningReporter? Is there some kind of general rule I can give him.
+
+[08:17:53.0113] <jandem>
+dheitbrink: exceptions are mostly used for things that need to throw according to the spec.. Warnings are extra hints for things the engine might notice but that aren't specced as exceptions 
+
+[08:19:27.0183] <jandem>
+* dheitbrink: exceptions are mostly used for things that need to throw according to the spec.. Warnings are extra hints for "unusual" things the engine might notice but that aren't specced as exceptions 
+
+[08:20:26.0062] <jandem>
+* dheitbrink: exceptions are mostly used for things that need to throw according to the spec.. Warnings are extra hints for "unusual" things the engine might notice that aren't specced to throw an exception 
+
+[08:49:26.0938] <dheitbrink>
+A second question, is there a guide to what JS features are supported by SpiderMonkey 78? or a SpiderMonkey vs feature matrix somewhere?
+
+[08:51:20.0900] <iain>
+dheitbrink: MDN has a table for feature support for individual features (eg [RegExps](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp#browser_compatibility))
+
+[10:01:17.0922] <jonco>
+sfink: oh and can you review my remaining patches so I can get everything landed?
+
+[10:01:38.0064] <sfink>
+yes, doing that now
+
+[10:02:50.0763] <jonco>
+ah right, thanks :)
+
+[10:06:40.0685] <sfink>
+er, but maybe you can speed it up by telling me what's going on here. Why doesn't `instance->object()` need to be updated? Is it because it's a `WeakHeapPtr` and it'll get updated during sweeping?
+
+[10:09:58.0635] <sfink>
+jonco: ^
+
+[10:13:18.0296] <jonco>
+sfink: because slots already get updated by the GC, it doesn't need special logic in the trace hook
+
+[10:15:07.0036] <sfink>
+I don't follow. wasm::Instance::object_ is not a slot.
+
+[10:19:44.0696] <jonco>
+sorry, looking at the wrong patch
+
+[10:20:27.0986] <jonco>
+wasm::Instance::object_ is traced, by Instance::tracePrivate (in the wasm code tracePrivate seems to be the name for traceChildren)
+
+[10:22:08.0230] <jonco>
+it's no longer traced by random things that have a reference to the Instance, which now trace a pointer the to the WasmInstanceObject isntead
+
+[10:23:50.0564] <jonco>
+ * it's no longer traced by random things that have a reference to the Instance, which now trace a pointer the to the WasmInstanceObject instead
+
+[10:25:05.0732] <sfink>
+ok, I think I get it. My confusion wasn't really about your patch so much as the tracing scheme of when things should get traced. My understanding now is that various things might want to make it alive. If it *is* alive, it'll properly trace itself.
+
+[10:25:17.0176] <sfink>
+or its children, rather.
+
+[10:25:34.0431] <jonco>
+yeah the problem is that Instance isn't a GC thing itself (although it is associated with a JSObject)
+
+[10:25:41.0321] <sfink>
+right
+
+[10:26:27.0581] <sfink>
+anyway, r=me. Thanks.
+
+[10:26:35.0754] <jonco>
+great, thanks
+
+
+2022-12-15
+[00:53:27.0017] <luyahan>
+```
+  branchPtr(cond, Address(scratch, BaseShape::offsetOfClasp()), ImmPtr(clasp),
+            label);
+
+  if (JitOptions.spectreObjectMitigations) {
+    spectreZeroRegister(cond, scratch, spectreRegToZero);
+  }
+```
+I have question about this code. if cond id true, branchPtr will jump to label, don't run spectreZeroRegister. If false, spectreZeroRegister does't set spectreRegToZero into zero.
+Look like spectreZeroRegister  have no effect in this code, is right?
+
+[00:55:11.0948] <luyahan>
+ * ```
+  branchPtr(cond, Address(scratch, BaseShape::offsetOfClasp()), ImmPtr(clasp),
+            label);
+
+  if (JitOptions.spectreObjectMitigations) {
+    spectreZeroRegister(cond, scratch, spectreRegToZero);
+  }
+```
+
+I have a question about this code. if cond is true, branchPtr will jump to  label, don't run spectreZeroRegister. If false, spectreZeroRegister doesn't set spectreRegToZero to zero.
+Look like spectreZeroRegister have no effect in this code, right?
+
+[01:09:01.0576] <jandem>
+luyahan: yeah that's how the spectre mitigation works. It shouldn't have an effect on normal execution, but it does affect the speculative execution case when the branch is mispredicted
+
+[01:10:40.0466] <luyahan>
+thanks I get it.
+
+[01:18:19.0177] <jandem>
+ * luyahan: you're right and that's how the spectre mitigation works. It shouldn't have an effect on normal execution, but it does affect the speculative execution case when the branch is mispredicted by the CPU. By zeroing the register we use later with a conditional move, we stop the speculative execution path
+
+[02:20:31.0648] <dbezhetskov>
+do I understand right that we generate a dedicated stub for each vm function? https://searchfox.org/mozilla-central/source/js/src/jit/VMFunctions.cpp#446. Why don't we just generate a single stub with an additional parameter?
+
+[02:54:36.0877] <jandem>
+dbezhetskov: the code for a stub depends on the argument/return types
+
+[02:56:05.0354] <dbezhetskov>
+> <@jandem:mozilla.org> dbezhetskov: the code for a stub depends on the argument/return types
+
+aa, I see, thanks
+
+[02:58:11.0292] <jandem>
+dbezhetskov: (we've been thinking about potential future changes to inline the stub in certain cases because it does add some overhead..)
+
+[02:59:22.0658] <dbezhetskov>
+> <@jandem:mozilla.org> dbezhetskov: (we've been thinking about potential future changes to inline the stub in certain cases because it does add some overhead..)
+
+to be able to inline it do we need to rewrite it from Masm to Ion IR?
+
+[03:03:23.0640] <jandem>
+dbezhetskov: maybe manual inlining to generate similar masm code to what's now in the stub directly at the call site, without having to push the arguments on the stack first. For things like baseline interpreter or fallback stubs it would be nice to not have the extra stub layer
+
+[03:03:54.0992] <jandem>
+ * dbezhetskov: maybe manual inlining to generate similar masm code to what's now in the stub directly at the call site, without having to push the arguments on the stack first. For things like the baseline interpreter or fallback stubs it would be nice to not have the extra stub layer
+
+[04:16:33.0799] <evilpie>
+Modules support in Workers landed! 🎉
+
+[04:16:42.0411] <evilpie>
+kudos yulia 
+
+[05:27:10.0239] <padenot>
+evilpie: do you know if this includes worklets?
+
+[05:27:17.0022] <padenot>
+surely yulia knows
+
+[05:27:40.0556] <yulia>
+> <@padenot:mozilla.org> evilpie: do you know if this includes worklets?
+
+worklets are in progress! they shouldn't be too far off. @allstarschh is on it
+
+[05:27:52.0028] <padenot>
+that's amazing to hear
+
+[05:28:10.0475] <yulia>
+we should have all of our compat holes patched early next year, if nothing gets in the way
+
+[13:18:50.0701] <kfjvj>
+I was looking at the functions in js/Result.h, and I'm wondering where Results are used in JSAPI.  So far most JSAPI functions I've used just return bool.
+
+[13:58:11.0573] <kfjvj>
+Hi, I have a few questions about under which circumstances the functions JS_ValueToObject and JS_GetArrayLength actually return false.
+
+I was testing a macro I made, JS_TRY_BOOL, which records info and throws an exception on a failure of a JSAPI function.  But when I actually try to deliberately cause an error, it doesn't seem to work.
+
+Here's my sample code:
+
+```
+bool FromJs(JSContext* ctx, JS::HandleValue orig, ObjectString& outVal) {
+    JS::RootedObject obj(ctx);
+    uint32_t len = 0;
+    JS_TRY_BOOL(
+        JS_ValueToObject(ctx, orig, &obj)
+        && JS_GetArrayLength(ctx, obj, &len),
+        JsException(ctx) << err_fmt("Error converting to object."));
+    JS_TRY_BOOL(util::TryGetStdString(ctx, orig, outVal.str), JsException(ctx)
+        << err_fmt("Error converting to string."));
+    std::cout << "Got array length: " << len << std::endl;
+    return true;
+}
+```
+
+As a handle value I'm passing in a handle to the following:
+
+```
+JS::RootedValue rv(ctx(), JS::Int32Value(-1));
+```
+
+However, not only does it convert the value -1 to an object, JS_GetArrayLength also successfully executes and sets len to 0.
+
+On the other hand, if I pass JS::UndefinedHandleValue, it causes a segfault.
+
+How can I get these functions to just return false?
+
+[14:01:42.0008] <iain>
+Looks like JS_ValueToObject only fails on out-of-memory.
+
+[14:02:40.0777] <kfjvj>
+> <@iain:mozilla.org> Looks like JS_ValueToObject only fails on out-of-memory.
+
+Oh.  Otherwise, does it just cast to object?  I guess I'll make sure I use "isObject" to actually check.
+However, the array length thing doesn't make sense.  When does that thing fail?
+
+[14:03:56.0248] <iain>
+Oh, wait, I lied
+
+[14:04:20.0268] <iain>
+ToObject should throw for undefined and null
+
+[14:04:35.0515] <kfjvj>
+> <@iain:mozilla.org> ToObject should throw for undefined and null
+
+I tried undefined and got a segfault.
+
+[14:08:11.0129] <iain>
+What esr are you on?
+
+[14:08:26.0105] <kfjvj>
+> <@iain:mozilla.org> What esr are you on?
+
+68.9
+
+[14:08:37.0999] <kfjvj>
+We're kind of stuck with c++14, so we have to use it
+
+[14:09:28.0974] <iain>
+Oh, nvm, the thing I was looking at is the same in Nightly, too, I was just looking in the wrong place
+
+[14:09:33.0227] <iain>
+Your problem is here: supportsIndices
+
+[14:09:43.0658] <iain>
+ * Your problem is here: https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#310-312
+
+[14:10:49.0462] <iain>
+You successfully converted 'undefined' to a nullptr object, and then tried to dereference it
+
+[14:12:05.0445] <kfjvj>
+Either way, shouldn't a null pointer just cause the function to fail instead of crashing?
+
+[14:12:56.0003] <iain>
+JS_GetArrayLength does not expect a nullptr argument
+
+[14:13:02.0094] <iain>
+You're responsible for checking that yourself
+
+[14:13:39.0433] <kfjvj>
+Oh.  Is there a distinction between a c++ null pointer and a JS "null" value?
+
+[14:14:08.0503] <iain>
+Yes
+
+[14:16:33.0631] <iain>
+NullValue() is a 64-bit double whose bit pattern represents a NaN, with a particular arrangement of bits in the NaN payload
+
+[14:17:33.0793] <iain>
+ValueToObject is storing a pointer to an object via an out-parameter (the mutable handle to your RootedObject), and then returning a boolean to indicate whether it succeeded
+
+[14:18:17.0229] <iain>
+It did succeed, but the pointer it stored was null, because that's the most reasonable output
+
+[14:18:24.0233] <kfjvj>
+I guess I'm wondering under which conditions it fails
+
+[14:19:13.0846] <iain>
+It fails if you try to convert a non-null, non-undefined, non-object value to an object, in which case we have to allocate a special NumberObject / StringObject / BigIntObject / whatever to represent it
+
+[14:19:21.0534] <iain>
+And that allocation can fail if we run out of memory
+
+[14:19:36.0200] <kfjvj>
+OK
+
+[14:19:46.0935] <iain>
+A lot of "fallible" functions in SM are only fallible because we handle OOM
+
+[14:19:56.0856] <kfjvj>
+what is OOM?
+
+[14:19:59.0947] <kfjvj>
+out of memory, OK
+
+[14:20:01.0097] <iain>
+out of memory
+
+
+2022-12-16
+[09:20:11.0672] <kfjvj>
+Regarding what iain said yesterday, that many of the API functions fail only if OOM, do these failures set the pending exception in JS?
+
+[09:29:16.0532] <jonco>
+kfjvj: yes, OOM sets the pending exception
+
+[11:39:21.0654] <kfjvj>
+> <@jonco:mozilla.org> kfjvj: yes, OOM sets the pending exception
+
+Is there a particular type of object that's set as the exception?  Are there tags or something to indicate the particular error type?
+
+[11:57:20.0284] <iain>
+OOM throws the string "out of memory"
+
+[11:58:14.0007] <iain>
+ * OOM [throws](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#285) the string "out of memory"
+
+[13:47:06.0055] <kfjvj>
+I'm a little unclear on the distinction between GetPendingExceptionStack and ExceptionStackOrNull.  Can someone clarify that?
+
+[14:16:19.0163] <iain>
+You can throw any value you want in JS (eg `throw 3`). GetPendingExceptionStack returns the pending exception, if there is one, and may have an associated [SavedFrame](https://searchfox.org/mozilla-central/source/js/src/vm/SavedFrame.h#20) object. ExceptionStackOrNull takes an ErrorObject, which is thrown by the engine in a variety of cases, and extracts the `stack` property from that object if it is present.
+
+[14:17:09.0000] <iain>
+For example, I believe you could use GetPendingExceptionStack to get the current exception from the engine, and then if it is an ErrorObject, get the stack from that object using ExceptionStackOrNull
+
+[14:17:49.0395] <kfjvj>
+So, even if it's not an ErrorObject, it would still have a relevant stack trace?
+
+[14:18:57.0008] <iain>
+Sorry, should reword: ExceptionStackOrNull takes an arbitrary object and will return its stack property if it's a known error class (ErrorObject or WasmExceptionObject), and null otherwise
+
+[14:19:31.0846] <iain>
+Any arbitrary exception might have a stack trace via GetPendingExceptionStack
+
+[14:19:56.0338] <iain>
+Only ErrorObject and WasmExceptionObject will return anything for ExceptionStackOrNull
+
+[14:21:24.0958] <iain>
+ * Any arbitrary exception might have a SavedFrame object via GetPendingExceptionStack
+
+[14:22:30.0023] <kfjvj>
+OK, I see.  So in a case like "throw 3", GetPendingExceptionStack would possibly give a saved frame?
+
+[14:25:50.0514] <iain>
+I haven't gone and checked, but my expectation is that exceptions thrown from JS will ~always have a saved frame, and the cases where we don't have one are when we are throwing an exception ourselves from C++
+
+[14:27:19.0906] <kfjvj>
+OK.  Thanks for the help
+
+[14:28:32.0040] <iain>
+Ah, here's what actually decides whether there's a saved frame: https://searchfox.org/mozilla-central/source/js/src/vm/Realm.cpp#537-569
+
+[14:30:16.0291] <iain>
+In [some cases](https://searchfox.org/mozilla-central/search?q=symbol:E_%3CT_js%3A%3AShouldCaptureStack%3E_Always&redirect=false) we'll always capture, and in other cases we'll skip capturing stacks for user code if the console isn't open and too many exceptions have already been thrown
+
+[14:30:47.0147] <kfjvj>
+Another thing I noticed.  I'm working with version 68.9, and I'm looking at the function JS::CreateError, and I see that the newer versions have a 'cause' parameter, but my version doesn't.  Is there a way to add the cause to the error object in this version?
+
+[14:31:27.0523] <iain>
+Oh, the bit that I just linked might have been added after esr68
+
+[14:32:29.0141] <iain>
+Error.cause is an [addition to the language](https://github.com/tc39/proposal-error-cause) that happened after esr68, so I would be very surprised if there were a way to do it in esr68
+
+[14:32:54.0492] <kfjvj>
+Dang heck.  I really have to see what my team can do about updating
+
+[14:33:08.0400] <kfjvj>
+thx again
+
+
+2022-12-19
+[01:27:15.0367] <arai>
+when and where is the consumer of wasm's `CompileArgs` and `FeatureArgs` ?  I'm looking into bug 1805856 and wondering what the best way to decouple `JSContext` from the asm.js compilation
+
+[01:27:16.0924] <botzilla>
+https://bugzil.la/1805856 — NEW (nobody) — Copy wasm-related options to CompileOptions and avoid accessing JSContext during compilation
+
+[01:27:34.0675] <arai>
+if the compilation happens off-main-thread, is the consumer also in the off-thread?
+
+[01:30:09.0851] <arai>
+current issue is that `CompileArgs` and `FeatureArgs` are constructed from `JSContext` during asm.js compilation.  we're going to remove `JSContext` dependency from frontend.  so, if the information is necessary during asm.js compilation, we need to copy all necessary information from `JSContext` to `CompileOptions` or somewhere before starting compilation
+
+[01:31:50.0042] <arai>
+if the consumption of the information can be deferred until runtime (on main thread), that would also work
+
+[03:32:52.0960] <yulia>
+one thing that came up in discussion with devtools -- they wanted to use defineESModuleGetters on workers, but mozJSComponentLoader isn't threadsafe
+
+[03:33:13.0821] <yulia>
+they still need the lazy loading behavior it looks like, do we have blockers to making mozJSComponentLoader threadsafe?
+
+[07:03:57.0729] <jonco>
+would this work in the same way as on the main thread, i.e. load the module into a shared global associated with the worker's runtime?
+
+[07:45:42.0085] <yulia>
+Yes
+
+[07:47:54.0074] <jonco>
+what happens when they try and use defineESModuleGetters?
+
+[07:48:24.0042] <jonco>
+oh mozJSModuleLoader::ObjectForLocation asserts NS_IsMainThread() - but that's also used for JSM loading
+
+[08:00:25.0850] <tcampbell>
+WASM features like SIMD are completely unavailable to asm.js, right?
+
+[08:11:55.0932] <Aditi>
+Hi! 
+So, we were planning on working on writing tests for ResizableArrayBuffers, and I was wondering what is the shipping status of ResizableArrayBuffer in SM, so we could prioritise writing/porting tests for it accordingly! 
+Thanks :)
+
+[08:25:27.0283] <yulia>
+> <@asingh:igalia.com> Hi! 
+> So, we were planning on working on writing tests for ResizableArrayBuffers, and I was wondering what is the shipping status of ResizableArrayBuffer in SM, so we could prioritise writing/porting tests for it accordingly! 
+> Thanks :)
+
+hi, are you working on the test262 tests? We have this slated for next year, so the implementation isn't in SM yet
+
+[08:25:39.0938] <yulia>
+however if this is for test262 we have a harness that translates tests for us
+
+[08:25:58.0045] <yulia>
+You can run it via test262-update.py
+
+[08:26:13.0797] <yulia>
+ * You can run it via test262-update.py (https://searchfox.org/mozilla-central/source/js/src/tests/test262-update.py)
+
+[08:26:40.0224] <yulia>
+ * if this is for test262 we have a harness that translates tests for us, that may make things easier.
+
+[08:26:51.0104] <yulia>
+ * if this is for test262 we have a script that translates tests for us, that may make things easier.
+
+[08:27:05.0777] <Aditi>
+> <@yulia:mozilla.org> hi, are you working on the test262 tests? We have this slated for next year, so the implementation isn't in SM yet
+
+Yes, I am working on test262 tests! And I was asking about the implementation! 
+
+[08:27:48.0208] <yulia>
+Ok, in this case, you don't need to worry about porting the tests right now. let me know if you have any other questions regarding this
+
+[08:28:37.0873] <Aditi>
+None for now, thank you! :)
+
+[08:36:20.0340] <yulia>
+> <@jonco:mozilla.org> what happens when they try and use defineESModuleGetters?
+
+i should have posted this to esmification... but yes they are getting a "is not thread safe" error
+
+[08:36:35.0864] <yulia>
+I'm not quite sure why it works with jsms
+
+[11:03:08.0261] <kfjvj>
+Would someone please explain what JS::ExceptionStackBehavior::Capture/DoNotCapture does?
+
+[11:07:24.0642] <iain>
+kfjvj: `Capture` will attempt to capture a stack trace when setting the pending exception. `DoNotCapture` will not. See [here](https://searchfox.org/mozilla-central/source/js/public/Exception.h#22-29) and [here](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#1164-1178).
+
+[11:08:13.0564] <kfjvj>
+> <@iain:mozilla.org> kfjvj: `Capture` will attempt to capture a stack trace when setting the pending exception. `DoNotCapture` will not. See [here](https://searchfox.org/mozilla-central/source/js/public/Exception.h#22-29) and [here](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#1164-1178).
+
+OK, so it just enables you to retrieve the stack later.  I'm guessing the stack would be null if DoNotCapture is used.
+
+[11:15:33.0462] <iain>
+Yeah, looks like it
+
+[13:35:24.0378] <iain>
+sfink: Are you working this week?
+
+[13:35:48.0492] <sfink>
+This week, yes. Today, no.
+
+[13:45:03.0996] <iain>
+Mind if I send you a small stack of irregexp update patches? My regular irregexp reviewer is out until the new year
+
+[13:48:16.0655] <sfink>
+yes, sure
+
+
+2022-12-20
+[03:36:15.0700] <gsvelto>
+Can someone help me understand [this error](https://treeherder.mozilla.org/logviewer?job_id=400218512&repo=try&lineNumber=97616) in the spidermonkey-sm-package-linux64/opt task? It seems that the folder that I've added in my commit is not being picked up and I don't know why
+
+[04:09:02.0568] <jandem>
+gsvelto: did you add the new directory to [this file](https://searchfox.org/mozilla-central/rev/abcee8d2c97a5c8a1fbeaf84607ea427be72497a/js/src/make-source-package.py#112)?
+
+[04:10:14.0450] <jandem>
+(we create a standalone package by copying all files we need for a SM build, and then try to build that)
+
+[04:37:29.0826] <gsvelto>
+jandem: no I didn't, but I suspected my folder was missing from a list somewhere... thanks for pointing me in the right direction!
+
+[09:21:20.0096] <gschwind>
+Hello, theire is no more JS::GetPrivate ? I have to use private slot and PrivateValue ?
+
+[10:00:56.0570] <arai>
+gschwind: it's replaced with reserved slot https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/b80c70cbe36bc648c272caa511d29ec7c85f5fdd/docs/Migration%20Guide.md#esr-91-to-esr-102
+
+
+2022-12-21
+[01:20:53.0414] <gschwind>
+arai: Thanks :)
+
+[01:56:30.0427] <gschwind>
+When I use JS_InitClass does ps, fs, static_ps and static_fs are copied or I should keep then alive ?
+
+[02:05:56.0036] <jandem|pto>
+gschwind: I think they're only used by `JS_InitClass` to define properties on the object(s) and not used after the call returns. We typically use statically-allocated constant arrays for fs/ps though (similar to JSClass), but I don't think we depend on this atm
+
+[02:10:21.0134] <gschwind>
+jandem|pto: Ok thanks, thus they are more convenient way to avoid to call JS_DefineFunction or JS_DefineProperty
+
+[02:14:22.0005] <jandem|pto>
+gschwind: yeah. You can also use ps/fs with `JS_DefineProperties` or `JS_DefineFunctions`
+
+[02:43:00.0078] <gschwind>
+If I understand correctly when a JSAPI function return false it also call JS_SetPendingException ?
+
+[02:54:21.0645] <arai>
+if the API receives `JSContext*`, in most case it sets pending exception
+
+[02:55:16.0303] <arai>
+there might be some exceptions, but such function should have a comment above the declaration
+
+[03:05:36.0940] <Ms2ger 💉💉💉>
+"some exceptions", huh. I see what you did there
+
+[08:09:30.0298] <gschwind>
+Can I have something like WeakRooted ? I would like to keep reference to an object that I may use sometime but avoiding global lookup every time
+
+[08:15:55.0598] <gschwind>
+As far as I understand Rooted<T> prevent the GC to move the object around or deleted, is it bad if I keep an object Rooted forever ?
+
+[08:35:36.0712] <sfink>
+gschwind: the only problem would be that you'd need it to be on the stack the whole time, and that could be annoying depending on how you structure your program. But yes, that would be totally fine for an object you never want to delete.
+
+[08:37:04.0754] <sfink>
+(and if the structure *is* a problem, then you can always use `PersistentRooted` instead. For things that you never want to die, you need to root them somehow, and both `Rooted` and `PersistentRooted` will serve that purpose.)
+
+[08:53:08.0518] <gschwind>
+sfink: My use case is that I want create js class and I want to keep the constructor until destruction of the runtime. Basically can I allocate it on Heap and keep it ? I also do not need that the constructor is available from global, even if user can reach it using Object.getPrototypeOf.
+
+[08:57:35.0477] <gschwind>
+When I says constructor I mean the JSObject that handle the JSFunction Constructor
+
+[08:57:43.0155] <sfink>
+yes, `Rooted` or `PersistentRooted` would work fine for that.
+
+[08:59:41.0547] <sfink>
+sometimes people will have several things like that, and will instead use a callback to trigger a `trace` function of some sort to be called that will go through and trace it all. But these days, the easiest way to register that callback is to use a `PersistentRooted<YourStruct>` so that it will call `YourStruct::trace()`.
+
+[09:00:15.0034] <sfink>
+but that's really no different than just having a bunch of `PersistentRooted<JSObject*>`s lying around somewhere.
+
+[09:01:27.0742] <gschwind>
+ok, In the document of PersistentRooted they write that "Note that you must not use an PersistentRooted in an object owned by a JS object". But in my case JSFunction construtor is held by JSFunction.prototype.constructor and JSFunction.prototype will be held by instance of those class. thus I'am puzzled
+
+[09:03:39.0366] <gschwind>
+It's seems that I falling into the exclusion case
+
+[09:03:43.0542] <sfink>
+I need to fix that wording somehow.
+
+[09:04:28.0285] <sfink>
+it's meant to say that if you use a `PersistentRooted` in an object owned by a JS object, then you will create a permanent memory leak. Or rather, one that will last until the runtime is shutdown. But that's what you want anyway.
+
+[09:05:00.0994] <sfink>
+You may need to reset or null out the `PersistentRooted` before shutting down the runtime. I can't remember if those are scanned or not during a shutdown GC.
+
+[09:05:43.0128] <sfink>
+But it will assert if it wants it and you don't do it, so you can test (with a DEBUG build).
+
+[09:09:21.0898] <gschwind>
+I will try to use PersistentRooted and see what happen :D
+
+[09:10:07.0281] <sfink>
+actually, it explains it pretty well in the next 2 paragraphs, so I can probably just change it to "Note that you must not use an PersistentRooted in an object owned by a JS object, unless you are ok with keeping the entire object graph reachable from the PersistentRooted alive until shutdown, regardless of the liveness of the owning JS object."
+
+[09:10:35.0640] <sfink>
+though that's still complicated enough to be confusing
+
+[09:12:49.0615] <gschwind>
+I think I understood you last wording, All object reachable from the the PersistentRooted will stay alive, and this make sence
+
+[09:14:15.0305] <sfink>
+the usual problem people run into is that the object that owns the PersistentRooted will be reachable from the PersistentRooted, thus creating an uncollectable cycle. And usually that's because the owning object is reachable from the global. (And the global is almost always reachable from just about anything.)
+
+[09:18:19.0017] <gschwind>
+mm this case is bad, how an object can be linked to the global object ?
+
+[09:19:15.0721] <gschwind>
+I mean other than behin connectect manually, such as o.g = this
+
+[09:19:19.0890] <sfink>
+if your constructor is available via `new MyConstructorName()`, then it's available somehow.
+
+[09:19:28.0609] <sfink>
+probaly as a property on the global
+
+[09:19:33.0954] <sfink>
+ * probably as a property on the global
+
+[09:19:42.0792] <gschwind>
+yes but the oposite is not true ?
+
+[09:19:48.0708] <sfink>
+ * if your constructor is available via `new MyConstructorName()`, then it's reachable somehow.
+
+[09:20:17.0208] <sfink>
+oh
+
+[09:21:03.0211] <gschwind>
+MyConstructorName.any.path can never reach global ?
+
+[09:21:31.0128] <gschwind>
+as far you take care to not bind it my mistake
+
+[09:21:44.0879] <gschwind>
+ * as far as you take care to not bind it my mistake
+
+[09:22:01.0173] <gschwind>
+ * as far as you take care to not bind it by mistake
+
+[09:22:03.0061] <sfink>
+I think there are internal links. In the shell if I do `findPath({}, this)` (so find a path from an object literal to the global), it gives {} -> "group" -> "group_global" -> global
+
+[09:22:18.0424] <sfink>
+I'm looking to see what those ar.
+
+[09:22:21.0229] <sfink>
+ * I'm looking to see what those are.
+
+[09:23:34.0247] <gschwind>
+So I need to break this kind of link
+
+[09:24:35.0401] <sfink>
+I don't think it'll be possible to prevent the global from being reachable. There are internal things like the object's Shape (hidden class) that I believe has a reference to the global.
+
+[09:25:12.0358] <sfink>
+you didn't want the global to live until shutdown?
+
+[09:25:30.0152] <gschwind>
+I'm fine with it :)
+
+[09:26:14.0063] <sfink>
+then I think you're ok
+
+[09:28:31.0375] <gschwind>
+It was more about curriosity, why object are always linked to globals
+
+[09:28:52.0394] <sfink>
+ah, ok
+
+[09:29:22.0923] <gschwind>
+I did not expected that
+
+[09:30:27.0541] <sfink>
+the usual one I think of is something like obj -> Shape -> BaseShape -> realm -> global. Though that last edge is weak, so that's probably not a great example.
+
+[09:35:03.0491] <sfink>
+though looking at [the code](https://searchfox.org/mozilla-central/rev/cef96316b3643720769dec96542604c3209f1877/js/src/gc/TraceMethods-inl.h#304-306), it doesn't look very weak to me.
+
+[09:36:35.0085] <sfink>
+`js  -e 'print(JSON.stringify(findPath({}, this)))'` is giving me obj -> shape -> base -> baseshape_global -> global_window_proxy. You can ignore the global_window_proxy part.
+
+[09:37:10.0174] <sfink>
+I haven't played with `findPath` much, it's pretty neat.
+
+[09:38:54.0376] <sfink>
+it also shows that I should make the shell's `performance` object non-enumerable
+
+[09:39:35.0173] <gschwind>
+^^ Thanks for you help
+
+
+2022-12-23
+[05:42:52.0463] <gschwind>
+Hello, in the spidermonkey-embedding-examples/cookbook the JS_NewObjectForConstructor and JS_InitClass use the same JSClass data as input but it's seems unrelated. My understanding is that JSClass is used to spesify some properties of the created object for both function and are unrelated
+
+[05:42:58.0922] <gschwind>
+is it correct ?
+
+[05:46:14.0303] <arai>
+`JS_InitClass` creates the constructor and prototype objects for given object.  `JS_NewObjectForConstructor` creates `this` object that can be used inside the constructor of given class
+
+[05:46:24.0531] <arai>
+ * `JS_InitClass` creates the constructor and prototype objects for given class.  `JS_NewObjectForConstructor` creates `this` object that can be used inside the constructor of given class
+
+[05:58:29.0227] <gschwind>
+Yes, but they both use JSClass struct as input, and within the exemple the code use the same JSClass, but I'm not sure that they should be the same, I guess not. For exemple if I use JSCLASS_HAS_RESERVED_SLOTS(10) with JS_InitClass I get 10 reserved slot for the created class object, but it does not mean that I will get 10 reserved slot if I call JS_NewObjectForConstructor from the constructor created above
+
+[05:59:27.0201] <gschwind>
+I may use JSCLASS_HAS_RESERVED_SLOTS(1) in the call JS_NewObjectForConstructor to get an object instance with only one available slot
+
+[06:00:22.0014] <gschwind>
+They are both unrelated even if within the exemple they use both the same JSClass
+
+[06:02:55.0457] <gschwind>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/b80c70cbe36bc648c272caa511d29ec7c85f5fdd/examples/cookbook.cpp#L800-L840
+
+[06:04:13.0725] <gschwind>
+another question the JSClass.name get copied or must be statically allocated ?
+
+[06:09:33.0405] <evilpie>
+> <@gschwind:matrix.org> Yes, but they both use JSClass struct as input, and within the exemple the code use the same JSClass, but I'm not sure that they should be the same, I guess not. For exemple if I use JSCLASS_HAS_RESERVED_SLOTS(10) with JS_InitClass I get 10 reserved slot for the created class object, but it does not mean that I will get 10 reserved slot if I call JS_NewObjectForConstructor from the constructor created above
+
+pretty sure it does mean you will get an object with 10 reserved slots from `JS_NewObjectForConstructor`
+
+[06:09:48.0774] <evilpie>
+> <@gschwind:matrix.org> another question the JSClass.name get copied or must be statically allocated ?
+
+JSClass and all its members really should be static
+
+[06:18:14.0628] <gschwind>
+evilpie:  thank does not look obvious
+
+[08:13:05.0116] <gschwind>
+evilpie: after deep investigation, it's seems that they are unrelated, within both call the JSClass point end up in the function NewObject (https://searchfox.org/mozilla-central/source/js/src/vm/JSObject.cpp#737) In the case of JS_InitClass the JSClass pointer is used to create an object that will be bound to prototype property of the Class object and in the case of JS_NewObjectForConstructor it is used to create the instance object.
+
+[08:16:10.0977] <gschwind>
+also it' seems that JSClass pointer value is used as some kind of key, thus it seems that it's better to have it static
+
+[08:34:23.0841] <gschwind>
+And it seems stored as it is (somehow) and the content isn't copied thus it should be kept forever
+
+[08:34:52.0617] <gschwind>
+This is what I did understood :)
+
+[08:35:23.0343] <gschwind>
+I will see how I can contribute to the exemple to explicit this
+
+
+2022-12-26
+[08:24:47.0053] <liam_g>
+Is it possible to use `class X extends Y` where Y is a JS Proxy? I have a Proxy which I'm defining through `PROXY_CLASS_DEF("Y"...)`, but when I run the script `class Y extends Y`, it says "Y not found". I'm not sure whether this is because I haven't loaded it properly, or because the whole idea of having a class extending a proxy is wrong.
+
+
+2022-12-27
+[10:04:47.0220] <sfink>
+liam_g: I don't know, but I wouldn't expect the "Y" name to automatically be added as a property of the global object, which is what would be required for `class X extends Y` or just `new Y` to work. I think the "Y" name is the name of the proxy class, probably used for error messages or toString or similar. `PROXY_CLASS_DEF` creates a `JSClass`, not a JS language-visible class. You would need some sort of object (a constructor object, I guess?) that uses that as its `JSClass`.
+
+
+2022-12-29
+[03:27:17.0326] <liam_g>
+What exactly does `js::Wrapper::Renew()` do?
+
+[03:27:40.0726] <liam_g>
+Or rather, how is it supposed to be used?
+
+[03:30:10.0550] <liam_g>
+I've been trying to create a PersistentRootedObject which holds a `jsWrapper` and then "renew", to save on the cost of constructing it every time. But it doesn't seem to be working.
+
+[06:02:39.0756] <jandem|pto>
+you probably don't want to use `Wrapper::Renew`. It's used to remap wrappers and this is all very complicated
+
+[06:03:33.0369] <jandem|pto>
+if your code is creating too many wrappers, you probably want to look into realms sharing a compartment to avoid cross-compartment wrapper overhead
+
+[06:06:01.0009] <jandem|pto>
+ * if your code is creating too many wrappers, you should look into allocating realms in the same compartment to avoid cross-compartment wrapper overhead
+

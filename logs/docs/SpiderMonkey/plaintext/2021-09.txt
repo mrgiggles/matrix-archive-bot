@@ -1,0 +1,3847 @@
+2021-09-01
+[18:06:52.0765] <Redfire>
+I *think* I have gotten a microtask queue implementation, but I'm not sure how exactly I'm supposed to implement promises 🤔
+
+[20:51:09.0420] <ewlsh>
+Redfire: if you job queue can run jobs, promises should work
+
+[20:51:38.0592] <ewlsh>
+* Redfire: if your job queue can run jobs, promises should work
+
+[00:13:04.0667] <Redfire>
+I assume I can just do `async` and `await` to try that out then? 
+
+[00:13:48.0248] <Redfire>
+* I assume I can just do `async` and `await` to try that out then? 
+
+[01:12:40.0507] <wuwei>
+Is the spidermonkey mailing list gone?
+
+[01:14:33.0526] <wuwei>
+(I've set up two mac mini (x86, M1) for spidermonkey CI. Not sure where to report the status when the build fails.)
+
+[01:17:07.0966] <wuwei>
+BTW, The RISC-V International has opened a mentorship for spidermonkey porting, and now we have two interns working on porting spidermonkey to RV64GC. the status report would be here: https://docs.google.com/document/d/1gFeZbhdSy6FpndINcrg0DlaqvpwjAYo3as8pzLmKjWE/edit?usp=sharing . and weekly sync meeting can be found here: Wei Wu - PLCT Lab is inviting you to a scheduled Zoom meeting.
+Topic: Weekly Sync for Spidermonkey RISC-V Porting
+Time: Sep 6, 2021 03:30 PM Singapore
+        Every week on Mon, 12 occurrence(s)
+        Sep 6, 2021 03:30 PM
+        Sep 13, 2021 03:30 PM
+        Sep 20, 2021 03:30 PM
+        Sep 27, 2021 03:30 PM
+        Oct 4, 2021 03:30 PM
+        Oct 11, 2021 03:30 PM
+        Oct 18, 2021 03:30 PM
+        Oct 25, 2021 03:30 PM
+        Nov 1, 2021 03:30 PM
+        Nov 8, 2021 03:30 PM
+        Nov 15, 2021 03:30 PM
+        Nov 22, 2021 03:30 PM
+Please download and import the following iCalendar (.ics) files to your calendar system.
+Weekly: https://us02web.zoom.us/meeting/tZwrc-mrrjIqHdI31HSBKUm_K378SADbZlLs/ics?icsToken=98tyKuGgqD8qGdScsB6BRpw-BI-gc-nziFhfgqd0z07NMAJ4Vw7JHbEVaoFeNNrq
+Join Zoom Meeting
+https://us02web.zoom.us/j/88640309076?pwd=RS9QTjBvaTFvZUZ1TVVCSGdFWnV5QT09
+Meeting ID: 886 4030 9076
+Passcode: 992291
+
+[01:20:23.0202] <wuwei>
+Feel free to comment and joining the meeting! (I am the mentor of this mentorship. But (confession) I am working as sysadmin and CI/CD guys nowadays, and not familiar with the codebase now. The interns and I will ask for help here when we met difficult puzzles :)
+
+[05:00:22.0205] <yulia>
+@wuwei we have moved to discord I believe : https://discourse.mozilla.org/c/spidermonkey/551
+
+[05:00:49.0669] <yulia>
+ * @wuwei we have moved to discorse I believe : https://discourse.mozilla.org/c/spidermonkey/551
+
+[05:00:54.0471] <yulia>
+ * @wuwei we have moved to discourse I believe : https://discourse.mozilla.org/c/spidermonkey/551
+
+[10:00:46.0935] <Redfire>
+And... assertion failure on Runtime.cpp:573, which asserts for `cx->jobQueue`
+
+[10:31:11.0373] <Redfire>
+My Code: <https://gist.github.com/Redfire75369/c3701bf5e6fa58acdb58a34887f6acb1>
+
+
+2021-09-02
+[02:08:26.0881] <Redfire>
+Stacktrace:
+```rs
+JSRuntime::getIncumbentGlobal(JSContext *) Runtime.cpp:573
+js::GetObjectFromIncumbentGlobal(JSContext *,MutableHandle<JSObject *>) JSObject.cpp:1828
+NewReactionRecord(JSContext *,Handle<PromiseCapability>,Handle<JS::Value>,Handle<JS::Value>,IncumbentGlobalObject) Promise.cpp:4211
+InternalAwait<`lambda at C:/Users/Afzal/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/de147f0/mozjs/js/src/builtin/Promise.cpp:4559:16'>(JSContext *,Handle<JS::Value>,Handle<JSObject *>,PromiseHandler,PromiseHandler,<unnamed-tag>) Promise.cpp:4542
+js::AsyncFunctionAwait(JSContext *,Handle<js::AsyncFunctionGeneratorObject *>,Handle<JS::Value>) Promise.cpp:4562
+Interpret(JSContext *,js::RunState &) Interpreter.cpp:3754
+js::RunScript(JSContext *,js::RunState &) Interpreter.cpp:405
+js::ExecuteKernel(JSContext *,Handle<JSScript *>,Handle<JSObject *>,Handle<JS::Value>,AbstractFramePtr,MutableHandle<JS::Value>) Interpreter.cpp:772
+js::Execute(JSContext *,Handle<JSScript *>,Handle<JSObject *>,MutableHandle<JS::Value>) Interpreter.cpp:804
+ExecuteScript(JSContext *,Handle<JSObject *>,Handle<JSScript *>,MutableHandle<JS::Value>) CompilationAndEvaluation.cpp:442
+JS_ExecuteScript(JSContext *,Handle<JSScript *>,MutableHandle<JS::Value>) CompilationAndEvaluation.cpp:459
+ion::script::IonScript::evaluate(mozjs_sys::generated::root::JSContext *) script.rs:48
+ion::script::IonScript::compile_and_evaluate(str,str) script.rs:60
+cli::evaluate::eval_inline(mozjs::rust::Runtime *,str) evaluate.rs:21
+cli::commands::repl::start_repl() repl.rs:51
+cli::main() main.rs:73
+core::ops::function::FnOnce::call_once<fn(),tuple<>>(void (*)()) function.rs:227
+std::sys_common::backtrace::__rust_begin_short_backtrace<fn(),tuple<>>(void (*)()) backtrace.rs:125
+std::rt::lang_start::{{closure}}<tuple<>>(std::rt::lang_start::closure-0 *) rt.rs:49
+std::rt::lang_start_internal() rt.rs:34
+std::rt::lang_start<tuple<>>(void (*)(),long long,unsigned char **) rt.rs:48
+main 0x00007ff6b5454006
+__scrt_common_main_seh() 0x00007ff6b6ee27d4
+BaseThreadInitThunk 0x00007ffee4e07c24
+RtlUserThreadStart 0x00007ffee640d721
+```
+
+[02:22:01.0614] <evilpie>
+Redfire: did you set-up a job queue during initialization? 
+
+[02:23:20.0235] <Redfire>
+Oh wait, 🤦I didn't setup the job queue on the repl (which was where I was testing it)
+
+[02:23:42.0034] <Redfire>
+Let me try that again....
+
+[05:19:57.0064] <Redfire>
+Ok, now I'm really confused
+```rs
+Assertion failure: (asBits_ & detail::ValueGCThingPayloadMask) != 0, at C:/Users/[REDACTED]/Software/spiderfire/target/debug/build/mozjs_sys-0ae23950f3bb0ff4/out/build/dist/include\js/Value.h:780
+Exception: Exception 0x80000003 encountered at address 0x7ff709c84fc9
+```
+```rs
+JS::Value::toObject() Value.h:780
+js::ContextChecks::check(const JS::Value &,int) JSContext-inl.h:131
+JSContext::checkImpl<JS::Handle<JS::Value>,JS::Handle<JS::Value>,JS::HandleValueArray>(const JS::Handle<JS::Value> &,const JS::Handle<JS::Value> &,const JS::HandleValueArray &) JSContext-inl.h:206
+JSContext::check<JS::Handle<JS::Value>,JS::Handle<JS::Value>,JS::HandleValueArray>(const JS::Handle<JS::Value> &,const JS::Handle<JS::Value> &,const JS::HandleValueArray &) JSContext-inl.h:213
+JS::Call(JSContext *,Handle<JS::Value>,Handle<JS::Value>,const JS::HandleValueArray &,MutableHandle<JS::Value>) jsapi.cpp:2849
+runtime::job_queue::MicrotaskQueue::run_jobs(mozjs_sys::generated::root::JSContext *) job_queue.rs:65
+runtime::job_queue::MicrotaskQueue::enqueue_task(mozjs_sys::generated::root::JSContext *,Microtask,IonObject) job_queue.rs:34
+runtime::job_queue::enqueue_promise_job(core::ffi::c_void *,mozjs_sys::generated::root::JSContext *,Handle<mut mozjs_sys::generated::root::JSObject*>,Handle<mut mozjs_sys::generated::root::JSObject*>,Handle<mut mozjs_sys::generated::root::JSObject*>,Handle<mut mozjs_sys::generated::root::JSObject*>) job_queue.rs:102
+RustJobQueue::enqueuePromiseJob(JSContext *,Handle<JSObject *>,Handle<JSObject *>,Handle<JSObject *>,Handle<JSObject *>) jsglue.cpp:66
+JSRuntime::enqueuePromiseJob(JSContext *,Handle<JSFunction *>,Handle<JSObject *>,Handle<js::GlobalObject *>) Runtime.cpp:609
+EnqueuePromiseReactionJob(JSContext *,Handle<JSObject *>,Handle<JS::Value>,PromiseState) Promise.cpp:1260
+PerformPromiseThenWithReaction(JSContext *,Handle<js::PromiseObject *>,Handle<PromiseReactionRecord *>) Promise.cpp:5376
+InternalAwait<`lambda at C:/Users/Afzal/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/de147f0/mozjs/js/src/builtin/Promise.cpp:4559:16'>(JSContext *,Handle<JS::Value>,Handle<JSObject *>,PromiseHandler,PromiseHandler,<unnamed-tag>) Promise.cpp:4549
+js::AsyncFunctionAwait(JSContext *,Handle<js::AsyncFunctionGeneratorObject *>,Handle<JS::Value>) Promise.cpp:4562
+Interpret(JSContext *,js::RunState &) Interpreter.cpp:3754
+js::RunScript(JSContext *,js::RunState &) Interpreter.cpp:405
+js::ExecuteKernel(JSContext *,Handle<JSScript *>,Handle<JSObject *>,Handle<JS::Value>,AbstractFramePtr,MutableHandle<JS::Value>) Interpreter.cpp:772
+js::Execute(JSContext *,Handle<JSScript *>,Handle<JSObject *>,MutableHandle<JS::Value>) Interpreter.cpp:804
+ExecuteScript(JSContext *,Handle<JSObject *>,Handle<JSScript *>,MutableHandle<JS::Value>) CompilationAndEvaluation.cpp:442
+JS_ExecuteScript(JSContext *,Handle<JSScript *>,MutableHandle<JS::Value>) CompilationAndEvaluation.cpp:459
+ion::script::IonScript::evaluate(mozjs_sys::generated::root::JSContext *) script.rs:48
+ion::script::IonScript::compile_and_evaluate(str,str) script.rs:60
+cli::evaluate::eval_inline(mozjs::rust::Runtime *,str) evaluate.rs:21
+cli::commands::repl::start_repl() repl.rs:53
+cli::main() main.rs:73
+core::ops::function::FnOnce::call_once<fn(),tuple<>>(void (*)()) function.rs:227
+std::sys_common::backtrace::__rust_begin_short_backtrace<fn(),tuple<>>(void (*)()) backtrace.rs:125
+std::rt::lang_start::{{closure}}<tuple<>>(std::rt::lang_start::closure-0 *) rt.rs:49
+std::rt::lang_start_internal() rt.rs:34
+std::rt::lang_start<tuple<>>(void (*)(),long long,unsigned char **) rt.rs:48
+main 0x00007ff709ba4006
+__scrt_common_main_seh() 0x00007ff70b632df4
+BaseThreadInitThunk 0x00007ffee4e07c24
+RtlUserThreadStart 0x00007ffee640d721
+```
+
+[05:24:21.0760] <Redfire>
+On ```js::ContextChecks::check(const JS::Value &,int) JSContext-inl.h:131```, `argIndex=1` which should be `fval`?
+
+[05:35:53.0531] <arai>
+Redfire: it sounds like the function is null?
+
+[05:36:04.0216] <arai>
+can you check the value of the job ?
+
+[05:36:44.0486] <Redfire>
+So it is 🤔
+
+[05:37:09.0850] <Redfire>
+Do I just check and make sure the function isn't null?
+
+[05:51:18.0254] <arai>
+given it's calling `toObject()`, it means it matches `isObject()`
+
+[05:51:31.0628] <arai>
+and object value cannot be null
+
+[05:52:14.0287] <arai>
+null value is different thing than "object value with null"
+
+[05:52:41.0201] <arai>
+so, I guess the callee value is constructed in wrong way
+
+[05:54:15.0932] <Redfire>
+Am I supposed to be using the `promise` or `job` parameter on `EnqueuePromiseJob`
+
+[05:54:48.0443] <arai>
+job parameter
+
+[05:55:00.0804] <arai>
+job is a function that is supposed to be called by embedding
+
+[05:55:37.0894] <Redfire>
+Oh, I was using `promise`. 😅
+What's `promise` supposed to be used for then?
+
+[05:57:51.0580] <arai>
+only as a hint for the job
+
+[05:57:57.0878] <arai>
+https://searchfox.org/mozilla-central/rev/49b6e60550243b4b4d71d6ab35a3ff2b9a9f7c69/xpcom/base/CycleCollectedJSContext.cpp#187-193
+
+[05:58:24.0068] <arai>
+in Gecko, it's used for event handling
+
+[05:58:49.0808] <arai>
+whether the promise is part of user's input, that allows some API, such as opening popup etc
+
+[05:59:24.0378] <arai>
+ * whether the promise is created inside the callback of user's input, that allows some API, such as opening popup etc
+
+[06:01:25.0140] <Redfire>
+I definitely read servo's implementation wrong, they used `job` too. 
+
+[06:02:19.0863] <Redfire>
+In unrelated-ish news, I have this code because FFI... Pointer Casting in rust
+```rs
+let queue = &*(extra as *const MicrotaskQueue);
+```
+
+[06:02:42.0826] <Redfire>
+ * In unrelated-ish news, I have this code because FFI... Pointer Casting in rust (`extra` is `*const c_void`)
+```rs
+let queue = &*(extra as *const MicrotaskQueue);
+```
+
+[06:24:48.0962] <arai>
+ * whether the promise is created inside the callback of user's input, that allows some API
+
+[06:33:59.0398] <Redfire>
+Does anyone remember which SM version top-level await was added in? 
+
+
+[06:43:08.0518] <Ms2ger 💉💉>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1519100 says 63
+
+[06:43:23.0359] <Ms2ger 💉💉>
+*85
+
+[06:43:29.0787] <Ms2ger 💉💉>
+/me looked in the wrong place
+
+[06:43:51.0524] <Ms2ger 💉💉>
+Back in my day, we were at 3.7!
+
+[06:43:56.0605] <Ms2ger 💉💉>
+/me shakes fist at cloud
+
+[07:37:53.0009] <iain>
+TLA was implemented in 85, but only turned on by default in 89 (bug 1681046)
+
+[07:37:55.0576] <botzilla>
+https://bugzil.la/1681046 — RESOLVED (ystartsev) — Enable Top Level Await
+
+[12:27:51.0597] <chaircrusher>
+Hey how about this one: we're currently embedding JS60 and it apparently REQUIRES python2 and our sysadmins have removed it from our build systems.
+
+[12:28:19.0757] <chaircrusher>
+I started looking at trying to fix the dependency but it's all tangled up in a mess of configure nonsense. 
+
+[12:37:41.0111] <tcampbell>
+are you using `./configure` or `mach build`?
+
+[12:39:45.0275] <chaircrusher>
+I used configure for JS60 but that depends on both an out-of-date version of autoconf (that I build as a prerequisite) and also python2
+
+[12:39:52.0425] <tcampbell>
+Bug 1699753 seems to be the metabgu for removing this
+
+[12:39:53.0755] <botzilla>
+https://bugzil.la/1699753 — NEW (nobody) — [meta] Unsupport Python 2 in mozilla-central
+
+[12:40:34.0923] <tcampbell>
+the out-of-date autoconf is some "fun" historical artifact where they changed how the m4 integration work. I think it is 20 years old
+
+[12:40:53.0559] <chaircrusher>
+So I bit the bullet & tried to use these instructions https://firefox-source-docs.mozilla.org/setup/linux_build.html#building-firefox-on-linux
+
+[12:40:59.0836] <tcampbell>
+ * Bug 1699753 seems to be the metabgu for py2 removal
+
+[12:41:15.0597] <chaircrusher>
+and even then it requires python2 if I try and use --vcs=git
+
+[12:41:31.0291] <tcampbell>
+on latest version, or 60?
+
+[12:41:57.0686] <chaircrusher>
+I started from these instructions https://firefox-source-docs.mozilla.org/js/build.html
+
+[12:41:58.0614] <tcampbell>
+(ugh.. python 2 -> 3 is what.. 15 years now?)
+
+[12:42:27.0128] <chaircrusher>
+well JS60 requires it, and that's the last Spidermonkey version we've verified.
+
+[12:43:11.0926] <chaircrusher>
+it was certainly less than 15 years ago that building Spidermonkey for embedding required python2
+
+[12:43:33.0299] <tcampbell>
+oh I mean the python ecosystem timeline
+
+[12:43:39.0569] <chaircrusher>
+sure
+
+[12:44:11.0482] <tcampbell>
+(py 3.0  was released 2008 it looks like)
+
+[12:44:54.0906] <tcampbell>
+I do not remember if those `mach build` steps work in esr-60 or not
+
+[12:44:56.0225] <tcampbell>
+hmm
+
+[12:46:38.0732] <chaircrusher>
+I don't even really know (or have been able to find out) what the current LTS version is we should be building against
+
+[12:47:34.0377] <tcampbell>
+https://whattrainisitnow.com/ Current is 78, upcoming is 91
+
+[12:48:49.0824] <chaircrusher>
+So I would endure the pain of updating to 78 or 98  if I knew how to get those versions.
+
+[12:49:25.0423] <tcampbell>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md#getting-the-source-code
+
+[12:49:43.0493] <tcampbell>
+firefox tarballs are best bet. They are versioned and signed.
+
+[12:51:38.0960] <chaircrusher>
+and FYI the git-cinnebar version that you get if you try and follow the instructions to use git instead of mercurial also requires python27
+
+[12:51:46.0803] <tcampbell>
+you can try use the spidermonkey monkey only bundles, but those have to be pulled directly off CI. I recommend the firefox bundle though, because the extra 200MB download or whatever probably makes up for headaches
+
+[12:52:03.0197] <tcampbell>
+> <@chaircrusher:mozilla.org> and FYI the git-cinnebar version that you get if you try and follow the instructions to use git instead of mercurial also requires python27
+
+ugh, good to know. I'll try to file that
+
+[12:53:36.0629] <tcampbell>
+https://github.com/glandium/git-cinnabar#experimental-support-for-python-3x seems to be how to use python3 for cinnabar right now
+
+[13:11:24.0584] <chaircrusher>
+oh joy
+
+[13:12:05.0907] <chaircrusher>
+following esr78 embedding instructions and it works down to error: failed to parse manifest at `/home/develop/spidermonkey/firefox-78.1.0/Cargo.toml`
+
+
+[13:12:13.0889] <chaircrusher>
+```error: failed to parse manifest at `/home/develop/spidermonkey/firefox-78.1.0/Cargo.toml`
+```
+
+[13:14:11.0537] <chaircrusher>
+/home/kwilliams/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo rustc  --manifest-path /home/develop/spidermonkey/firefox-78.1.0/js/src/rust/Cargo.toml -vv --lib --target=x86_64-unknown-linux-gnu  -- 
+error: failed to parse manifest at `/home/develop/spidermonkey/firefox-78.1.0/Cargo.toml`
+
+Caused by:
+  dependency (nix) specification is ambiguous. Only one of `branch`, `tag` or `rev` is allowed.
+
+
+[13:16:15.0761] <ptomato>
+I have gotten that error as well, but it was later fixed. I'd recommend using firefox-78.10.0 or whatever the latest is
+
+[13:17:24.0758] <chaircrusher>
+I'm using the instructions here: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md 
+
+That downloads firefox-78.1.0.xz
+
+[13:17:58.0630] <tcampbell>
+I don't think we updated for point releases
+
+[13:18:23.0491] <ptomato>
+I guess this is the latest? https://ftp.mozilla.org/pub/firefox/releases/78.13.0esr/source/
+
+[13:18:27.0745] <tcampbell>
+ESR gets a minor point release about once a month with security fixes
+
+[13:19:05.0285] <ptomato>
+but yes, it would be prohibitive in maintenance cost to bump that link every month 😛
+
+[13:19:59.0222] <chaircrusher>
+I'm beginning to wonder who else is embedding spidermonkey
+
+[13:21:48.0372] <evilpie>
+Can't we suggest people use https://github.com/mozilla/gecko-dev/tree/esr78, that seems like the easiest solution?
+
+[13:21:56.0528] <tcampbell>
+A few of them are https://discourse.mozilla.org/t/survey-where-are-you-embedding-spidermonkey/77988
+
+[13:22:44.0150] <tcampbell>
+evilpie only problem is it isn't clear what a release is and what is staged
+
+[13:23:32.0724] <tcampbell>
+If you want a canonical version number, the ftp is versioned, signed, and tracked by release management
+
+[13:23:46.0680] <chaircrusher>
+firefox-78.13.0 seems to be building at least
+
+[13:24:49.0910] <tcampbell>
+So I prefer the ftp from a release integrity perspective
+
+[13:26:36.0773] <chaircrusher>
+I should reply on that survey chain
+
+[13:26:45.0917] <evilpie>
+really quite annoying that latest-esr doesn't work
+
+[13:29:23.0087] <tcampbell>
+I think for scripting, I've tried using the publish task (beetmover) to identify the release
+
+[13:35:21.0140] <evilpie>
+https://product-details.mozilla.org/1.0/firefox_versions.json can be used to get the version and then you can manually construct the archive.mozilla.org URL
+
+[13:42:28.0634] <chaircrusher>
+https://discourse.mozilla.org/t/survey-where-are-you-embedding-spidermonkey/77988/12?u=kent_williams
+
+[13:43:00.0428] <tcampbell>
+evilpie: that is pretty useful, thanks
+
+[13:43:06.0930] <chaircrusher>
+I suspect our company (Leepfrog) was a very early adopter of SpiderMonkey because it goes back to the last millenium
+
+[13:45:18.0245] <tcampbell>
+Cool. A few on the list are "spidermonkey was the only thing around when we started". Communications dropped off over the years and we are slowly trying improve things
+
+[13:45:57.0732] <chaircrusher>
+LOL The C++ compiler commands.  I DON'T THINK THERE ARE ENOUGH COMMAND LINE FLAGS.
+
+
+[13:48:11.0528] <chaircrusher>
+we currently support RHEL7 & RHEL8 and the stock compiler on RHEL7 doesn't support C++17
+
+[13:50:47.0785] <tcampbell>
+On Windows people occasionally use a different compiler for spidermonkey vs their application. In that case they compile spidermonkey first and then use the .dll + public headers to load it into their application
+
+[13:55:28.0234] <chaircrusher>
+/home/develop/spidermonkey/firefox-78.13.0/js/src/util/Text.h:246:12: error: no member named
+      'ConvertLatin1toUtf16' in namespace 'mozilla'
+  mozilla::ConvertLatin1toUtf16(mozilla::MakeSpan(src, srclen),
+  ~~~~~~~~~^
+/home/develop/spidermonkey/firefox-78.13.0/js/src/util/Text.h:252:12: error: no member named
+      'ConvertLatin1toUtf16' in namespace 'mozilla'
+  mozilla::ConvertLatin1toUtf16(
+  ~~~~~~~~~^
+
+[13:55:55.0565] <chaircrusher>
+that happens if I add --disable-shared-js
+
+[13:57:33.0273] <tcampbell>
+some discussion [here](https://bugzilla.mozilla.org/show_bug.cgi?id=1588340) though I'm not familiar with the history
+
+[14:00:04.0676] <tcampbell>
+I guess I usually use .dll/.do when playing with embedding stuff because that seems to be what most questsions I get are for
+
+[14:06:32.0871] <chaircrusher>
+checking to see if this fixes it https://hg.mozilla.org/integration/autoland/rev/4e8fe724a8f2
+
+[14:09:28.0884] <chaircrusher>
+I think that does it.
+
+[14:09:38.0065] <tcampbell>
+oh great
+
+[14:09:43.0271] <tcampbell>
+ * great
+
+[14:10:10.0110] <chaircrusher>
+since I already patch SpiderMonkey - for our own junk - it doesn't hurt to add that I guess.
+
+[14:11:06.0718] <chaircrusher>
+LOL the fan spins up on my workstation building SpiderMonkey -j8 and it never does otherwise.
+
+[14:11:51.0058] <tcampbell>
+I build on 28 cores and fans still spin up
+
+
+2021-09-03
+[21:49:45.0097] <Redfire>
+> TLA was implemented in 85, but only turned on by default in 89 (bug 1681046)
+
+Well, that's an oof, `rust-mozjs` has been stuck on 87 for a while due to some difficulties upgrading spidermonkey in servo
+
+[21:49:48.0382] <botzilla>
+https://bugzil.la/1681046 — RESOLVED (ystartsev) — Enable Top Level Await
+
+[21:50:43.0289] <Redfire>
+Specifically this one: https://github.com/servo/servo/pull/28449
+
+[21:51:12.0005] <Redfire>
+ * > TLA was implemented in 85, but only turned on by default in 89 (bug 1681046)
+
+Well, that's an oof, `rust-mozjs` has been stuck on 88 for a while due to some difficulties upgrading spidermonkey in servo
+
+[00:09:16.0139] <ewlsh>
+Redfire: it looks like they just haven't updated their code for the TLA changes to the promises API
+
+[00:09:39.0831] <ewlsh>
+You can look at GJS' mozjs91 MR if you want to get a sense of how to adjust API usage + handle dynamics
+
+[02:05:12.0493] <Redfire>
+I assume that MR is this? https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/632
+
+[02:09:02.0342] <Redfire>
+More specifically, this looks like the commit: https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/632/diffs?commit_id=e4ed245f13a703968b7e2f5acadc36a54452e22a
+
+[06:08:14.0959] <Redfire>
+What's the difference between `GetScriptedCallerGlobal` and `CurrentGlobalOrNull`? 
+
+[06:10:17.0366] <Redfire>
+> <@tcampbell:mozilla.org> I build on 28 cores and fans still spin up
+
+*looks at me building on 2 wimpy cores*
+
+[07:45:28.0129] <arai>
+Redfire: `GetScriptedCallerGlobal` returns the innermost user's script's global, that skips self-hosted script's global and any `JSAutoRealm` / `JS::EnterRealm` calls to change the current global.  `CurrentGlobalOrNull` just returns current global, that can also be latter 2
+
+[08:32:19.0584] <sagu>
+emilio: Please check https://servo.zulipchat.com/#narrow/stream/263398-general/topic/Spidermonkey.20upgrade
+
+[08:53:27.0437] <emilio>
+sagu: the bindgen asserts are right (the offsets come directly from clang)
+
+[08:53:41.0500] <emilio>
+sagu: It's just that bindgen can do the base-class packing optimizations that clang / c++ does
+
+[08:53:48.0073] <emilio>
+ * sagu: It's just that bindgen can do the base-class packing optimizations that clang / gcc do
+
+[08:54:29.0259] <emilio>
+sagu: It's https://github.com/rust-lang/rust-bindgen/issues/380#issuecomment-270871223
+
+[12:07:17.0483] <chaircrusher>
+> <@mdashti:mozilla.org> Hi, I want to upgrade the SpiderMonkey embedded into MongoDB. It's been using `60.3.0esr` and I want to upgrade to `91.0b7`. Is there any tutorial on how to embed a recent version of SpiderMonkey to another project? I found this: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/next/docs/Building%20SpiderMonkey.md, which suggests:
+> 
+> ```
+> cd js/src
+> mkdir _build
+> cd _build
+> ../configure --disable-jemalloc --with-system-zlib \
+>     --with-intl-api --enable-debug --enable-optimize
+> make
+> make install  # sudo if necessary
+> ```
+> 
+> However, there's no `configure` in `js/src`. If I do a `autoconf`, I get this error:
+> ```
+> autoconf                                         ubuntu@ip-10-122-9-106 04:22:22
+> ../../build/autoconf/hooks.m4:6: error: defn: undefined macro: AC_INIT_PREPARE
+> ../../build/autoconf/hooks.m4:6: the top level
+> autom4te: /usr/bin/m4 failed with exit status: 1
+> 
+> ```
+> 
+> As far as I see, using `configure` is not the suggested way of compiling SpiderMonkey (suggested in https://firefox-source-docs.mozilla.org/js/build.html).
+> 
+> Now, I'm stuck and would appreciate any help or suggestion.
+
+mdashti: You need an older version of autoconf for the configure to work
+
+[12:08:25.0120] <chaircrusher>
+mdashti:  We build autoconf-2.13 just to fix this issue.
+
+[12:09:01.0781] <chaircrusher>
+#
+# old version of autoconf required by SpiderMonkey JS
+ExternalProject_Add(autoconf213
+  URL "http://ftp.gnu.org/gnu/autoconf/autoconf-2.13.tar.gz"
+  SOURCE_DIR autoconf
+  BUILD_IN_SOURCE 1
+  INSTALL_DIR ${DEPENDENCIES_INSTALL}
+  CMAKE_COMMAND ${CMAKE_COMMAND}
+  CONFIGURE_COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR>
+  BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} -C <SOURCE_DIR>
+  INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} -C <SOURCE_DIR> install
+)
+
+
+[12:59:29.0055] <chaircrusher>
+ * chaircrusher: chaircrusher mdashti: You need an older version of autoconf for the configure to work
+
+[13:22:55.0132] <mgaudet>
+confession: Passing ReadableStream.tee tests now
+
+[13:22:57.0511] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:48:42.0025] <chaircrusher>
+Looking at building ESR78 - what's up with the Unified_cpp_js_src_* files?  It looks like it tries to grab a bunch of source files and then compile batches of them as a single compilation unit.
+
+[13:51:22.0539] <evilpie>
+chaircrusher: that is exactly what it does
+
+[13:57:36.0840] <chaircrusher>
+So to build esr78, there are two conflicting sets of instructions
+
+[13:57:43.0918] <chaircrusher>
+one uses configure & make
+
+[13:57:48.0725] <chaircrusher>
+one uses mach
+
+[13:58:10.0706] <chaircrusher>
+can I use mach with esr78? Is there an advantage to doing it that way?
+
+[14:03:56.0622] <chaircrusher>
+hint - don't do make -j32 with ESR78 - all those unified source files are so big they can exhaust memory & trigger massive swapping
+
+[14:05:54.0963] <chaircrusher>
+completely tied up my workstation to where i couldn't ssh in.
+
+[14:16:15.0653] <ewlsh>
+Redfire: yes, assuming the code was correct previously. Also we'll be working on TLA in a separate MR, so that MR just preserves the no-TLA behavior (there are two APIs now)
+
+
+2021-09-04
+[23:38:31.0029] <sagu>
+emilio: Tnx, https://github.com/sagudev/mozjs/commit/fac8536d44538c2cf2ded3d4eedfd6e0314a20b6 solved the issue.
+
+[23:46:36.0786] <Redfire>
+When using `JS_ReportErrorUTF8`, is there an "error number"?
+Error Number meaning the kind you pass to `JS_ReportErrorNumberUTF8`
+
+[23:46:46.0593] <Redfire>
+ * When using `JS_ReportErrorUTF8`, is there an "error number"?
+Error number meaning the kind you pass to `JS_ReportErrorNumberUTF8`
+
+[23:47:32.0509] <emilio>
+> <@sagu:mozilla.org> emilio: Tnx, https://github.com/sagudev/mozjs/commit/fac8536d44538c2cf2ded3d4eedfd6e0314a20b6 solved the issue.
+
+Moving the pointer in TransitiveCompileOptions to the end would be a simpler approach than packing 
+
+[23:47:52.0749] <emilio>
+But sure, that should work
+
+[00:28:40.0072] <arai>
+Redfire: no. error number is used to specify pre-defined error
+
+[00:29:17.0005] <arai>
+and API that receives the error message itself doesn't use error number 
+
+[00:29:37.0798] <arai>
+* Redfire: no. error number is used to specify pre-defined error message and type
+
+[00:57:23.0258] <Redfire>
+thanks, that makes this error handling signficantly easier too 😅
+
+[01:33:26.0524] <sagu>
+> <@emilio:mozilla.org> Moving the pointer in TransitiveCompileOptions to the end would be a simpler approach than packing
+
+There are multiple pointers. I imagine that only one needed to be at the end. But I think that `__attribute__ ((__packed__))` has more clear intention.
+
+[01:33:52.0242] <sagu>
+> <@emilio:mozilla.org> Moving the pointer in TransitiveCompileOptions to the end would be a simpler approach than packing
+
+ * There are multiple pointers. I imagine that only one needed to be at the end. Although I think that `__attribute__ ((__packed__))` has more clear intention.
+
+[01:41:52.0097] <emilio>
+Either way. Packing may make some field accesses slower I guess, but I don't have a sense of how common those are
+
+[01:42:30.0806] <emilio>
+sagu in any case I'd try to upstream the change to mozilla-central, perhaps, so that you don't have to maintain extra patches
+
+[01:47:37.0542] <sagu>
+Will do.
+
+[04:35:43.0872] <sagu>
+emilio: Does mozilla-central provides rust bindings for mfbt. I am interested in mozilla::Maybe as it is used by  JS_GetPropertyDescriptor and friends
+
+[06:04:53.0823] <emilio>
+> <@sagu:mozilla.org> emilio: Does mozilla-central provides rust bindings for mfbt. I am interested in mozilla::Maybe as it is used by  JS_GetPropertyDescriptor and friends
+
+I don't think so. Maybe<> is pretty hard to represent correctly in rust because of the different optimizations / specializations
+
+[06:06:26.0694] <sagu>
+Currently only Maybe<PropertyDescriptor> is used.
+
+[06:07:19.0262] <sagu>
+So I am wondering if is possible to write only for this specialization?
+
+[06:08:13.0874] <sagu>
+Or should I just write alias function that does converting in place?
+
+[06:21:49.0371] <emilio>
+@sagu If PropertyDescriptor is easily copyable, I'd make a wrapper function taking const PropertyDescriptor*
+
+[06:26:25.0227] <sagu>
+all of the time function are taking Handles or MutableHandles, so should I take Handles also in wrapper? 
+
+
+2021-09-06
+[01:17:50.0947] <stratan>
+Hello there! Seems that https://firefox-source-docs.mozilla.org/js/MIR-optimizations/index is broken :) 
+
+[01:20:18.0891] <jandem>
+hm that should be https://firefox-source-docs.mozilla.org/js/MIR-optimizations/
+
+[01:21:06.0828] <stratan>
+Thank you! 
+
+[01:26:27.0975] <jandem>
+I filed bug 1729261
+
+[01:26:29.0443] <botzilla>
+https://bugzil.la/1729261 — ASSIGNED (jandem) — Link to MIR Optimizations page is broken
+
+[03:27:16.0848] <dbezhetskov>
+Hi, can't build the SM master branch after recent rebase: : `ld.lld: error: undefined hidden symbol: js::wasm::BaseCompiler::createStackMap(char const*)`. does anybody know what it is?
+
+[03:30:28.0578] <jandem>
+dbezhetskov: have you tried deleting your obj dir? it sometimes helps with weird build issues
+
+[03:33:44.0117] <dbezhetskov>
+> <@jandem:mozilla.org> dbezhetskov: have you tried deleting your obj dir? it sometimes helps with weird build issues
+
+aah, full reconfiguration helped
+
+[04:32:48.0009] <jandem>
+(mach-based builds handle this better than configure/make builds)
+
+[05:47:17.0647] <TheQwertiest>
+hey everyone!
+
+I've found a thing called "structured cloning" (https://developer.mozilla.org/en-US/docs/Web/API/structuredClone) and I was wondering:
+- is it available via SM? I.e. can I expose and use it somehow in SM embedding?
+- is it possible to extend it with custom native JS objects?
+
+[05:51:59.0616] <arai>
+TheQwertiest: https://searchfox.org/mozilla-central/source/js/public/StructuredClone.h
+
+[05:52:34.0587] <TheQwertiest>
+arai: haha, your Google skills are better than mine, thanks :)
+
+[05:53:40.0820] <arai>
+I'm not sure about applying it onto custom native object
+
+[06:23:01.0396] <TheQwertiest>
+arai: darn, it seems that it's impossible to do so: https://searchfox.org/mozilla-central/source/js/src/vm/StructuredClone.cpp#2090
+
+[06:24:11.0992] <evilpie>
+it's possible but probably not easy https://searchfox.org/mozilla-central/rev/fdcee847713a33b5e2b4175bb3c72d4aa2215515/js/src/vm/StructuredClone.cpp#1869
+
+[06:24:48.0334] <TheQwertiest>
+evilpie: it won't reach there though, because of the Builtin check
+
+[06:25:15.0882] <evilpie>
+nah it will, startWrite is called at beginning of write
+
+[06:28:31.0187] <Ms2ger 💉💉>
+Depends on what "custom native JS objects" means, I think
+
+[06:48:57.0963] <TheQwertiest>
+> <@ms2ger:igalia.com> Depends on what "custom native JS objects" means, I think
+
+well a JS object that is defined in C++ with it's own JSClass, JSFunctionSpec, JSPropertySpec and has some native data stored inside as well
+
+[06:50:34.0466] <Ms2ger 💉💉>
+I mean - I know there's some place where the DOM is slotted into this code
+
+[06:50:54.0381] <Ms2ger 💉💉>
+If your code quacks enough like the DOM, that could be an option
+
+[06:51:04.0181] <TheQwertiest>
+PS: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples is still on ESR78 branch
+
+[06:51:45.0173] <TheQwertiest>
+> If your code quacks enough like the DOM, that could be an option
+
+what's the suitanle quack for that? :)
+
+[06:51:52.0587] <TheQwertiest>
+ * > If your code quacks enough like the DOM, that could be an option
+
+what's the suitable quack for that? :)
+
+[06:58:08.0264] <Ms2ger 💉💉>
+Maybe start looking around https://searchfox.org/mozilla-central/search?q=symbol:_ZN7mozilla3dom21StructuredCloneHolder10sCallbacksE&redirect=false
+
+[06:58:32.0403] <nbp>
+TheQwertiest: See [JSJitInfo](https://searchfox.org/mozilla-central/source/js/public/experimental/JitInfo.h#132) as well as https://searchfox.org/mozilla-central/source/js/src/jit/VMFunctions.cpp#1758-1809 which are C++ equivalent of what the optimizing JIT is doing.
+
+[07:02:17.0258] <TheQwertiest>
+thanks! I'll take a look
+
+[07:14:22.0949] <nbp>
+ * TheQwertiest: See [JSJitInfo](https://searchfox.org/mozilla-central/source/js/public/experimental/JitInfo.h#132) as well as https://searchfox.org/mozilla-central/source/js/src/jit/VMFunctions.cpp#1758-1809 which are C++ equivalent of what the optimizing JIT is doing. (These are not specific to StructuredClone, but generic JIT - DOM interactions)
+
+[07:26:57.0186] <nbp>
+wuwei: I think the following might be of interest, as I noticed you are cross-compiling: https://ownyourbits.com/2018/06/13/transparently-running-binaries-from-any-architecture-in-linux-with-qemu-and-binfmt_misc/ , as well as https://en.wikipedia.org/wiki/Binfmt_misc . This is quite a handy tool to test other architecture in an emulated environment.
+
+[07:29:33.0380] <nbp>
+I also used this trick in the past to natively compile for another architecture, before copying all the generated file to the other computer. This is quite handy to avoid issues specific to cross-compilation.
+
+[07:30:12.0896] <nbp>
+cc lth ^ (maybe this would interest you for arm64)
+
+[07:36:49.0905] <wuwei>
+> <@nbp:mozilla.org> wuwei: I think the following might be of interest, as I noticed you are cross-compiling: https://ownyourbits.com/2018/06/13/transparently-running-binaries-from-any-architecture-in-linux-with-qemu-and-binfmt_misc/ , as well as https://en.wikipedia.org/wiki/Binfmt_misc . This is quite a handy tool to test other architecture in an emulated environment.
+
+Thanks! will try. I use qemu-system and qemu-user, but not familiar with binfmt yet.
+
+[07:37:57.0046] <nbp>
+This is the same as qemu-user, except that the kernel will dispatch the binary execution to qemu-user transparently based on the file format.
+
+[07:38:49.0788] <wuwei>
+BTW, I've created a post on mozilla's discourse, tracking the process of porting spidermonkey to RISC-V (RV64GC):
+https://discourse.mozilla.org/t/meta-project-porting-spidermonkey-to-risc-v-rv64gc/85538
+
+
+2021-09-07
+[04:18:20.0776] <yulia>
+jonco: here is the patch stack: https://phabricator.services.mozilla.com/D124770
+
+[04:18:41.0323] <yulia>
+i am coming back to this after about 3 weeks of another high priority issue so it isn't as far as I would have liked it to be
+
+[04:18:49.0877] <yulia>
+but once you have a look we can discuss?
+
+[04:22:20.0159] <jonco>
+yulia: great, I'll take a look
+
+[04:25:01.0879] <yulia>
+I will try to get the last two pieces done today, but there is quite a bit of polish to be done still
+
+[04:31:54.0526] <yulia>
+ * I will try to get started on the last two pieces done today, but there is quite a bit of polish to be done still
+
+[09:28:35.0967] <yury>
+Looking for hazards wizards: I need some hints on how I can address H-failures https://treeherder.mozilla.org/logviewer?job_id=350804144&repo=try&lineNumber=16569
+
+[10:06:32.0841] <tcampbell>
+yury: if you look at the job -> artifacts -> hazards.txt you'll get more info
+
+[10:06:35.0220] <yury>
+/me searching for more info about `IndirectCall`
+
+[10:07:09.0210] <tcampbell>
+yeah, when the hazard analysis can see through an indirect call, it assumes anything can happen
+
+[10:07:49.0349] <tcampbell>
+generally, we'd just annotate around the call with an AutoAssertNoGC
+
+[10:07:51.0949] <yury>
+all hazards end with `ShuffleAnalysis.cpp:void MapLanes(int8*, int8*, (int32)(int32)*)(int)) [with T = signed char]` + `IndirectCall: f` but I just moved this code from other file
+
+[10:08:43.0897] <tcampbell>
+possible the optimizer did different things
+
+[10:09:02.0021] <tcampbell>
+https://searchfox.org/mozilla-central/source/js/src/builtin/intl/LanguageTag.cpp#1631-1632 here is an example with std::all giving trouble
+
+[10:11:09.0430] <tcampbell>
+probably can just throw JS::AutoSuppressGCAnalysis nogc; into MapLanes with a comment
+
+[10:11:21.0139] <tcampbell>
+(it looks like all uses are pretty trivial map functions)
+
+[10:12:23.0478] <yury>
+yep. can it be used somewhere on the parent function?
+
+[10:12:56.0517] <tcampbell>
+I think doing it at callsite of MapLanes probably makes sense
+
+[10:13:07.0305] <tcampbell>
+since it is then obvious what the lambda is
+
+[10:14:23.0777] <yury>
+is there any cost for runtime for `JS::AutoSuppressGCAnalysis nogc;`?
+
+[10:14:55.0441] <tcampbell>
+The risk of using AutoSuppressGCAnalysis is that we stop static analysis, and only have a debug assert to detect if a GC actually did run. If in the future this code did risk a GC, we might have a hard time triggering the GC at the right time in testing for the assert to work.
+
+[10:15:05.0152] <tcampbell>
+It is basically just a debug assert
+
+[10:15:22.0380] <yury>
+thanks
+
+[10:15:34.0454] <tcampbell>
+oh.. actually it is MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
+[10:15:56.0915] <tcampbell>
+which includes Nighntly
+
+[10:15:58.0902] <tcampbell>
+ * which includes Nightly
+
+[10:16:55.0001] <tcampbell>
+(sounds fine for your case if I'm reading the code right..)
+
+[10:54:48.0923] <nbp>
+🎉 We now got a meta-tree of bugs! Let me introduce [Bug SpiderMonkey](https://bugzilla.mozilla.org/showdependencytree.cgi?id=1729518&hide_resolved=1). 🎉
+
+
+[12:39:27.0204] <tcampbell>
+(setting max-depth of 1 or 2 makes it much more readable :)
+
+[12:40:58.0060] <tcampbell>
+really nice to have a skeleton of all this
+
+[12:44:21.0680] <yulia>
+this is so fantastic
+
+[13:57:43.0374] <spinda [:mismith]>
+Why is it that for some `NativeObjects`, `numFixedSlots` > `slotSpan`? For example, `{ bar: 42 }` has 2 fixed slots but a slot span of 1. Is the extra fixed slot a reserved slot, maybe?
+
+[14:00:29.0496] <tcampbell>
+spinda [:mismith]: I think you are hitting https://searchfox.org/mozilla-central/source/js/src/gc/AllocKind.h#55-74
+
+[14:00:37.0046] <iain>
+spinda [:mismith]: `slotSpan` is the number of properties  on the object, and `numFixedSlots` is the capacity of fixed slots
+
+[14:01:06.0667] <iain>
+Objects are allocated in typed arenas bucketed by size
+
+[14:01:07.0727] <tcampbell>
+we have pre-canned object sizes for inline slots
+
+[14:01:14.0185] <tcampbell>
+yeah, what iain said 
+
+[14:01:58.0081] <iain>
+So you could add another property to `{ bar: 42 }` before we would have to allocate dynamic slots
+
+[14:02:36.0930] <spinda [:mismith]>
+Ahhh, I see. Thanks!
+
+[14:04:55.0995] <spinda [:mismith]>
+Follow-up question: Is it correct to say that `NativeObject::getFixedSlot(n)` is only valid if both `n < numFixedSlots` and `n < slotSpan`? I noticed `NativeObject::getFixedSlot` only asserts that `n < numFixedSlots`
+
+[14:06:31.0477] <tcampbell>
+I'd probably try running tests and see if it exploads. Sounds right though
+
+[14:06:37.0676] <tcampbell>
+ * I'd probably try running tests and see if it explodes. Sounds right though
+
+[14:07:16.0548] <tcampbell>
+`MOZ_CRASH` + `./mach jit-tests` is how I do a lot of code investigations.. :p
+
+[14:08:48.0220] <spinda [:mismith]>
+Haha. Will try that out
+
+
+2021-09-08
+[19:29:42.0111] <spinda [:mismith]>
+It passes the jstests and jit-tests. iain or tcampbell, would either of you take a review on a patch adding these asserts?
+
+[19:30:34.0346] <tcampbell>
+/me stands very still
+
+[19:30:49.0222] <tcampbell>
+iain is probably a good reviewer here
+
+[19:46:40.0488] <spinda [:mismith]>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1729596
+
+[03:59:54.0012] <jonco>
+yulia: I had a look at the module refactoring patches.  I agree with your approach.  I suspect getting the right interface to cater to the needs of both workers and main thread loader will have some annoying details to work through, but it all looks good so far.
+
+[04:48:51.0469] <yulia>
+yes, this is what I am integrating right now -- the cut looks like it might be a little different but the idea is the same
+
+[09:45:42.0773] <mgaudet>
+TypedArray question: Trying to map some spec language to the implementation. In streams we have a couple of checks, where [[view]] is supposed to be a Uint8Array: 
+
+> Assert: this.[[view]].[[ByteLength]] > 0.
+> Assert: this.[[view]].[[ViewedArrayBuffer]].[[ByteLength]] > 0.
+
+So, I can check the typed array byte length with GetArrayBufferByteLength; but I don't understand the [[ViewedArrayBuffer]] internal slot -- is it just not a distinction we make in our implementation/ 
+
+[09:45:44.0856] <mgaudet>
+ * TypedArray question: Trying to map some spec language to the implementation. In streams we have a couple of checks, where [[view]] is supposed to be a Uint8Array:
+> Assert: this.[[view]].[[ByteLength]] > 0.
+> Assert: this.[[view]].[[ViewedArrayBuffer]].[[ByteLength]] > 0.
+
+So, I can check the typed array byte length with GetArrayBufferByteLength; but I don't understand the [[ViewedArrayBuffer]] internal slot -- is it just not a distinction we make in our implementation? 
+
+[09:54:39.0903] <tcampbell>
+mgaudet: [[view]] isn't an ArrayBuffer, so `GetArrayBufferByteLength` seems wrong?
+
+[09:55:05.0627] <tcampbell>
+the TypedArray is backed by an ArrayBuffer (either user specified or implicitly allocated)
+
+[09:55:34.0006] <mgaudet>
+Ah! I was munging together things in my head then
+
+[09:56:15.0762] <mgaudet>
+Very new here :) 
+
+[09:56:21.0713] <tcampbell>
+{ DataView, Int8Array, Uint32Array, etc } are "views" onto { ArrayBuffer }
+
+[09:56:51.0535] <tcampbell>
+/me has both spec and devtools open to avoid embarassing myself too much
+
+[09:57:52.0457] <mgaudet>
+I was trying to struggle through the spec, missed the construction of typed array  / views while trying
+
+[09:58:27.0498] <mgaudet>
+I think in my head typed arrays were instances of array buffer with specialization, not views of an underlying one. Which makes more sense anyhow
+
+[09:59:16.0874] <tcampbell>
+ArrayBuffer (aka ArrayBufferObject) then has internal [[ArrayBufferData]] which is byte[] in the host, and may be "detached", leaving the JS ArrayBuffer object as a JSObject, but most uses of it will throw JS exceptions since there is no backing storage
+
+[10:00:48.0244] <mgaudet>
+OK. Followup question: Do we have no public JSAPI header for typed arrays? 
+
+[10:00:48.0558] <tcampbell>
+yeah, the other part that always confused me is we saw "TypedArray", but in JS the actual constructors are "Int8Array" etc. Also while TypedArray is a real web feature, TypedObject was a very experimental thing (which we mostly pulled out as it starts from ground up for wasm needs)
+
+[10:01:07.0858] <mgaudet>
+nvm; found it
+
+[10:01:18.0616] <mgaudet>
+js/public/experimental/TypedData.h
+
+[10:02:51.0601] <tcampbell>
+(And then "UnboxedObject" was our internal magic to infer TypedObject-like behaviour from ordinary objects, which we have since ripped out for being exceedingly complex)
+
+[16:30:30.0524] <sfink>
+mgaudet: sorry, I should be watching this channel better. Note that I am going to be landing a series of patches any day now, perhaps even today, that adds an additional API that is a perhaps a little nicer. It'll provide things like `JS::Uint8Array`.
+
+
+2021-09-09
+[06:31:16.0846] <chaircrusher>
+GUTEN MORGEN MEIN GNÄDIGE HERREN UND DAMEN
+
+[06:36:27.0444] <chaircrusher>
+Question: JSExternalStringCallbacks, what is the implementation of sizeOfBuffer expected to do?
+
+
+[06:37:27.0737] <Ms2ger 💉💉>
+I'm guessing this ties in to about:memory
+
+[06:37:41.0312] <Ms2ger 💉💉>
+Or GC pressure?
+
+[06:38:10.0477] <Ms2ger 💉💉>
+```
+
+  /**
+   * Callback used by memory reporting to ask the embedder how much memory an
+   * external string is keeping alive.  The embedder is expected to return a
+   * value that corresponds to the size of the allocation that will be released
+   * by the finalizer callback above.
+   *
+   * Implementations of this callback MUST NOT do anything that can cause GC.
+   */
+```
+
+[06:39:18.0475] <Ms2ger 💉💉>
+It's probably fine to return zero if you don't use this stuff
+
+[06:39:42.0132] <chaircrusher>
+I'm definitely doing external strings.
+
+[06:40:13.0720] <Ms2ger 💉💉>
+I mean, if you don't use memory reporting
+
+[06:40:30.0966] <chaircrusher>
+I don't know nuthin bout memory reporting
+
+[06:40:41.0487] <Ms2ger 💉💉>
+Then you probably don't use it :)
+
+[06:40:51.0025] <arai>
+it's API to collect statistics of the runtime
+
+[06:40:55.0177] <arai>
+including memory usage
+
+[06:41:00.0731] <chaircrusher>
+it sounds like I can return the length of the string and ignore the MallocSizeOf callback.
+
+[06:41:03.0793] <arai>
+`JS::CollectRuntimeStats` etc
+
+[06:41:40.0232] <chaircrusher>
+I just want to make external strings and have it work as it did in ESR60
+
+[06:42:11.0374] <arai>
+if you're going to use those statistics API, you're supposed to return the size of memory held by the external string's content
+
+[06:43:43.0848] <arai>
+so that, as long as the external string is alive (the finalize isn't yet called on the instance), the size of the string is reflected to the result
+
+[06:44:28.0380] <arai>
+if you're not going to use those API, then returning 0 is fine
+
+[06:45:31.0080] <arai>
+(to my understanding, the `sizeOfBuffer` method won't be called in that case)
+
+[06:46:11.0487] <Ms2ger 💉💉>
+Or crash, even
+
+[07:37:00.0979] <chaircrusher>
+I looked at the example in the tests and it calls MOZ_CRASH in the sizeOfBuffer gets called in that test.
+
+[11:14:00.0695] <chaircrusher>
+OK here's the 2nd ESR60->ESR78 question - mostly the guide is good.
+
+How do I map the ESR60 ModuleResolveHook function onto the ESR78 ModuleResolveHook function
+
+[13:00:39.0754] <tcampbell>
+chaircrusher: if your resolve hook is still in JS, you can probably just use the `ShellModuleResolveHook` to shim from C++ to JS https://searchfox.org/mozilla-esr78/source/js/src/shell/js.cpp#5120
+
+[13:01:14.0904] <chaircrusher>
+I actually wrote a resolve hook in C++
+
+[13:01:41.0270] <chaircrusher>
+Because I actually do just-in-time compilation from Typescript to ES6 JS
+
+[13:02:09.0346] <tcampbell>
+heh. Yeah, C++ hook is probably prefered anyways
+
+[13:02:56.0941] <tcampbell>
+you should be able to just use SetModuleResolveHook
+
+[13:06:44.0842] <tcampbell>
+iain: regarding the ml inlining..
+
+[13:06:58.0312] <tcampbell>
+if I don't see a function in the candidates list, what does that mean
+
+[13:08:55.0421] <iain>
+It means that when we did trial inlining, either we didn't have a call IC for that call, or we had multiple ICs
+
+[13:09:25.0006] <tcampbell>
+oh, so this is a polymorphism issue?
+
+[13:09:25.0770] <tcampbell>
+ugh
+
+[13:09:27.0075] <iain>
+ * It means that when we did trial inlining, either we didn't have a stub for that call IC, or we had multiple stubs
+
+[13:09:35.0439] <iain>
+It could be
+
+[13:10:11.0649] <iain>
+What does the code look like? It's also possible that it's a "we did trial inlining before we ever hit this IC" issue
+
+[13:10:38.0603] <tcampbell>
+```js
+            mmul(other) {
+                other = this.constructor.checkMatrix(other);
+
+                var m = this.rows;
+                var n = this.columns;
+                var p = other.columns;
+
+                var result = new this.constructor[Symbol.species](m, p);
+
+                var Bcolj = new Array(n);
+                for (var j = 0; j < p; j++) {
+                    for (var k = 0; k < n; k++) {
+                        Bcolj[k] = other.get(k, j);
+                    }
+
+                    for (var i = 0; i < m; i++) {
+                        var s = 0;
+                        for (k = 0; k < n; k++) {
+                            s += this.get(i, k) * Bcolj[k];
+                        }
+
+                        result.set(i, j, s);
+                    }
+                }
+                return result;
+            }
+```
+
+[13:11:07.0190] <tcampbell>
+the `.get` calls are what I'm missing
+
+[13:11:57.0247] <iain>
+Hmm. Do we inline `result.set`?
+
+[13:12:24.0396] <iain>
+Or at least see it as a candidate?
+
+[13:12:28.0055] <tcampbell>
+yes
+
+[13:12:37.0886] <iain>
+Blech
+
+[13:12:46.0442] <tcampbell>
+we see `.set`, `new Array`, `checkMatrix`
+
+[13:12:49.0304] <iain>
+I think that might mean it's a polymorphism issue
+
+[13:13:11.0828] <iain>
+Maybe use Caroline's tool?
+
+[13:13:19.0133] <tcampbell>
+yeah, exactly my next step
+
+[13:13:50.0851] <tcampbell>
+caroline: umm.. what is the link to instructions again?
+
+[13:14:24.0070] <caroline>
+https://carolinecullen.github.io/cacheirhealthreport/info.html
+
+[13:14:51.0512] <tcampbell>
+ty!
+
+[13:15:20.0947] <caroline>
+no problem!
+
+[13:17:23.0789] <tcampbell>
+lol.. that is a lot of angry faces
+
+[13:21:26.0249] <tcampbell>
+line 3493 is the `mmul`. lot's of of the call's have two ICs in the chain
+
+[13:23:58.0859] <evilpie>
+something must have changed, my cacheir tool only shows garbage
+
+[13:25:22.0200] <iain>
+evilpie: That's json for Caroline's tool (which she linked above), so it presumably won't work in yours
+
+[13:25:41.0227] <evilpie>
+oh, this isn't produced by spidermonkey directly?
+
+[13:26:26.0146] <tcampbell>
+evilpie: it is SPEW=CacheIRHealthReport which I think is different spewer
+
+[13:27:08.0725] <evilpie>
+oh, indeed
+
+[13:27:30.0106] <tcampbell>
+it is for dumping IC chains (when inlining inspects them) rather than hooking the fallback stub like your tool did
+
+[13:28:11.0730] <tcampbell>
+iain: so if I use `--no-polymorphic-inlining` on v8, there is a 2x slowdown
+
+[13:28:49.0654] <iain>
+Oh, well that's just lovely
+
+[13:30:58.0784] <evilpie>
+mgaudet: I would love to see an updated version of your streams work. I am curious how hard making the AbortController stuff would be with this
+
+[13:31:03.0603] <iain>
+I have a text file somewhere where I went through IonBuilder just before we deleted it and wrote down all the optimizations that we hadn't ported to Warp, and next to polymorphic inlining I have a comment along the lines of "lol no"
+
+[13:32:02.0632] <tcampbell>
+I don't think the old polymorhphic inlining actually worked here
+
+[13:32:08.0228] <tcampbell>
+or possibly at all
+
+[13:32:37.0821] <iain>
+"Originally motivated by deltablue. This is a bad idea and we should not do it."
+
+[13:35:25.0470] <mgaudet>
+> <@evilpie:mozilla.org> mgaudet: I would love to see an updated version of your streams work. I am curious how hard making the AbortController stuff would be with this
+
+Hey: The patch [on phabricator is... not 100% up to date, but close-ish](https://phabricator.services.mozilla.com/D122643). I was thinking I'd make a more aggressive effort to update it next week. Trying to figure out how to get this work in tree in the next little while. 
+
+Regarding AbortSignal, unfortunately I don't think we can really evaluate that in too much depth until we hit `WritableStreams`, which is still a ways away. My hope is that because we're working much more like normal DOM things normal DOM techniques will apply, avoiding leaks, but it's certainly not clear to me yet that's entirely true. 
+
+
+
+[13:36:09.0408] <evilpie>
+Yeah, I was hoping that with DOM we could use their weakreference stuff and maybe work around some of the leaks
+
+[13:37:40.0493] <tcampbell>
+this is the hacked up version of ARES6/JetStream2 ML that I am playing with in the shell
+
+[15:08:32.0845] <sfink>
+whoa cool, my patch stack fits on one screen now
+
+
+2021-09-10
+[08:32:59.0948] <evilpie>
+sfink: are you are resident structured clone expert now?
+
+[09:11:37.0081] <sfink>
+evilpie: yes, for the mechanism. DOM people, mostly baku, handle the DOM types.
+
+[09:11:52.0098] <sfink>
+I'll be out for at least an hour right now though
+
+[09:45:24.0477] <tcampbell>
+I just noticed that `ToUInt32` explicitly disallows BigInts. To coerce from BigInt to Number is using the Number constructor the standard approach?
+```
+js> Math.clz32(100)
+25
+js> Math.clz32(100n)
+typein:2:6 TypeError: can't convert BigInt to number
+Stack:
+  @typein:2:6
+js> Math.clz32(Number(100n))
+25
+```
+
+[15:10:07.0227] <tcampbell>
+confession: I have an uncatchable exception triggering a JIT bailout while inside a interrupt callback and am regretting my life choices..
+
+[15:10:11.0270] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[15:17:11.0593] <tcampbell>
+oh, maybe this actually isn't a terrible bug
+
+[15:18:00.0062] <tcampbell>
+I've nearly gotten our exceptions tamed so we no longer accidentally clobber eachother
+
+[15:19:56.0014] <iain>
+My recurring problem with that sort of bug is that you spend 90% of your time fixing the issue, and then another 90% of your time trying to write a reasonable testcase
+
+[15:21:40.0824] <tcampbell>
+in this case I'm adding a new assert that we cannot throw while already throwing, and also asserting that our "uncatchable" return-false-with-no-pending-exception only happens intentionally and not because an OOM was forgotten
+
+[15:22:41.0819] <tcampbell>
+(which oomTest mostly does, but it has a special flag as an escape hatch)
+
+[15:23:57.0414] <tcampbell>
+There are only about 20 defects I've found
+
+[15:26:26.0060] <tcampbell>
+the main thing when this is done is that we can change the JSContext throw state to an enum for { Normal, Throwing, OutOfMemory, StackOverflow, Terminate, ForcedReturn }
+
+[15:26:52.0902] <tcampbell>
+where states can be mutually exclusive instead of the current system..
+
+[15:27:20.0008] <tcampbell>
+also makes it much clearer who can recover from each of these oddball states
+
+[15:27:25.0401] <sfink>
+feels like there should be a DrinkingHeavily or something in there.
+
+[15:30:15.0230] <tcampbell>
+I mean, the horror already there, this just is shining some light on places we do bad things on purpose
+
+[15:31:01.0932] <tcampbell>
+now we just need static analysis to annotate each function with which cx states it may return
+
+[15:33:04.0074] <tcampbell>
+ * now we just need static analysis to annotate each function with which cx states it may return. and then throw that in searchfox
+
+[15:45:14.0456] <iain>
+"only about 20 defects that I've found" 🤔
+
+[15:59:04.0180] <tcampbell>
+iain: did you really thing we had _all_ the `ReportOutOfMemory` calls in the right place?
+
+[16:08:56.0282] <tcampbell>
+fixed test case. Either I have have a good grasp of what is going on, or I have entirely no idea what is going on.
+
+[16:30:28.0569] <tcampbell>
+iain: do you recognize this jit code?
+```
+   0x000021c41a7edd2f:  int3   
+   0x000021c41a7edd30:  sub    $0x30,%rsp
+   0x000021c41a7edd34:  mov    %rsp,%rax
+   0x000021c41a7edd37:  mov    %rsp,%rcx
+   0x000021c41a7edd3a:  and    $0xfffffffffffffff0,%rsp
+   0x000021c41a7edd3e:  push   %rcx
+   0x000021c41a7edd3f:  sub    $0x8,%rsp
+=> 0x000021c41a7edd43:  mov    %rax,%rdi
+   0x000021c41a7edd46:  test   $0xf,%spl
+   0x000021c41a7edd4a:  je     0x21c41a7edd51
+   0x000021c41a7edd50:  int3   
+   0x000021c41a7edd51:  callq  0x21c41a7eff30
+   0x000021c41a7edd56:  add    $0x8,%rsp
+```
+
+[16:30:54.0330] <tcampbell>
+I'm not sure what the test to check stack alighnment is about
+
+[16:35:49.0646] <tcampbell>
+looks like `assertStackAlignement`
+
+[16:36:11.0707] <iain>
+If you capture it in rr you can use `jitsrc 0x000021c41a7edd46` to see where we generated that instruction
+
+[16:36:30.0267] <iain>
+It certainly looks like it is a call that is asserting that the stack is aligned before we do the actual call
+
+[16:36:53.0103] <iain>
+Can't say that I recognize anything else about it
+
+[16:37:24.0023] <tcampbell>
+it is just callWithABI stuff
+
+[16:38:04.0744] <tcampbell>
+I was confusing myself. I'm just in the [exception trampoline](https://searchfox.org/mozilla-central/rev/1761c710b035d7dc8892dfa8e56589b4e095221f/js/src/jit/x64/MacroAssembler-x64.cpp#450)
+
+[16:42:08.0864] <jimb>
+tcampbell: Hi! Background question: the `void *` passed to a `JSJitMethodOp`, where does it get its value from?
+
+[16:44:05.0124] <tcampbell>
+jimb: looks like the DOM_OBJECT_SLOT https://searchfox.org/mozilla-central/source/dom/bindings/JSSlots.h#14-19
+
+[16:44:51.0259] <tcampbell>
+(derived this answer from: https://searchfox.org/mozilla-central/rev/1761c710b035d7dc8892dfa8e56589b4e095221f/js/src/jit/CodeGenerator.cpp#5233-5234,5269,5271-5273 )
+
+[16:47:38.0259] <tcampbell>
+which I believe is typically set here: https://searchfox.org/mozilla-central/source/dom/bindings/BindingUtils.h#2665-2666
+
+[16:48:45.0990] <iain>
+This also might be relevant: https://searchfox.org/mozilla-central/source/dom/bindings/BindingUtils.cpp#2899-2912
+
+[16:49:13.0249] <iain>
+It's used here: https://searchfox.org/mozilla-central/source/dom/bindings/BindingUtils.cpp#3284-3300
+
+[16:50:30.0611] <jimb>
+That code in `visitCallDOMNative` seems like the void* is produced by `LoadDOMPrivate`.
+
+[16:50:59.0176] <tcampbell>
+yeah, should be
+
+[16:53:16.0305] <jimb>
+Great - thanks!
+
+
+2021-09-11
+[08:25:48.0284] <Redfire>
+Does anyone have any tips for how I can have native rust async called from JS?
+Rust `Future`s are quite different from Promises. 
+
+[13:44:31.0920] <ewlsh>
+Redfire: we map Gio async onto Promises. As long as you can pass some extra data to the handler, you can probably do it.
+
+[13:45:14.0410] <ewlsh>
+Native functions can have reserved slots where you can store implementation context
+
+
+2021-09-12
+[01:26:36.0537] <Redfire>
+*Great*, more `void*` pointers. 😔
+
+[01:27:14.0528] <Redfire>
+`wasm-bindgen` gave me an idea but I'm not sure how to implement it with raw spidermonkey code, which is a bit annoying
+
+[01:28:32.0031] <ewlsh>
+https://gitlab.gnome.org/GNOME/gjs/-/blob/master/gjs/internal.cpp#L560
+
+[01:37:28.0584] <ewlsh>
+Figure out a way to call resolve once the given future returns output and I think you'd have it?
+
+[04:36:49.0281] <Redfire>
+https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen_futures/fn.future_to_promise.html
+This basically said something very similar.
+I'm more annoyed in finding a way to turn a rust callback into a native js function currently, so promises can be made easier.
+
+
+2021-09-13
+[08:03:07.0141] <tcampbell>
+```js
+(function() {
+  while (true)
+    let (x = 1) { eval('requestInterruptCallback()'); }
+})()
+```
+what does the `let (x = 1)` even mean? Was this some experiment let-block thing?
+
+[08:03:42.0399] <tcampbell>
+(I found a testcase has been accidentally disabled for so long that it isn't even legal JS anymore..)
+
+[08:03:46.0885] <Ms2ger 💉💉>
+Is that pre-standardized `let`?
+
+[08:03:52.0674] <Ms2ger 💉💉>
+That had the weirdest things
+
+[08:04:08.0119] <tcampbell>
+oh, that must be it
+
+[08:15:53.0180] <nbp>
+`let` -> `if`?
+
+[08:16:36.0682] <arai>
+let statement in JS 1.7
+
+[08:19:24.0302] <arai>
+err, maybe let expression
+
+[08:19:47.0904] <arai>
+https://hg.mozilla.org/mozilla-central/rev/fc18eefd9329
+
+[08:20:11.0390] <arai>
+oh, there were both of them :/
+
+[08:27:01.0893] <tcampbell>
+lol
+
+[08:59:22.0513] <wingo>
+smells like 2014 spirit
+
+[11:55:31.0142] <tcampbell>
+sfink: there is no `args[0].toUint32()` is there? I can't seem to find the right helper for double-or-int32 -> uint32 that isn't the silly ToUnit32 thing
+
+[11:56:36.0794] <tcampbell>
+(I'll probably just do the ToUint32 thing and move on tbh..)
+
+[12:26:16.0064] <tcampbell>
+confession: Cleaned up some exception handling code to be more explicit (Bug 1730426)
+
+[12:26:18.0468] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[12:26:19.0914] <botzilla>
+https://bugzil.la/1730426 — NEW (tcampbell) — Strict SpiderMonkey Exception Lifetimes
+
+[12:27:23.0853] <tcampbell>
+iain: so "only" about 30 defects, which was actually less than i expected
+
+[12:28:46.0800] <tcampbell>
+Bailouts now save exceptions which they should have always done, but otherwise both Bailout and Debugger didn't really have any bugs. I mostly just added annotations to meet my checks
+
+[12:29:52.0330] <tcampbell>
+`AutoSaveExceptionState` is still kind of a mess, but it probably needs to be split depending on the use case.
+
+[12:32:10.0822] <tcampbell>
+The oddest thing was that it was theoretically possible to have a exception that was both StackOverflow and OutOfMemory simultaneously..
+
+[12:32:48.0594] <tcampbell>
+ * The oddest thing was that it was theoretically possible to have a exception that was both OverRecursed and OutOfMemory simultaneously..
+
+[12:35:03.0071] <iain>
+Possible in practice? Or just possible to represent in the exception state?
+
+[12:37:18.0336] <tcampbell>
+possible in testcases, but it requires a small-oom _just_ as you blow the stack
+
+[12:38:12.0497] <tcampbell>
+(I noticed because of a failing test.)
+
+[12:38:56.0708] <tcampbell>
+also, doesn't really cause any problems. just is weird
+
+[15:39:23.0313] <tcampbell>
+/me is very appreciative of the jsshell
+
+[15:39:32.0351] <tcampbell>
+debugging WPT failures is maddening
+
+[15:39:40.0983] <tcampbell>
+rr is really not pleased
+
+[15:53:07.0390] <tcampbell>
+ooh.. https://github.com/rr-debugger/rr/issues/1875 that looks like it
+
+[16:12:19.0570] <sfink>
+tcampbell: oh, sorry! You're right. There's just `toInt32`. Oops.
+
+[16:15:41.0414] <ewlsh>
+Static blocks had some spec conformance fixes around await syntax in 92, would it ever be feasible to backport to 91esr since 91esr has static blocks flagged? Wondering if we could utilize static blocks in embeddings without waiting for the next ESR. 🤔
+
+[16:18:00.0602] <ewlsh>
+mgaudet You worked on static blocks, I think 😄
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1713155
+
+[16:21:34.0506] <evilpie>
+sfink: can you take a look at https://bugzilla.mozilla.org/show_bug.cgi?id=1722576 and tell me what you think?
+
+[16:22:39.0156] <evilpie>
+Thanks!
+
+[16:23:44.0919] <sfink>
+evilpie: sure, though I might not make it to it until tomorrow. But that reminds me -- should I be reviewing bug 1556604? My impression was that it was blocked on other things, but if not I can bump it up the stack too.
+
+[16:23:46.0268] <botzilla>
+https://bugzil.la/1556604 — NEW (evilpie) — Allow structured cloning of native error types
+
+[16:24:44.0779] <evilpie>
+No, I think without help from someone on the DOM team to get the worker principal stuff right there really isn't a point
+
+[16:25:04.0108] <evilpie>
+No rush, I am off now anyways
+
+
+2021-09-14
+[13:10:50.0826] <evilpie>
+mgaudet: btw I was looking into prototyping `ByteLengthQueuingStrategy`, but that requires that silly `size` Function.
+
+[13:11:24.0552] <evilpie>
+I wasn't sure how to implement the caching of that function on "relevant global object" in DOM code
+
+[13:12:12.0534] <mgaudet>
+hmm. Interesting.
+
+[13:13:16.0927] <mgaudet>
+I will have to think a bit more on that -- I have a good chunk of byte streams implemented, but didn't get to ByteLengthQueuingStrategy 
+
+[13:13:34.0652] <mgaudet>
+I've currently shelved it though -- I'm focusing on how to get the initial patch in tree at the moment. 
+
+[13:14:22.0704] <evilpie>
+mgaudet: cool, sounds like the right approach
+
+[13:14:53.0542] <mgaudet>
+Hoping to have something up for review... tomorrow? 🤞
+
+[15:07:56.0954] <mgaudet>
+confession: Working on making DOM and JS Streams co-exist (not in the same build alas). Struggling through WebIDL code-generation stuff, but making progress! 
+
+[15:07:59.0725] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-09-15
+[21:33:54.0212] <fabrice>
+what's the current recommended benchmark?
+
+[22:47:56.0279] <arai>
+depends on the area I think.  I'm using raptor browsertime tp6 for pageload performance, and talos startup for browser startup performance
+
+[22:48:50.0555] <arai>
+fabrice: what kind of benchmark are you looking for?
+
+[22:49:26.0920] <fabrice>
+arai: mostly memory usage related ones
+
+[22:51:53.0386] <arai>
+maybe this https://firefox-source-docs.mozilla.org/testing/perfdocs/awsy.html
+
+[22:58:23.0679] <fabrice>
+thanks
+
+[02:44:28.0348] <Nicolò>
+Hi! I am working on the Stage 2 "Records and Tuples" proposal implementation, and it's ready for review! https://bugzilla.mozilla.org/show_bug.cgi?id=1658309. I also uploaded an alternative implementation (https://bugzilla.mozilla.org/show_bug.cgi?id=1730843) which diverges a bit from how the proposal is specified and needs to be aligned to the correct semantics, but allows reusing for records&tuples many existing optimizations that SM already has for objects: I would love some feedback on these two strategies.
+
+I am/was in contact with Yulia, but since she's OOO I figured out that the best thing to do was to post it in this room 🙂
+
+[03:37:11.0783] <nbp>
+https://openjdk.java.net/jeps/410 😲
+
+[03:38:34.0605] <nbp>
+I guess Oracle wants to sell GraalVM as an independent product.
+
+[08:41:21.0409] <mgaudet>
+> <@nribaudo:igalia.com> Hi! I am working on the Stage 2 "Records and Tuples" proposal implementation, and it's ready for review! https://bugzilla.mozilla.org/show_bug.cgi?id=1658309. I also uploaded an alternative implementation (https://bugzilla.mozilla.org/show_bug.cgi?id=1730843) which diverges a bit from how the proposal is specified and needs to be aligned to the correct semantics, but allows reusing for records&tuples many existing optimizations that SM already has for objects: I would love some feedback on these two strategies.
+> 
+> I am/was in contact with Yulia, but since she's OOO I figured out that the best thing to do was to post it in this room 🙂
+
+Super cool. I will try to slot some time in next week to give these an overview review. 
+
+[08:55:58.0731] <nicolo-ribaudo>
+Thank you!
+
+[11:02:52.0484] <sfink>
+I just reviewed some heavily [JSAPI-using code](https://phabricator.services.mozilla.com/D122033) in Gecko, and it was terrifying.
+
+[13:59:00.0087] <mgaudet>
+confession: [Initial DOM Streams patch](https://phabricator.services.mozilla.com/D122643) is up for review
+
+[15:23:31.0227] <tcampbell>
+sfink: so the missing memory seems to be necko channels in the parent process..
+
+[15:24:03.0232] <sfink>
+how did you track that down?
+
+[15:24:08.0772] <tcampbell>
+DMD
+
+[15:24:24.0191] <tcampbell>
+they do clean-up when the GC is forced
+
+[15:24:25.0483] <sfink>
+good idea
+
+[15:25:09.0939] <tcampbell>
+but we leak about 4000 channels which at even 30kB each (gecko structs are huge and have so many strings..) that is >100MB
+
+[15:25:37.0782] <sfink>
+I assume you're using "leak" a little generally here
+
+[15:26:09.0292] <tcampbell>
+oh yes, leak is the wrong word
+
+[15:27:02.0764] <tcampbell>
+after the full-gc change, the HttpChannelParent are still live at the checkpoint we check memory, but forcing a GC does cause things to eventually catch up
+
+[15:27:32.0423] <tcampbell>
+what is odd to me is that this is a longish test with Fission and many unrelated sites, so I don't know why they aren't cleaned up much sooner
+
+[15:29:04.0782] <sfink>
+I'll look at this in ~15min. I'd like to know the ownership graph. Is this crossing multiple realms?
+
+[15:30:45.0730] <tcampbell>
+I guess "forcegc" is not precise either. We run the memory report with "minimize" which triggers a low-memory event to the system
+
+[15:32:02.0092] <tcampbell>
+this leaves me more confused and I am done for the day..
+
+[15:37:40.0922] <sfink>
+I guess it's time to grab awsy profiles and check on whether the CC is changing timing
+
+[15:38:23.0538] <sfink>
+which of course means it's time for `mach try fuzzy` to break :(
+
+[16:21:30.0172] <mccr8>
+I've never seen anything leak thousands of http channels before, so I dunno.
+
+
+2021-09-16
+[04:14:27.0449] <lth>
+i'm trying to dump some accumulated (per-process) info when the browser shuts down but it appears JS_ShutDown is never called in that case (sort of weird?)  Is there a better place to put that kind of code?
+
+[04:14:52.0493] <lth>
+(code could go anywhere, not dependent on being inside spidermonkey)
+
+[04:22:01.0164] <pbone>
+I don't remember if processes are actually shut-down or if they're terminated more abruptly.
+
+[04:23:23.0644] <Ms2ger 💉💉>
+I recall there was a lot of work done to try and make them terminate abruptly
+
+[04:24:05.0451] <pbone>
+tcampbell: sfink mccr8 I haven't made much progress on this memory-goes-up-when-it-should-go-down weirdness.  I'm trying to run awsy+dmd locally and it crashes.  That's pretty much it for me tonight, I'll check back in in the morning.
+
+[04:32:02.0052] <lth>
+yeah, looks like abrupt termination is the thing
+
+[04:32:14.0776] <arai>
+signal handler maybe?
+
+[04:32:16.0341] <lth>
+XRE_Main may work
+
+[04:32:21.0846] <lth>
+hmmm...
+
+[04:35:21.0302] <lth>
+XRE_Main + --disable-e10s is close enough!
+
+[05:28:18.0276] <nbp>
+I had a similar problem in the past with code coverage, I do not recall how this got solved :/
+
+[05:30:03.0582] <nbp>
+I think people who are using the code coverage rely on the Debugger API to collect the info for mochitests :/
+
+[05:30:13.0629] <nbp>
+ * I think people who are using the code coverage rely on the Debugger API to collect the info from mochitests :/
+
+[07:01:10.0362] <tcampbell>
+I've been using memory-reporter recently to get statistics out of things. It doesn't work if the content process is already gone, but I found it pretty easy to load tabs and benchmarks and then push the about:memory button (or send signal 34 on linux systems). It gets the multi process stuff sorted out well and does summaries.
+
+[07:46:22.0481] <mccr8>
+> <@lth:mozilla.org> yeah, looks like abrupt termination is the thing
+
+Content processes in builds where we don't care about leak checking (such as opt builds) don't do shutdown. On the browser side, there are various points where you could do something like that prior to shutdown but I don't know how you'd do that in SpiderMonkey.
+
+[07:46:46.0579] <mccr8>
+ProcessChild::QuickExit() is the method that does the exit.
+
+[07:49:17.0920] <mccr8>
+> <@pbone:mozilla.org> tcampbell: sfink mccr8 I haven't made much progress on this memory-goes-up-when-it-should-go-down weirdness.  I'm trying to run awsy+dmd locally and it crashes.  That's pretty much it for me tonight, I'll check back in in the morning.
+
+Alright. If you can't figure it out soon, you should back out the patch until you do, as it is a big regression.
+
+[08:03:05.0412] <nbp>
+pbone: context-free reply: add a minus sign in front of the value.
+
+[09:48:52.0489] <tcampbell>
+sfink: I threw up some marker-only profiles
+
+[09:49:09.0381] <tcampbell>
+(accidentally used non-fission, but they also saw the regression)
+
+[09:49:15.0319] <sfink>
+oh cool
+
+[09:49:20.0833] <tcampbell>
+We basically don't have MajorGCs in parent process
+
+[09:49:56.0036] <tcampbell>
+```
+MOZ_PROFILER_STARTUP=1
+MOZ_PROFILER_SHUTDOWN=awsy-profile.json
+MOZ_PROFILER_STARTUP_FEATURES="nostacksampling"
+./mach awsy-test --tp6 --headless
+```
+
+[09:50:25.0250] <tcampbell>
+ * How to marker-only profile the awsy tests: 
+```
+MOZ_PROFILER_STARTUP=1
+MOZ_PROFILER_SHUTDOWN=awsy-profile.json
+MOZ_PROFILER_STARTUP_FEATURES="nostacksampling"
+./mach awsy-test --tp6 --headless
+```
+
+[09:51:14.0145] <tcampbell>
+ * How to marker-only profile the awsy tests:
+```
+MOZ_PROFILER_STARTUP=1
+MOZ_PROFILER_SHUTDOWN=awsy-profile.json
+MOZ_PROFILER_STARTUP_FEATURES="nostacksampling"
+./mach awsy-test --tp6 --headless
+```
+Actually, I also changed `ITERATIONS` in testing/awsy/awsy/__init__.py to `1`. There is probably a flag, but I got lost
+
+[09:52:40.0780] <sfink>
+wow, you're right, all of the major GCs just disappear until quite late
+
+[09:53:03.0365] <tcampbell>
+I believe the "quite late" is about when force-gc and thing happen
+
+[09:53:29.0259] <tcampbell>
+It seems our scheduling has gone very sideways
+
+[09:53:47.0824] <tcampbell>
+I was also wondering if the cross-process gc-scheduling was somehow suppressing thing
+
+[09:54:14.0532] <sfink>
+yeah, if you set the filter to "GC,Navigation" it helps to see where they line up
+
+[09:55:04.0805] <sfink>
+and in the Runnable line, there are a *ton* of PHttpChannel::Msg_DeletingChannel runnables (in both)
+
+[09:56:02.0005] <sfink>
+the GC reasons are flotillas of FULL_GC_TIMER followed by some number of CC_FINISHED
+
+[09:56:16.0780] <sfink>
+(in the pre-change; there aren't any in the post)
+
+[10:01:33.0810] <tcampbell>
+note that the profile is truncated at the start
+
+[10:01:52.0572] <tcampbell>
+ * note that the profile is truncated at the start. There is probably a variable I can use to increase number of samples..
+
+[10:02:08.0033] <sfink>
+yeah, I figured it must be
+
+[10:03:28.0558] <sfink>
+there are also half as many CC slices of any sort, and the number of CCSlice (as opposed to IdleCCSlice) goes from 8 -> 2 (without change -> with change)
+
+[10:03:50.0139] <sfink>
+there's a good chance that's what causes the memory difference
+
+[10:04:21.0838] <sfink>
+back in a bit
+
+[13:51:04.0806] <mgaudet>
+confession: I seem to have taken a perfectly good GC / CC story and broken it :( 
+
+[13:51:07.0798] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:57:57.0107] <mgaudet>
+sfink: When holding onto JS objects in cycle collected objects, is it mandatory that I hold a potentially wrapped object? 
+
+(Or perhaps without leading with my hypothesis: I've got a `JS::Heap<JSObject*>` stored in a cycle-collected object, which seems to be going bad. It's valid at one point, but then when we trace it later -- proof my tracer is invoked at least some times!-- it's gone bad. By investigation, I can see that the arena the JSObject was allocated in got collected at some point, and I'm wondering if this suggests something to you) 
+
+[14:02:44.0114] <tcampbell>
+I don't believe the cc'd object hard a particularly zone, so it should support unwrapped pointers.
+
+[14:03:13.0374] <tcampbell>
+ * I don't believe the cc'd object has a particularly zone, so it should support unwrapped pointers.
+
+[14:05:43.0574] <tcampbell>
+It is possible you just don't have enough `ExposeGCThingToActiveJS`
+
+[14:12:36.0982] <sfink>
+sorry, it looks like I'm going to have to take the day off. I agree with tcampbell, compartments shouldn't really matter. `ExposeGCThingToActiveJS` *shouldn't* matter here, since that should only matter for stuff that's otherwise alive. I can probably look at it tomorrow. I'd first trace backwards through the ownership graph to see if maybe the holding object isn't reliably traced?
+
+[14:14:41.0699] <sfink>
+I would get it in rr, log times when the object is created, then when the GCs happen, when the traces happen, and then when you know bad stuff has happened. You'd be looking for a GC that doesn't trace it, and trying to answer why, probably by looking at the stack leading to the successful trace, then setting breakpoints in the later GC to see why they don't go down the same path. (In Pernosco, this would be easier with the notebook.)
+
+[14:17:35.0231] <mgaudet>
+/me nods
+
+[14:18:21.0108] <mgaudet>
+I'll upload this to pernosco: worst case if I don't have it tomorrow I can send you a link and you can explain some of this stuff to me. I'm very very... unsure of all the invariants around CC / JS interaction
+
+[14:18:51.0088] <mgaudet>
+(for example: ExposeGCThingTOActiveJS is totally news to me) 
+
+[14:24:48.0789] <mgaudet>
+(Also... I don't think I'm messing ExposeGCThingTOActiveJS up. So that's something at least) 
+
+[15:01:19.0442] <mgaudet>
+To forward the answer from #dom, it turns out I need to register these DOM objects as 'roots' (effectively) using HoldJSObjects/DropJSObjects in constructor/destructor respectively. 
+
+[15:01:35.0448] <mgaudet>
+Seems to have fixed my issue. So...
+
+[15:02:18.0571] <mgaudet>
+confession: Have a patch in decent shape that passes all the same ReadableStreams wpt-tests as our existing implementation (with a few bonus UNEXPECTED-PASSES). 
+
+
+2021-09-17
+[17:04:57.0904] <pbone>
+> <@mccr8:mozilla.org> Alright. If you can't figure it out soon, you should back out the patch until you do, as it is a big regression.
+
+agreed.
+
+[17:08:33.0355] <pbone>
+tcampbell: sfink have either of you uploaded a profile so I can take a short cut to where you're at?
+
+[17:08:53.0012] <tcampbell>
+pbone: I think I posted on bug
+
+[17:09:07.0721] <tcampbell>
+(marker-only, missing first 200s)
+
+[17:09:13.0294] <pbone>
+Okay thanks (I only just sat down for my work day, I hadn't read that yet, sorry)
+
+[17:09:39.0782] <pbone>
+Oh.  Interesting, because I suspect something may happen at around ~60s because that's when the first inactive GC timer will fire.
+
+[17:09:40.0882] <tcampbell>
+No worries. Looks like scheduling issue, but not sure if it lies near your scheduling work on steves
+
+[17:10:07.0607] <tcampbell>
+ * No worries. Looks like scheduling issue, but not sure if it lies near your scheduling work or steves
+
+[17:11:17.0471] <tcampbell>
+After you mentioned DMD crashes, mine started crashing and I don't know what I did different before. Though I stand by the excess memory being PHttpChannelParent in parent process
+
+[17:12:19.0923] <tcampbell>
+In the marker-chart, steve notice there is a lot of "__delete__" messages for them, so we are confused why the memory isn't reclaimed yet. Thus the question of if we lost of CC's and that previously cleaned up
+
+[17:13:15.0143] <tcampbell>
+I think that is where we landed, so maybe you'll find a bit more reason why we don't have CCSlices after your patch until the tabs all close.
+
+[17:14:25.0394] <pbone>
+My suspicion is that now that the inactive GC is a full GC it somehow does something causing the cycle collector not to collect enough stuff.  But I don't know why.
+
+[17:15:00.0605] <tcampbell>
+yeah, I don't have any theories why those are connected either
+
+[17:15:22.0240] <tcampbell>
+in the profiles it is clear that the CCs before are partial (1/3 zone)
+
+[17:15:37.0652] <pbone>
+yeah, I can think of theories but they're too vague to mention at this point.
+
+[17:15:46.0840] <tcampbell>
+so might be some pre-existing weakness of our scheduling that we exacerbated
+
+[17:15:55.0163] <pbone>
+CCs can be zonal?
+
+[17:16:11.0502] <tcampbell>
+/me checks his terminology
+
+[17:17:02.0155] <tcampbell>
+sorry, the GCMajor is 1/3 zone
+
+[17:17:06.0843] <tcampbell>
+that makes more sense..
+
+[17:20:53.0629] <tcampbell>
+pbone: if you re-run it, I think `MOZ_PROFILER_STARTUP_ENTRIES` is the env variable you need. the default is 4million so 10mil might cover you. Also I think `--iterations=1` is the command line option for the awsy script to get one pass through the list. I was manually editting python files which is silly
+
+[17:22:42.0076] <pbone>
+I also found `--quick` which got me through an awsy without crashing.  I havn't tested if it still reproduces the problem though.
+
+[17:23:14.0738] <tcampbell>
+I expect it does. I didn't see anything too fancy needed to repro this issue
+
+[17:23:53.0216] <tcampbell>
+since it generates memory reports, I just load into a browser and use about:memory load-and-compare mode
+
+[17:26:50.0908] <pbone>
+I think that 60s timer might be needed. but I'm not certain.
+
+[17:32:51.0285] <pbone>
+Um, this might be cheating but what if we don't run the USER_INACTIVE GC timer during a benchmark.  It's supposed to run only if the user has stepped away (and, recent patch, when the browser is not animating).  It looks like that 2nd part doesn't work for the parent process, at least when the parent process is loading more tabs / facilitating active stuff for tabs.  It seems like a good idea anyway to just make the USER_INACTIVE GCs more conditional.
+
+[17:33:37.0175] <pbone>
+maybe cheating because it doesn't actually tell us why we're getting the current problem.
+
+[17:33:53.0967] <pbone>
+ * maybe cheating because it doesn't actually tell us why we're getting the current problem.  But maybe not, because it looks like this is only a problem for benchmarks in CI.
+
+[17:34:09.0512] <mccr8>
+FWIW AWSY tries to fake interactivity by doing some clicks.
+
+[17:34:23.0860] <pbone>
+oh.
+
+[17:34:34.0311] <pbone>
+I wonder if the parent detects them or just the content process.
+
+[17:34:56.0214] <mccr8>
+https://searchfox.org/mozilla-central/source/testing/awsy/awsy/awsy_test_case.py#365
+
+[17:35:08.0870] <pbone>
+I noticed when I was testing the interactivity thing that the parent seemed to be quick to say "User is inactive"
+
+[17:35:54.0749] <pbone>
+mccr8: is that used by the motionmark benchmark, which I think is in talos?
+
+[17:35:59.0595] <tcampbell>
+I was surprised too that this went to inactive since it was loading a new tab every few seconds
+
+[17:36:18.0511] <pbone>
+I saw the problems there first.
+
+[17:36:23.0534] <mccr8>
+pbone: I have no idea. That's from AWSY.
+
+[17:36:39.0400] <pbone>
+okay.
+
+[23:35:34.0079] <lth>
+> <@mccr8:mozilla.org> ProcessChild::QuickExit() is the method that does the exit.
+
+Thank you!
+
+[08:58:18.0824] <jonco>
+mccr8: Oops, sorry about that.  I'll post a patch.
+
+[10:43:47.0730] <mgaudet>
+confession: Posted [my `ReadableStream.tee`](https://phabricator.services.mozilla.com/D126002) patch 
+
+[10:43:50.0194] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:25:34.0844] <nicolo-ribaudo>
+Hi! When implementing a new function, is it better to define it as self-hosted or in C++ code?
+
+[13:25:48.0674] <nicolo-ribaudo>
+* Hi! I have a question: when implementing a new function, is it better to define it as self-hosted or in C++ code?
+
+[13:33:33.0879] <iain>
+nicolo-ribaudo: The unsatisfying answer is "it depends on the new function"
+
+[13:33:48.0778] <iain>
+There are some things that it's easier to do in self-hosted code, and some things that it's easier to do in C++
+
+[13:34:21.0270] <Tim>
+> <@iain:mozilla.org> There are some things that it's easier to do in self-hosted code, and some things that it's easier to do in C++
+
+Ah ok. We're asking because we were told that self-hosted methods were going to be removed
+
+[13:37:14.0134] <iain>
+We've talked about coming up with a replacement for self-hosted code, but AFAIK (tcampbell?) we're still very much at the "wouldn't it be nice if?" phase on that
+
+[13:38:13.0196] <tcampbell>
+self-hosted isn't being removed (any time soon). We changed how it works under the covers, but things can still be written in it.
+
+[13:38:21.0586] <tcampbell>
+ * Self-hosted isn't being removed (any time soon). We changed how it works under the covers, but things can still be written in it.
+
+[13:38:43.0482] <iain>
+And it's likely that any replacement would be designed to be good at similar sorts of things, so if it's currently easiest to implement a new function as self-hosted code, we would probably choose to implement it in the replacement too
+
+[13:39:26.0731] <iain>
+But to say anything more precise I would need a better sense of what you want to implement
+
+[13:39:33.0987] <tcampbell>
+ * Self-hosted isn't being removed (any time soon). We changed how it works under the covers, but things can still be written in it. That change is already landed. 
+
+[13:43:06.0041] <nicolo-ribaudo>
+As part of the implementation for the Stage 2 proposal, we need to implement all the tuple prototype methods (which are similar to array methods), and we were wondering where to implement them
+
+[13:43:58.0369] <nicolo-ribaudo>
+We started with self-hosted methods, and then decided that it was better to ask if it's ok
+
+[13:44:12.0371] <tcampbell>
+Self-hosting is still probably reasonable here
+
+[13:44:21.0143] <tcampbell>
+ * Self-hosting is still probably reasonable for that case
+
+[13:44:30.0846] <nicolo-ribaudo>
+Ok thank you 👍
+
+[13:44:57.0240] <tcampbell>
+(The changes to self-hosting have removed some of the negative attributes of it which is nice :)
+
+[13:46:31.0947] <nicolo-ribaudo>
+I probably don't know the SM code enough to understand exactly the changes, but I'm slowly getting a more comprehensive view 😄
+
+[13:47:38.0526] <tcampbell>
+main impact is that writing things in self-hosting use less memory than before :)
+
+[13:48:00.0775] <tcampbell>
+so if you add 20 methods, I won't be sad anymore
+
+[13:48:33.0731] <nicolo-ribaudo>
+Oh that's _perfect_ for this proposal, even if we recently reduced the number of methods it introduces
+
+[13:48:51.0263] <mgaudet>
+nicolo-ribaudo: So, speaking of R+T since you're here. 
+
+I just finished a skim-level review of your R+T-as-objects patches. The big place I need feedback from others is on JIT integration (intentionally disabled in the [stack](https://bugzilla.mozilla.org/show_bug.cgi?id=1730843). Overall though: I think it is a very credible approach. 
+
+Now, the question I had for you specifically was: You've written this feature twice (amazing, thank you by the way.): What was your feeling about the two approaches? Having implemented them as special objects, does our concern about new primitives types make more sense, or do you still feel like a new primative type is going to be the more elegant way to go about this.
+
+[13:49:09.0912] <mgaudet>
+ * nicolo-ribaudo: So, speaking of R+T since you're here.
+
+I just finished a skim-level review of your R+T-as-objects patches. The big place I need feedback from others is on JIT integration (intentionally disabled in the [stack](https://bugzilla.mozilla.org/show_bug.cgi?id=1730843)). Overall though: I think it is a very credible approach.
+
+Now, the question I had for you specifically was: You've written this feature twice (amazing, thank you by the way.): What was your feeling about the two approaches? Having implemented them as special objects, does our concern about new primitives types make more sense, or do you still feel like a new primative type is going to be the more elegant way to go about this.
+
+[13:50:30.0923] <iain>
+While people who know about things are here: how does R+T-as-objects deal with equality? Does it mean that we need an additional check to decide that two objects are not equal to each other (which could previously be determined purely by pointer identity)?
+
+[13:53:36.0997] <mgaudet>
+iain: in the object model, yes, I think we're going to have a second check. In the primitive type implmentation, I think its no in the general case, a maybe for R+T depending on implementation strategy
+
+[13:54:05.0229] <mgaudet>
+Having said that, we *might* I think be able to get back to single check for equality on objects if the interning machinery is built
+
+[13:54:25.0431] <mgaudet>
+Oh, wait: that's not true with boxing anymore
+
+[13:55:17.0662] <mgaudet>
+nicolo-ribaudo: (If you wanted to expand this into a document for more perusal, that's fine too. Sorry for ambushing you a bit here :P) 
+
+[13:56:06.0357] <nicolo-ribaudo>
+(I'm writing a long-ish message here, maybe I'll copy-paste it somewhere to refer to it in the future 😛)
+
+[14:08:07.0932] <nicolo-ribaudo>
+Implementing them as object was _way easier_.
+
+- I didn't have to change some bit patterns of the other primitives to make room for three new ones. I felt like there is a limit of how many primitives we can have (unless we do a big refactoring), but with R/T/B I still didn't hit this limit and it's hard for me to predict what it is.
+- Most of the logic was already there, and probably it's already faster: for example, accessing record fields is (I think) O(1) rather than O(n) - at least for small records.
+- The JIT in the object-based stack is disabled because I didn't check yet how it works with equality, but I expect it to already work "for free" for record property access. On the other hand, the jit for primitive-based R&T must probably be written from scratch.
+
+However, I think that the primitives version can be optimized in R&T-specific ways that it might be harder or impossible.
+- One example is interning: with boxes and with the `+0`/`-0` equality we can _still_ intern, but we need to intern different parts of the immutable strucure separately. Specifically, we can track "normal values" separately from boxes and zeroes, and only intern the "normal values" part. I tried thinking about how it could work at https://excalidraw.com/#json=5321061461655552,XTvh_y9dGjsgVeJR0PNKsA, but I didn't actually experiment with an implementation yet.
+- I _think_ it might be easier in the future to share R&T without boxes accross threads if we use primitives, but this is just a speculation I'm making since they don't have all the special cases that objects have
+
+Also, with object-based R/T/B we must be careful about the dinstinction between ""primitives"" and their box objects. There are many places in the spec where primitives should be wrapped (for example, `Object.prototype.valueOf(#{})` should return an object). When using primitives this is easy: any C++ function that expects an object will refuse anything with a type which is not `JSObject*`. When using object-based primitives, the C++ type-checker doesn't help and we must "manually" verify that we don't accidentally forget wrapping the R/T/B somewhere.
+
+iain: Yes, I needed to add an extra check. However, this is similar to how we already have to check the type of a value to determine that it's an object, before comparing its pointer. You can see it at https://phabricator.services.mozilla.com/D125649#change-k4u2kzSwvSjZ
+
+[14:10:08.0484] <nicolo-ribaudo>
+(mgaudet I'll reply to your comments on phabricator on Monday, it's 11pm here now) 
+
+[14:10:24.0579] <mgaudet>
+nicolo-ribaudo: No worries! Thanks so much for the detailed thinking
+
+[14:23:57.0322] <yury>
+tripping on Hazard stuff again but it is something that landed yesterday.. Something connected with JSFunction or Stencil....
+
+[14:24:25.0951] <yury>
+```
+Function '_ZL25CompileStandaloneFunctionP9JSContextRKN2JS22ReadOnlyCompileOptionsERNS1_10SourceTextIDsEERKN7mozilla5MaybeIjEEN2js8frontend18FunctionSyntaxKindENSD_13GeneratorKindENSD_17FunctionAsyncKindENS1_6HandleIPNSD_5ScopeEEE$BytecodeCompiler.cpp:JSFunction* CompileStandaloneFunction(JSContext*, JS::ReadOnlyCompileOptions*, JS::SourceText<char16_t>*, mozilla::Maybe<unsigned int>*, uint8, uint8, uint8, JS::Handle<js::Scope*>)' has unrooted '<returnvalue>' of type 'JSFunction*' live across GC call '_ZN2JS6RootedIN2js8frontend16CompilationInputEED1Ev$JS::Rooted<T>::~Rooted() [with T = js::frontend::CompilationInput]' at js/src/frontend/BytecodeCompiler.cpp:1225
+    BytecodeCompiler.cpp:1225: Assign(112,113, return := __temp_35**)
+    BytecodeCompiler.cpp:1225: Call(113,114, source.~__dt_comp ())
+    BytecodeCompiler.cpp:1225: Call(114,115, gcOutput.~__dt_comp ())
+    BytecodeCompiler.cpp:1225: Call(115,116, compiler.~__dt_comp ())
+    BytecodeCompiler.cpp:1225: Call(116,117, parserAllocScope.~__dt_comp ())
+    BytecodeCompiler.cpp:1225: Call(117,118, input.~__dt_comp ()) [[GC call]]
+    BytecodeCompiler.cpp:1225: Call(118,119, assertException.~__dt_comp ())
+    BytecodeCompiler.cpp:1226:  [[end of function]]
+GC Function: _ZN2JS6RootedIN2js8frontend16CompilationInputEED1Ev$JS::Rooted<T>::~Rooted() [with T = js::frontend::CompilationInput]
+    JS::Rooted<T>::~Rooted() [with T = js::frontend::CompilationInput] [[base_dtor]]
+    virtual js::RootedTraceable<js::frontend::CompilationInput>::~RootedTraceable() [[complete_dtor]]
+    virtual js::RootedTraceable<js::frontend::CompilationInput>::~RootedTraceable() [[base_dtor]]
+    void js::frontend::CompilationInput::~CompilationInput() [[complete_dtor]]
+    void js::frontend::CompilationInput::~CompilationInput() [[base_dtor]]
+    RefPtr<T>::~RefPtr() [with T = js::ScriptSource] [[complete_dtor]]
+    RefPtr<T>::~RefPtr() [with T = js::ScriptSource] [[base_dtor]]
+    static void RefPtr<T>::ConstRemovingRefPtrTraits<U>::Release(U*) [with U = js::ScriptSource; T = js::ScriptSource]
+    static void mozilla::RefPtrTraits<U>::Release(U*) [with U = js::ScriptSource]
+    void js::ScriptSource::Release()
+    Utility.h:void js_delete(js::ScriptSource*) [with T = js::ScriptSource]
+    void js::ScriptSource::~ScriptSource()
+    void js::ScriptSource::~ScriptSource() [[base_dtor]]
+    mozilla::UniquePtr<T, D>::~UniquePtr() [with T = js::XDRIncrementalStencilEncoder; D = JS::DeletePolicy<js::XDRIncrementalStencilEncoder>]
+    mozilla::UniquePtr<T, D>::~UniquePtr() [with T = js::XDRIncrementalStencilEncoder; D = JS::DeletePolicy<js::XDRIncrementalStencilEncoder>] [[base_dtor]]
+    void mozilla::UniquePtr<T, D>::reset(mozilla::UniquePtr<T, D>::Pointer) [with T = js::XDRIncrementalStencilEncoder; D = JS::DeletePolicy<js::XDRIncrementalStencilEncoder>; mozilla::UniquePtr<T, D>::Pointer = js::XDRIncrementalStencilEncoder*]
+    void JS::DeletePolicy<T>::operator()(const T*) [with T = js::XDRIncrementalStencilEncoder]
+    Utility.h:void js_delete(js::XDRIncrementalStencilEncoder*) [with T = js::XDRIncrementalStencilEncoder]
+    void js::XDRIncrementalStencilEncoder::~XDRIncrementalStencilEncoder()
+    void js::XDRIncrementalStencilEncoder::~XDRIncrementalStencilEncoder() [[base_dtor]]
+    Utility.h:void js_delete(js::frontend::CompilationStencilMerger*) [with T = js::frontend::CompilationStencilMerger]
+    void js::frontend::CompilationStencilMerger::~CompilationStencilMerger() [[complete_dtor]]
+    void js::frontend::CompilationStencilMerger::~CompilationStencilMerger() [[base_dtor]]
+    mozilla::UniquePtr<T, D>::~UniquePtr() [with T = js::frontend::ExtensibleCompilationStencil; D = JS::DeletePolicy<js::frontend::ExtensibleCompilationStencil>]
+    mozilla::UniquePtr<T, D>::~UniquePtr() [with T = js::frontend::ExtensibleCompilationStencil; D = JS::DeletePolicy<js::frontend::ExtensibleCompilationStencil>] [[base_dtor]]
+    void mozilla::UniquePtr<T, D>::reset(mozilla::UniquePtr<T, D>::Pointer) [with T = js::frontend::ExtensibleCompilationStencil; D = JS::DeletePolicy<js::frontend::ExtensibleCompilationStencil>; mozilla::UniquePtr<T, D>::Pointer = js::frontend::ExtensibleCompilationStencil*]
+    void JS::DeletePolicy<T>::operator()(const T*) [with T = js::frontend::ExtensibleCompilationStencil]
+    Utility.h:void js_delete(js::frontend::ExtensibleCompilationStencil*) [with T = js::frontend::ExtensibleCompilationStencil]
+    void js::frontend::ExtensibleCompilationStencil::~ExtensibleCompilationStencil() [[complete_dtor]]
+    void js::frontend::ExtensibleCompilationStencil::~ExtensibleCompilationStencil() [[base_dtor]]
+    RefPtr<T>::~RefPtr() [with T = js::frontend::StencilAsmJSContainer] [[complete_dtor]]
+    RefPtr<T>::~RefPtr() [with T = js::frontend::StencilAsmJSContainer] [[base_dtor]]
+    static void RefPtr<T>::ConstRemovingRefPtrTraits<U>::Release(U*) [with U = js::frontend::StencilAsmJSContainer; T = js::frontend::StencilAsmJSContainer]
+    static void mozilla::RefPtrTraits<U>::Release(U*) [with U = js::frontend::StencilAsmJSContainer]
+    void js::AtomicRefCounted<T>::Release() const [with T = js::frontend::StencilAsmJSContainer]
+    Utility.h:void js_delete(js::frontend::StencilAsmJSContainer*) [with T = js::frontend::StencilAsmJSContainer]
+    void js::frontend::StencilAsmJSContainer::~StencilAsmJSContainer() [[complete_dtor]]
+    void js::frontend::StencilAsmJSContainer::~StencilAsmJSContainer() [[base_dtor]]
+    mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::~HashMap() [[complete_dtor]]
+    mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::~HashMap() [[base_dtor]]
+    mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::~HashTable() [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy]
+    mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::~HashTable() [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy] [[base_dtor]]
+    static void mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::destroyTable(AllocPolicy&, char*, uint32_t) [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy; uint32_t = unsigned int]
+    static void mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::forEachSlot(char*, uint32_t, F&&) [with F = mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::destroyTable(AllocPolicy&, char*, uint32_t) [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy; uint32_t = unsigned int]::<lambda(const Slot&)>; T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy; uint32_t = unsigned int]
+    mozilla::detail::HashTable<T, HashPolicy, AllocPolicy>::destroyTable(AllocPolicy&, char*, uint32_t) [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >; HashPolicy = mozilla::HashMap<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule>, mozilla::DefaultHasher<js::frontend::TypedIndex<js::frontend::ScriptStencil> >, js::SystemAllocPolicy>::MapHashPolicy; AllocPolicy = js::SystemAllocPolicy; uint32_t = unsigned int]::<lambda(const Slot&)>
+    void mozilla::detail::HashTableEntry<T>::destroyStoredT() [with T = mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >]
+    mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >::~HashMapEntry() [[complete_dtor]]
+    mozilla::HashMapEntry<js::frontend::TypedIndex<js::frontend::ScriptStencil>, RefPtr<const JS::WasmModule> >::~HashMapEntry() [[base_dtor]]
+    RefPtr<T>::~RefPtr() [with T = const JS::WasmModule]
+    RefPtr<T>::~RefPtr() [with T = const JS::WasmModule] [[base_dtor]]
+    static void RefPtr<T>::ConstRemovingRefPtrTraits<const U>::Release(const U*) [with U = JS::WasmModule; T = const JS::WasmModule]
+    static void mozilla::RefPtrTraits<U>::Release(U*) [with U = JS::WasmModule]
+    void js::AtomicRefCounted<T>::Release() const [with T = JS::WasmModule]
+    Utility.h:void js_delete(JS::WasmModule*) [with T = JS::WasmModule]
+    JS::WasmModule.__dt_comp 
+    void js::wasm::Module::~Module()
+    void js::wasm::Module::~Module() [[base_dtor]]
+    RefPtr<T>::~RefPtr() [with T = JS::OptimizedEncodingListener] [[complete_dtor]]
+    RefPtr<T>::~RefPtr() [with T = JS::OptimizedEncodingListener] [[base_dtor]]
+    static void RefPtr<T>::ConstRemovingRefPtrTraits<U>::Release(U*) [with U = JS::OptimizedEncodingListener; T = JS::OptimizedEncodingListener]
+    static void mozilla::RefPtrTraits<U>::Release(U*) [with U = JS::OptimizedEncodingListener]
+    JS::OptimizedEncodingListener.Release
+    uint32 mozilla::dom::JSStreamConsumer::Release()
+    void mozilla::dom::JSStreamConsumer::~JSStreamConsumer() [[deleting_dtor]]
+    void mozilla::dom::JSStreamConsumer::~JSStreamConsumer() [[complete_dtor]]
+    void mozilla::dom::JSStreamConsumer::~JSStreamConsumer() [[base_dtor]]
+    nsIEventTarget.Dispatch
+    unresolved nsIEventTarget.Dispatch
+```
+
+[14:25:28.0141] <yury>
+`JSStreamConsumer` has my  new changes -- looking for help, again
+
+[14:26:48.0156] <yury>
+ * `JSStreamConsumer` has my  new changes -- looking for help and info, again
+
+[14:48:42.0390] <iain>
+nicolo-ribaudo: IIUC, this is the code that we have to call to check whether an object is a record:
+```
+ static inline bool isRecord(const Value& v) {
+    return v.isObject() && v.toObject().is<RecordObject>();
+  }
+```
+Checking whether a Value is an object is very cheap, because the tag is embedded in the Value. `is<RecordObject>()` has to look at the object's class pointer, which means we have to dereference the object pointer to get the shape, and dereference the shape pointer to get the class. I am a little bit concerned about requiring two additional memory loads every time we compare objects.
+
+[14:49:46.0158] <sfink>
+tcampbell: the above hazard is rather unpleasant. Basically, `Rooted<CompilationInput>` is freaking out because `CompilationInput` has a `RefPtr<ScriptSource>`. If you happened to make a rooted input, then dropped the other last reference within its scope, you could end up deleting the `ScriptSource` and that does lots of scary stuff.
+
+[14:50:21.0657] <iain>
+(Record/Tuple as a new primitive type has downsides, but it does avoid this problem.)
+
+[14:50:29.0104] <tcampbell>
+I guess I'm surprised that dropping a WasmModule calls arbitrary dispatch code
+
+[14:52:30.0755] <sfink>
+hm. It's claiming `~Module` could decrement `RefPtr<OptimizedEncodingListener>`. Is that true?
+
+[14:53:51.0468] <sfink>
+er, I guess it's specifically claiming that to be true in that patch stack
+
+[14:54:03.0095] <sfink>
+(which might be why my searchfox queries aren't turning up anything)
+
+[14:55:18.0721] <yury>
+relevant change is at https://hg.mozilla.org/integration/autoland/rev/5b7fe5d564aa5432e31228e79de103139e351bf5
+
+[14:56:46.0184] <sfink>
+ah, JSStreamConsumer inherits from OptimizedEncodingListener
+
+[14:58:48.0535] <sfink>
+...why does the hg.m.o diff page break Ctrl-F (find in page)?...
+
+[14:59:07.0893] <sfink>
+ah, it doesn't
+
+[14:59:16.0446] <sfink>
+somehow "Whole Words" got turned on. Bizarro.
+
+[15:02:51.0245] <yury>
+/me curios what (change) happened to get this hazzard
+
+[15:03:45.0831] <sfink>
+yury: I believe it's because ~JSStreamConsumer explicitly dispatches a runnable, which is rather terrifying
+
+[15:03:54.0902] <sfink>
+can this be deferred?
+
+[15:04:51.0451] <sfink>
+(I recall there's some mechanism for deferring things like this; I'm searching to try to find it)
+
+[15:05:22.0699] <sfink>
+I guess I'm thinking of DeferredFinalize
+
+[15:06:57.0072] <sfink>
+hm, but that ~JSStreamConsumer stuff is the case in existing code already. Did something add a RefPtr<JSStreamConsumer> to something?
+
+[15:09:13.0330] <sfink>
+maybe the destructor could call `delayedDispatch` instead? (I don't really know what I'm talking about)
+
+[15:09:46.0301] <yury>
+FetchUtil::StreamResponseToJS starts JSStreamConsumer::Start, which holds JSStreamConsumer
+
+[15:12:20.0755] <yury>
+as before the change, though how OptimizedEncodingListener in play
+
+[15:12:27.0781] <yury>
+ * as before the change, though now OptimizedEncodingListener in play
+
+[15:14:34.0070] <sfink>
+it looks like asyncStream holds that reference
+
+[15:15:25.0555] <sfink>
+I'm doubtful that `delayedDispatch` would help; it looks like it sometimes runs immediately
+
+[15:31:35.0299] <yury>
+what's JSStreamConsumer::Release?
+
+[15:32:06.0262] <yury>
+ * what's JSStreamConsumer/OptimizedEncodingListener::Release?
+
+[15:32:19.0705] <sfink>
+I guess the dispatch code isn't really arbitrary -- at least, I don't *think* Dispatch will execute other things in the queue first or anything. So there's probably a way of telling the analysis we really only need to care about WindowStreamOwner::Destroyer, which means RefPtr<WIndowSteramOwner>::~RefPtr. But that ends up calling `obs->RemoveObserver(this, DOM_WINDOW_DESTROYED_TOPIC);` and I'm guessing the analysis will find a way for that to GC too.
+
+[15:32:40.0388] <sfink>
+ * I guess the dispatch code isn't really arbitrary -- at least, I don't _think_ Dispatch will execute other things in the queue first or anything. So there's probably a way of telling the analysis we really only need to care about WindowStreamOwner::Destroyer, which means RefPtr<WIndowStreamOwner>::~RefPtr. But that ends up calling `obs->RemoveObserver(this, DOM_WINDOW_DESTROYED_TOPIC);` and I'm guessing the analysis will find a way for that to GC too.
+
+[15:33:58.0194] <yury>
+ * <del>what's JSStreamConsumer/OptimizedEncodingListener::Release?</del>
+
+[15:48:05.0639] <yury>
+/me needs some reading then... till monday
+
+[15:48:10.0718] <yury>
+thanks
+
+[15:50:10.0713] <sfink>
+yury: I don't know that much about how this stuff is all supposed to work, but I put a needinfo on the bug in hopes that peterv or somebody can save us here.
+
+
+2021-09-18
+[08:38:39.0358] <tcampbell>
+Anyone around to review a small patch for a fuzz-blocker? Bug 1731434
+
+[08:38:41.0843] <botzilla>
+https://bugzil.la/1731434 — NEW (tcampbell) — Assertion failure: maybecx->unwrappedException().isObject(), at js/src/vm/JSContext.cpp:335
+
+[08:40:12.0631] <arai>
+I'll look into it
+
+[08:40:51.0165] <tcampbell>
+thanks
+
+[08:42:45.0609] <arai>
+tcampbell: what is "double-faults" ?
+
+[08:43:05.0554] <tcampbell>
+errors while generating errors
+
+[08:43:11.0647] <arai>
+ah
+
+[08:43:38.0708] <tcampbell>
+I guess we don't use that term in spidermonkey much. I've seen in used in other software contexts around error handling
+
+[08:44:09.0700] <tcampbell>
+in the fuzz bug we generate a new error while allocating the first error object
+
+[08:45:28.0060] <arai>
+tcampbell: so, `maybecx->isExceptionPending()` verifies the error report with `JSMSG_OVER_RECURSED` works?
+
+[08:46:34.0302] <arai>
+or it also covers when there's already other pending exception?
+
+[08:46:46.0600] <tcampbell>
+the first
+
+[08:46:50.0504] <arai>
+okay
+
+[08:47:55.0207] <tcampbell>
+We want to set the OverRecursed state when the error is overrecursed. Previously, this was a bool on the cx. I wanted to make sure we only set that state if we actually have a consistent error state
+
+[08:48:13.0660] <arai>
+I see
+
+[08:49:27.0773] <tcampbell>
+i'll add a comment
+
+[08:49:43.0323] <arai>
+thanks
+
+
+2021-09-20
+[01:54:12.0764] <nicolo-ribaudo>
+> <@iain:mozilla.org> nicolo-ribaudo: IIUC, this is the code that we have to call to check whether an object is a record:
+> ```
+>  static inline bool isRecord(const Value& v) {
+>     return v.isObject() && v.toObject().is<RecordObject>();
+>   }
+> ```
+> Checking whether a Value is an object is very cheap, because the tag is embedded in the Value. `is<RecordObject>()` has to look at the object's class pointer, which means we have to dereference the object pointer to get the shape, and dereference the shape pointer to get the class. I am a little bit concerned about requiring two additional memory loads every time we compare objects.
+
+Do you think that it would be better to add a new single `JSValueType` to store these "primitive objects", so that they can be easily distinguished from "normal objects"?
+
+[01:54:33.0590] <wingo>
+ignorant question -- what's the perspective on self-hosted builtins these days
+
+[01:54:38.0835] <wingo>
+"don't do it" ?
+
+[01:55:01.0917] <wingo>
+aaah i see there was discussion on fraidy
+
+[01:55:06.0250] <wingo>
+ * aaah i see there was discussion on friday
+
+[01:55:38.0917] <wingo>
+https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$JM1YDkCS32f5wyaqGxLpouApl-aDMHAO2p9OWvf8NCA?via=mozilla.org&via=matrix.org&via=igalia.com and below
+
+[07:11:34.0298] <tcampbell>
+yeah, they are fine still and have less downsides these days than previously
+
+[08:58:25.0133] <iain>
+> <@nicolo-ribaudo:matrix.org> Do you think that it would be better to add a new single `JSValueType` to store these "primitive objects", so that they can be easily distinguished from "normal objects"?
+
+I think that would solve the specific problem of equality checks, yeah. You mentioned above that doing records/tuples as objects was much easier than doing them as primitive types, though, so the benefit here would have to be weighed against the other costs.
+
+[08:59:42.0914] <iain>
+If we do go with a new primitive type, my uninformed assumption is that we can probably make it work with a single new primitive type, and that would be better than using two, but you have more experience here than I do
+
+[09:05:48.0789] <tcampbell>
+jonco: looking at my notes, my previous attempt at changing Rooted blew up on win32 (eg. test-windows10-32/debug-jsreftest-e10s-1). Does your version pass there?
+
+[09:11:04.0708] <jonco>
+tcampbell: JS reftests are fine, but now I look there was one failure with win32 cgc tests: https://treeherder.mozilla.org/jobs?repo=try&revision=96eae2c5f5aa478c7e0c71c6034856fee2906328&selectedTaskRun=M4hWm67sRAuTOV8Qy-XV2w.0&group_state=expanded
+
+[09:18:36.0760] <tcampbell>
+yeah, that looks different. I was seeing pretty broad failures (since Traceable rooting during GC was just busted on that build)
+
+[09:19:01.0642] <jonco>
+OK, good to know. 
+
+[09:19:48.0635] <tcampbell>
+ * yeah, that looks different. I was seeing pretty broad failures (since Traceable rooting during GC was just busted on that build due to struct fields being in wrong spot)
+
+[09:58:21.0680] <Tim>
+could someone vouch for me on https://bugzilla.mozilla.org/show_bug.cgi?id=1731632 so I can get level 1 commit access?
+
+[10:04:24.0768] <mccr8>
+I have vouched.
+
+[10:04:44.0959] <Tim>
+thanks!
+
+[10:05:21.0428] <Tim>
+Do I need to assign the bug to somebody? or does it get assigned automatically?
+
+[10:07:33.0121] <mccr8>
+I think the right people to deal with it monitor the component, so you shouldn't have to do anything else.
+
+[10:08:11.0730] <Tim>
+cool, thx
+
+[10:08:58.0432] <mccr8>
+np
+
+[12:05:30.0993] <tcampbell>
+hmm.. I requested a Windows test build on Try and it decided to compile for Android instead :(
+
+[12:14:40.0151] <tcampbell>
+Oh, I was using an older job identifier from an old task
+
+
+2021-09-21
+[03:14:30.0877] <dbezhetskov>
+Hi SM folks, I runt into win problem (actually known one). When I try to build SM on windows I get `sh.exe: *** fatal error - couldn't allocate heap, ...`. Maybe someone has a solution for this?
+
+[03:14:31.0914] <dbezhetskov>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1490142
+
+[03:14:53.0064] <dbezhetskov>
+ * Rebooting or restarting doesn't help (https://bugzilla.mozilla.org/show_bug.cgi?id=1490142)
+
+[07:03:14.0050] <tcampbell>
+dbezhetskov: I believe that is a general cygwin problem. Here are some pointers, but you can also search general internet for other ideas https://stackoverflow.com/questions/18502999/git-extensions-win32-error-487-couldnt-reserve-space-for-cygwins-heap-win32
+
+[09:43:18.0608] <jonco>
+sfink: Could I get a quick review in bug 1731432 if you're around?  I'd like to land this to see if it fixes the crashes.
+
+[09:43:20.0929] <botzilla>
+https://bugzil.la/1731432 — ASSIGNED (jonco) — Crash in [@ CheckParticipatesInCycleCollection]
+
+[09:51:41.0180] <nbp>
+smaug: How can checkerboarding be caused by JS in https://bugzilla.mozilla.org/show_bug.cgi?id=1701956 ? Would the JS code in one browser caused the same amount of checker boarding than in the other, unless they are given different JS code to execute?
+
+[09:52:05.0547] <nbp>
+ * smaug: How can checkerboarding be caused by JS in https://bugzilla.mozilla.org/show_bug.cgi?id=1701956 ? Would the JS code in one browser caused the same amount of checker boarding as in the other browser, unless they are given different JS code to execute?
+
+[09:57:59.0008] <smaug>
+I would expect checker boarding be very much browser specific. Browsers may have larger areas of the page painted before scrolling, and then just need to pan around that already painted area etc. And if JS execution takes time, painting some new areas may need to wait
+
+[10:02:57.0086] <nbp>
+checkerboarding is when the area which is scroll to is not yet painted? in which case having long JS execution could cause checkerboarding by not giving enough time to paint, or we are not painting enough ahead of the scroll to begin with.
+
+[10:18:04.0125] <sfink>
+jonco: sorry, done
+
+[10:19:13.0921] <sfink>
+jonco: I also queued it for landing, in case you're not around now.
+
+[10:31:59.0029] <jonco>
+sfink: awesome, thanks!
+
+[12:04:27.0147] <Chris Peterson (:cpeterson)>
+I see gc_slice_during_idle telemetry dropped from 100 to ~50% on 2021-09-02: https://glam.telemetry.mozilla.org/firefox/probe/gc_slice_during_idle/explore?ref=20210902092450. Is that good or bad? Is that expected? Could that be a side effect of @pbone's RefreshDriver changes in Bug 1727960, which landed on 2021-09-01?
+
+[12:04:29.0515] <botzilla>
+https://bugzil.la/1727960 — RESOLVED (pbone) — The heuristic for checking if the refresh driver is ticking does not work
+
+[12:04:48.0120] <Chris Peterson (:cpeterson)>
+2021-09-01 changelog: https://hg.mozilla.org/mozilla-central/pushloghtml?fromchange=9e8267a443e521f496486a183298fc23ebe8ee15&tochange=24c9b17fd623091047f1f5b9a1af6a1acc418ce7
+
+[13:24:40.0452] <Tim>
+Question about https://searchfox.org/mozilla-central/source/js/src/builtin/Array.cpp#2837 - when would the condition for the if statement here be false?
+
+[13:24:52.0999] <Tim>
+It seems like since splice() is an array method, obj should be an array
+
+[13:28:27.0293] <nicolo-ribaudo>
+You can call `Array.prototype.splice.call(anyObj, ...)`
+
+[13:28:51.0835] <Tim>
+So what does it do on an object that's not an array?
+
+[13:35:00.0600] <nicolo-ribaudo>
+Usually splice returns un array, but what actually happens is that it returns an object of type X where:
+- If `this` is an array or an array subclass and `this.constructor[Symbol.species]` exists, X is `this.constructor[Symbol.species]`
+- Otherwise, X is Array
+
+[13:35:21.0093] <nicolo-ribaudo>
+If you are interested in the spec for that, it's https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#sec-arrayspeciescreate
+
+[13:35:39.0462] <nicolo-ribaudo>
+The new array copy methods ignore Symbol.species, and always return an array
+
+[13:36:18.0737] <evilpie>
+> <@nicolo-ribaudo:matrix.org> The new array copy methods ignore Symbol.species, and always return an array
+
+Amazing, wow
+
+
+2021-09-22
+[21:16:33.0499] <pbone>
+> <@cpeterson:mozilla.org> I see gc_slice_during_idle telemetry dropped from 100 to ~50% on 2021-09-02: https://glam.telemetry.mozilla.org/firefox/probe/gc_slice_during_idle/explore?ref=20210902092450. Is that good or bad? Is that expected? Could that be a side effect of @pbone's RefreshDriver changes in Bug 1727960, which landed on 2021-09-01?
+
+I don't know yet but it looks concerning.  I'm investigating.
+
+[03:12:07.0350] <jandem>
+bug 1688791 landed 🎉
+
+[03:12:11.0613] <botzilla>
+https://bugzil.la/1688791 — RESOLVED (arai) — Remove legacy-XDR code
+
+[06:38:24.0223] <wingo>
+wow, end of an era :)
+
+[06:43:02.0476] <nbp>
+Technically Stencil-XDR is a better XDR implementation than the legacy XDR :P
+
+[06:55:13.0246] <peterv>
+sfink: I didn't figure out all the ownership relations around CompilationInput and JSStreamConsumer, so I hope my response to your needinfo made sense
+
+[07:22:23.0799] <tcampbell>
+Also Bug 1662152 landed this week, which was the other duplication of script allocation code 🎉
+
+[07:22:25.0638] <botzilla>
+https://bugzil.la/1662152 — RESOLVED (arai) — Remove JSScript cloning mechanism in favour of sharing Stencils
+
+[07:23:10.0783] <mgaudet>
+Big applause for Arai, that was a lot of work :) 
+
+[07:23:23.0246] <wingo>
+👏
+
+[07:23:47.0554] <tcampbell>
+now 100% of this stuff flows through stencil instantiation which is a big milestone
+
+[07:24:15.0947] <jandem>
+so nice to see this all come together and deliver results
+
+[07:26:38.0195] <Ms2ger 💉💉>
+And binast dead and buried as well?
+
+[08:14:21.0684] <sfink>
+peterv: your response was great, thanks! Reading it and working through it right now, in between meetings.
+
+[12:03:07.0325] <sfink>
+mccr8: I seem to have just implemented a near-duplicate of a patch you posted a mere 10 years ago: bug 710499 ;-)
+
+[12:03:09.0425] <botzilla>
+https://bugzil.la/710499 — NEW (nobody) — [CC] add telemetry for the reason why the CC was triggered
+
+[12:03:32.0755] <mccr8>
+huh weird
+
+[12:04:07.0798] <sfink>
+I guess now I have to decide whether to change it to handle multiple reasons, as you argue for in that bug
+
+[12:04:17.0727] <sfink>
+right now, though, my decision is to have lunch
+
+[13:20:45.0935] <Tim>
+I added some self-hosted methods to Array.js and they work, but if one of the methods calls ThrowTypeError(), I get this assertion failure: "Assertion failure: prop (SelfHosted intrinsic not found), at /home/tjc/gecko/js/src/vm/SelfHosting.cpp:2920"
+
+[13:21:06.0239] <Tim>
+is there someplace I have to add the new self-hosted method names to make it possible to throw an exception from one of them? (I looked at the code in SelfHosting.cpp but I don't really understand it)
+
+[13:29:18.0910] <Tim>
+also, is there a way to make it print out a stack trace when the assertion fails?
+
+[13:33:16.0858] <mgaudet>
+Tim: To your question about backtrace... I don't think so (would be lovely tho); I ususally grab it in rr/gdb to get the backtrace (`./mach jstests --debugger=rr <test>` usually works fine) 
+
+[13:38:03.0396] <mgaudet>
+To the assertion, I've never seen it before. But making a *wild* guess based on [this comment](https://searchfox.org/mozilla-central/source/js/src/vm/Opcodes.h#2911-2923), because it's issued by GetIntrinsic failing... I'd guess there might be a scoping issue happening here? i.e. the problem isn't ThrowTypeError, but a typo, perhaps in an argument, causing a search for a global binding that isn't being found ?
+
+[13:38:55.0578] <Tim>
+hmm, ok. I have to go in a sec, but I'll look at it later
+
+[13:39:18.0671] <Tim>
+one more question before I go -- is there an easy way to convert a HandlePropertyName to a string so that the assertion failure message can be more informative?
+
+[13:39:44.0702] <mgaudet>
+Sounds good; if you need a second pair of eyes eventually I might be able to take a peek too. (If this is in fact a typo issue... a bug should be opened to issue a better error because that'd be a terrible experience) 
+
+[13:40:15.0583] <tcampbell>
+I think name->dump() will do the thing
+
+[13:40:18.0286] <evilpie>
+Tim: In a debug build you can call dump https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#1201
+
+[13:40:28.0246] <tcampbell>
+especially if it is about to crash anyways
+
+[13:40:48.0885] <mgaudet>
+(Oh that's a better answer :P I was going to point to  `AtomToPrintableString`) 
+
+[13:41:03.0234] <tcampbell>
+usually typo is reason for that failure these days
+
+[13:42:01.0943] <tcampbell>
+If you are getting a failure throwing an error, it is probably the JSMSG_... that is missing
+
+[13:42:06.0650] <tcampbell>
+ * If you are getting a failure throwing an error, it is probably the JSMSG_... that is missing or has typo
+
+[13:42:32.0125] <tcampbell>
+they should match what you put in js/public/friend/ErrorNumbers.msg
+
+[13:43:23.0485] <tcampbell>
+Tim:^
+
+[13:45:20.0604] <tcampbell>
+Bug 1722737 was what I filled to have a better error if someone wants to fix..
+
+[13:45:21.0935] <botzilla>
+https://bugzil.la/1722737 — NEW (tcampbell) — Re-implement checks for missing self-hosting intrinics
+
+[13:46:11.0541] <tcampbell>
+I guess that was trying to be fancier than just having a more helpful dump of the propertyname
+
+[13:46:41.0328] <tcampbell>
+(check when loading self-host, vs check at use of function with the typo)
+
+
+2021-09-23
+[00:55:50.0564] <annevk>
+peterv: evilpie: is https://github.com/heycam/webidl/pull/914 the kind of thing either one of you has an opinion on? Things are being changed to match Firefox so from that perspective all seems in order, but just in case.
+
+[00:59:45.0827] <peterv>
+annevk: cross-browser consistency can only help I think? but since we don't have to change I don't think we care much
+
+[01:00:00.0428] <evilpie>
+We know they are in the wrong order, but we haven't really tried fixing it yet https://bugzilla.mozilla.org/show_bug.cgi?id=1629803
+
+[01:00:07.0220] <evilpie>
+we should not be standardizing our behavior
+
+[01:00:13.0220] <peterv>
+oh
+
+[01:01:48.0531] <peterv>
+evilpie: so the change is not matching ECMA-262?
+
+[01:02:24.0885] <evilpie>
+afaik Chrome/Safari match ecma and we don't, but I would have to check again
+
+[01:02:48.0572] <annevk>
+evilpie: could it be that we do something else for IDL-defined objects?
+
+[01:02:48.0963] <peterv>
+hmm, that's not what the other report claims 🤨
+
+[01:05:32.0012] <peterv>
+ah, https://github.com/tc39/ecma262/pull/1490 made it length, name, prototype 
+
+[01:06:01.0949] <peterv>
+and I think that's what we do for WebIDL
+
+[01:06:03.0453] <evilpie>
+maybe this https://bugzilla.mozilla.org/show_bug.cgi?id=1670042
+
+[01:09:22.0083] <evilpie>
+IIRC part of the problem is the following
+
+[01:09:36.0005] <evilpie>
+`Reflect.ownKeys(Math.sin) -> ["length", "name"]`
+
+[01:09:59.0893] <peterv>
+annevk: I think that for WebIDL interface objects we should be fine, but other functions need changes
+
+[01:10:03.0143] <evilpie>
+`Math.cos.name; Reflect.ownKeys(Math.cos) -> ["name", "length"]`
+
+[01:10:10.0562] <evilpie>
+So we sometimes have the correct order
+
+[01:12:24.0840] <annevk>
+IDL matches JS better than the JS engine does, hurray
+
+[01:12:40.0521] <peterv>
+hah
+
+[01:12:52.0761] <evilpie>
+Is prototype supposed to come before length,name or after?
+
+[01:13:10.0233] <peterv>
+https://github.com/tc39/ecma262/pull/1490 claims after
+
+[01:19:27.0248] <peterv>
+the tests might not test the order after explicitly resolving name first though
+
+[08:03:30.0594] <jonco>
+sfink: Hey, so the previous fix didn't work but I spotted a different problem. Can you review the new fix for bug 1731432?
+
+[08:03:33.0321] <botzilla>
+https://bugzil.la/1731432 — ASSIGNED (jonco) — Crash in [@ CheckParticipatesInCycleCollection]
+
+[08:05:29.0977] <sfink>
+jonco: ok, done
+
+[08:06:56.0724] <jonco>
+sfink: thanks!  we'll see if this fixes the crashes
+
+[08:07:50.0198] <mccr8>
+I'm just glad that it doesn't appear to be due to the incremental grey marking patch I reviewed. 😅
+
+[08:35:21.0158] <Ms2ger 💉💉>
+I'm sure that caused other issues, mccr8 
+
+[09:46:04.0699] <tjr>
+We are running into an issue where we're trying to use the JS Engine without a JIT; but I think the JS Engine assumes that even if you're going to e.g. disable Ion (like we're doing) that you're still going to want to do JITy things and that it can initialize some JITy things.
+
+[09:46:33.0214] <tjr>
+But it actually can't, because in this process we don't like you make executable memory; and so crash.
+
+[09:47:19.0887] <tjr>
+It's over in https://bugzilla.mozilla.org/show_bug.cgi?id=1732150 
+
+[09:47:29.0723] <tjr>
+ * But it actually can't, because in this process we don't let you make executable memory; and so crash.
+
+[09:50:33.0369] <evilpie>
+tjr: Ion isn't the only JIT
+
+[09:53:00.0133] <tjr>
+evilpie: Oh yeah... 
+
+[09:53:26.0114] <mccr8>
+tjr: I'm not familiar with this, but the immediate cause of this looks like it is the crash reporter calling  SetJitExceptionHandler(). I don't know what goes wrong if that doesn't get called.
+
+[09:59:39.0087] <nbp>
+tjr: we should have a `--disable-jit` configure option
+
+[10:00:20.0257] <iain>
+nbp: IIUC, this is a separate process, not a separate build
+
+[10:01:36.0892] <nbp>
+in which case we have about:config flags to disable each JIT tier.
+
+[10:02:58.0782] <tjr>
+disableBaseline is on the JitOptions structure, which is per-process, so I advised them to set that
+
+[10:03:16.0919] <jandem>
+this is the windows exception handling thing during JS engine initialization, we don't have a way to disable that atm
+
+[10:03:26.0215] <tjr>
+But I don't know if that's enough to tell it "Don't do any executable memory setting
+
+[10:03:29.0348] <tjr>
+(aha)
+
+[10:04:17.0446] <jandem>
+(we have to register an exception handler on windows for the executable memory region..)
+
+[10:05:47.0068] <jandem>
+ * (we have to register an exception handler on windows for the executable memory region.. the handler's code we generate at runtime)
+
+[10:18:09.0642] <nbp>
+tjr: You will have to disable the BaselineInterpreter too.
+
+[10:19:40.0257] <nbp>
+yeah, the failure diagnostic is always enabled, even when all jits are off :/
+
+[10:23:14.0193] <jandem>
+we could add some API or option to disable all JITs before JS engine init
+
+[10:32:10.0397] <tjr>
+jandem: I filed https://bugzilla.mozilla.org/show_bug.cgi?id=1732362 for that; if you wanted to give some guidance on what to put where I bet the sandboxing team could give it a shot
+
+[10:34:37.0700] <jandem>
+great, thanks. Needinfo me if I forget to comment 
+
+[13:26:45.0186] <yury>
+sfink: read your reply on CompilationInput issue, what is the next step: shall we annotate it somehow or wait for analysis update?
+
+[14:52:07.0483] <sfink>
+yury: commented in the bug. I think it's time to punt and use `AutoSuppressGCAnalysis` for this one.
+
+[15:10:07.0854] <chaircrusher>
+Stupid question that I don't think I missed the documentation for:
+JS::TimeClip takes a double precision  -- how do you go from time_t to clipped time
+
+[15:10:37.0371] <chaircrusher>
+is ClippedTime expecting a microsecond value or a millesecond value?
+
+[15:24:22.0860] <sfink>
+I don't know, but in a quick look it seems like it's some kind of opaque time returned from JS::MakeDate, which supports a very limited set of inputs. It appears to be milliseconds, though. https://searchfox.org/mozilla-central/source/js/src/jsdate.cpp#404
+
+
+2021-09-24
+[01:15:32.0935] <Ms2ger 💉💉>
+chaircrusher: I'm assuming it implements https://tc39.es/ecma262/#sec-timeclip so milliseconds
+
+[09:52:01.0290] <chaircrusher>
+Is there a better test for whether an object has a property using the SpiderMonkeyAPI? 
+
+bool HasProperty(JSContext *cx, JS::HandleObject obj, char *name) {
+   JS::RootedValue val(cx);
+   return JS_GetProperty(c,obj,name,&val) && !val.isUndefined();
+}
+
+There's also a test val.isNull() and I guess a property can exist on an object but not have a value???
+Fun for embedders everywhere!
+
+[09:52:44.0323] <chaircrusher>
+Trying to get my head around JS_GetProperty succeeding when the asked-for property doesn't exist.
+
+[09:57:40.0770] <arai>
+chaircrusher: is it about the object's own property, or including prototype chain?
+
+[09:58:04.0491] <chaircrusher>
+Umm
+
+[09:58:38.0088] <arai>
+if it's about own property, there's `JS_HasOwnProperty`
+
+[09:58:48.0312] <chaircrusher>
+OK
+
+[09:58:51.0893] <chaircrusher>
+that makes sense
+
+[09:59:08.0498] <arai>
+otherwise, `JS_HasProperty`
+
+[09:59:25.0825] <arai>
+https://searchfox.org/mozilla-central/rev/f953948db2ac26698487f5fc5c03046c29922f26/js/public/PropertyAndElement.h#221-259
+
+[09:59:53.0965] <arai>
+(the header is slightly new, so if you're using non-trunk, they're in jsapi.h
+
+[10:04:59.0559] <chaircrusher>
+SO there's also JS_HasProperty which I guess climbs the prototype chain?
+
+[10:05:13.0586] <chaircrusher>
+Where prototype chain has to do with JS Classes?
+
+[10:11:47.0145] <arai>
+yes, for the former question 
+
+[10:11:52.0753] <arai>
+chaircrusher: which "class" is it about?
+
+[10:13:33.0761] <arai>
+class syntax in JS, or JSClass in C++ side?
+
+[10:13:42.0031] <chaircrusher>
+C++ side
+
+[10:18:04.0749] <arai>
+`ClassSpec::createPrototype` in `JSClass::spec`
+
+[10:18:40.0958] <arai>
+that field is used to create prototype object of newly created instance of the native class object
+
+[10:19:46.0022] <arai>
+so, if you return a prototype object that has `foo` property, `JS_HasProperty` on the instance of the class returns true, but `JS_HasOwnProperty` returns false
+
+[10:23:00.0936] <botzilla>
+https://bugzil.la/1491403 — RESOLVED (ehsan.akhgari) — Ensure the resolve handler of the promise returned by requestStorageAccess will have user activation (so that e.g. pages can open a popup from there)
+
+[10:27:43.0689] <arai>
+pbz: do you mean the testcase there doesn't work?
+
+[10:27:54.0732] <arai>
+or you have another testcase that uses the promise differently?
+
+[10:32:53.0432] <arai>
+even immediately after setting it?
+
+[10:35:38.0626] <arai>
+also, what's the difference between `openWindow` and https://searchfox.org/mozilla-central/rev/f953948db2ac26698487f5fc5c03046c29922f26/toolkit/components/antitracking/test/browser/browser_storageAccessPromiseResolveHandlerUserInteraction.js#28 ?
+
+[10:37:06.0313] <arai>
+oh, the current testcase calls different API
+
+[10:40:30.0154] <arai>
+I don't know much about the `window.open`'s restriction.  is it the same thing as user-interaction?
+
+[10:41:15.0762] <arai>
+I think it's related to `dom.popup_allowed_events`
+
+[10:41:28.0637] <arai>
+is it handled in the same way as other "user-interaction" thing?
+
+[10:41:56.0482] <arai>
+(I was thinking they're different...
+
+[11:02:16.0768] <arai>
+when you say "the user activation flag gets set properly in the promise", `Promise::MaybePropagateUserInputEventHandling` is called on the promise?
+
+[11:04:33.0282] <arai>
+you've checked `JS::GetPromiseUserInputEventHandlingState` on the promise that is going to be returned from `Document::RequestStorageAccess` ?
+
+[11:05:02.0046] <arai>
+or some other way?
+
+[11:11:23.0418] <botzilla>
+https://bugzil.la/1732478 — NEW (nobody) — Resolve handler of requestStorageAccess does not get user activation
+
+[11:12:49.0201] <arai>
+pbz: can you run the in-tree testcase and check the value here?  https://searchfox.org/mozilla-central/rev/f953948db2ac26698487f5fc5c03046c29922f26/xpcom/base/CycleCollectedJSContext.cpp#210
+
+[11:21:59.0259] <arai>
+what happens if you use `document.hasStorageAccess()` instead in your testcase?
+
+[11:22:10.0177] <arai>
+that the current testcase uses
+
+[11:27:37.0837] <arai>
+is there any other way to directly test user activation than `window.open` ?
+
+[11:28:22.0741] <arai>
+err, scratch that.  I think we should look into `PromiseUserInputEventHandlingState == 1` case
+
+[11:29:03.0046] <arai>
+oh
+
+[11:29:54.0416] <arai>
+sounds like `document.requestStorageAccess` doesn't propagate?
+
+[11:37:25.0215] <arai>
+does user activation keeps after leaving the event handler and expires after some time?
+
+[11:39:13.0373] <arai>
+or perhaps there's microtask checkpoint before leaving the user activation?
+
+[11:39:28.0607] <arai>
+the promise reaction job should be executed in the microtask checkpoint
+
+[11:40:51.0158] <arai>
+my pleasure
+
+[12:14:05.0790] <Tim>
+is there a way that I can ensure that a JS test isn't run unless a particular compile-time flag (something defined with set_config and set_define in moz.configure) is set?
+
+[12:40:41.0262] <arai>
+Tim: Reflect it to getBuildConfiguration https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/builtin/TestingFunctions.cpp#223
+
+[12:44:16.0144] <arai>
+if it's jit-test, check the value in |jit-test| line   https://searchfox.org/mozilla-central/source/js/src/jit-test/tests/asm.js/testBug1111327.js#1
+
+[12:46:00.0835] <arai>
+if it's jstests, it's a bit tricky that `getBuildConfiguration` is available only on JS shell but it runs on browser. 
+
+[12:46:49.0748] <arai>
+(it's also in `Cu.getJSTestingFunctions().getBuildConfiguration`, but not sure if it's available there
+
+[12:47:05.0651] <arai>
+hm, looks like it is?  https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/tests/non262/lexical-environment/block-scoped-functions-annex-b-with.js#1-3
+
+[12:47:33.0791] <Tim>
+> <@arai:mozilla.org> Tim: Reflect it to getBuildConfiguration https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/builtin/TestingFunctions.cpp#223
+
+Thanks -- I think I'm figuring it out
+
+[12:49:30.0833] <evilpie>
+sfink: oh damn, thanks for looking at my patch. Somehow I didn't get an email :/
+
+[14:20:38.0300] <Tim>
+> <@tjc:igalia.com> Thanks -- I think I'm figuring it out
+
+what's the correct way to ensure that getBuildConfiguration() is in scope in the JS test? it works when I run tests locally, but on try I get: "file:///builds/worker/workspace/build/tests/jsreftest/tests/js/src/tests/non262/Array/unscopables.js:35: ReferenceError: getBuildConfiguration is not defined item 1"
+
+[14:20:52.0737] <Tim>
+I'm looking at how other tests use it, and there's... some variation
+
+[14:26:04.0425] <arai>
+https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/tests/non262/lexical-environment/block-scoped-functions-annex-b-with.js#1-3
+
+[14:26:26.0475] <arai>
+in JS shell, getBuildConfiguration is defined on global
+
+[14:26:35.0258] <arai>
+in browser, it's available via Cu
+
+[14:26:35.0970] <Tim>
+> <@arai:mozilla.org> https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/tests/non262/lexical-environment/block-scoped-functions-annex-b-with.js#1-3
+
+OK -- I found that, but I saw that there are other tests that just call getBuildConfiguration() without the checking, so I wasn't sure what was correct
+
+[14:26:46.0935] <arai>
+which test is it?
+
+[14:27:29.0852] <Tim>
+for example, jit-test/tests/ctypes/size-overflow-array.js
+
+[14:27:39.0199] <arai>
+jit-test is executed only in JS shell
+
+[14:27:56.0708] <arai>
+jstests is executed both in JS shell and browser
+
+[14:28:01.0884] <Tim>
+ah
+
+
+2021-09-27
+[23:37:44.0596] <annevk>
+mgaudet: heya, could you take a look at https://github.com/whatwg/html/issues/7123?
+
+[06:30:50.0112] <mgaudet>
+annevk: So, I don't know anything about structured cloning right now. I'd actually redirect to sfink for now, but I can also try to get up to speed with some time too. 
+
+[06:37:06.0636] <annevk>
+mgaudet: okay, I guess it ends up being mainly an editorial change; as far as I can tell implementations don't do anything special for private fields
+
+[06:37:52.0007] <annevk>
+`postMessage(new class Z{
+  #privateField;
+});`
+doesn't throw that is
+
+[06:38:05.0811] <annevk>
+ * `postMessage(new class Z{ #privateField; });` doesn't throw that is
+
+[06:40:06.0404] <mgaudet>
+Ignorance here about structured cloning: Can you post-message an instance back? ie, does it matter if the fields rount-trip?
+
+[06:40:17.0639] <mgaudet>
+ * Ignorance here about structured cloning: Can you post-message an instance back? ie, does it matter if the fields round-trip?
+
+[06:41:01.0542] <Ms2ger 💉💉>
+You can
+
+[06:42:05.0336] <mgaudet>
+Ok; so it looks like it would be at least weird if the private fields *did* round trip based on a cursory reading of the MDN docs on structured clone
+
+[06:42:50.0299] <mgaudet>
+I suspect they wouldn't, unless our implementation tried hard to make that happen, but I'm not sure how the magic happens today
+
+[06:44:08.0962] <evilpie>
+I think we just don't iterate through private fields in `JSStructuredCloneWriter::traverseObject`
+
+[06:46:06.0893] <mgaudet>
+Yeah, I think you're right. 
+
+[06:46:38.0543] <annevk>
+And we cannot really clone them, except for trivial ones (and throwing on non-trivial ones would expose them)
+
+[06:49:40.0223] <mgaudet>
+/me nods
+
+[08:06:16.0806] <nicolo-ribaudo>
+> <@iain:mozilla.org> I think that would solve the specific problem of equality checks, yeah. You mentioned above that doing records/tuples as objects was much easier than doing them as primitive types, though, so the benefit here would have to be weighed against the other costs.
+
+I ended up implementing it at https://phabricator.services.mozilla.com/D126692, as a patch on top of the object-based implementation. It also has a big advantage: it makes it _way easier_ to follow the proposal spec, since we don't risk using the primitive R&T where we expect the object wrappers
+
+[08:54:26.0931] <l11d>
+is the stencil format robust enough that even an adversarially chosen input could be consumed by the engine?
+
+[09:10:10.0899] <mgaudet>
+l11d: I don't believe so. 
+
+[09:10:36.0308] <mgaudet>
+That wasn't a design goal: While we have some checking to handle corruption, it's definitely not robust enough to fuzz. 
+
+[09:11:02.0523] <mgaudet>
+(Whether we should get there... that's a different question for someone like Ted, who is OOO till mid-Oct) 
+
+[09:52:33.0965] <sfink>
+annevk: fwiw, I agree with the outcome: ignore private fields, strip them off during cloning. That seems most in line with existing semantics of both structured clone (eg ignoring prototypes) and private fields (as analogous to WeakMaps iiuc, and you wouldn't populate new entries in the WeakMap-in-the-sky while cloning.)
+
+[09:54:49.0396] <sfink>
+I won't touch the question of what spec should say what, other than to say I agree with ljharb that it would probably be best for the core structured cloning semantics to move to es262. I don't know of anyone who has the appetite to do the work, though.
+
+[10:23:11.0983] <annevk>
+sfink: TC39 refused it in the past, but yeah, it would make more sense for some of these algorithms to live there, even if they don't have an API for it
+
+[10:31:04.0291] <annevk>
+https://github.com/dslomov/ecmascript-structured-clone has some of that history, in case anyone is curious. That in turn became the basis for a rewrite in the HTML Standard to use more ECMAScript formalisms to define various aspects of the algorithm
+
+[10:51:41.0743] <l11d>
+mgaudet: thanks :) I was wondering whether it makes sense to have some kind of Fuzzilli-like setup that emits stencil as this could diversify inputs to the jitter; however this probably uncovers way to many non-issues (for now)
+
+[10:53:59.0700] <mgaudet>
+l11d: Yeah, as much as I love me some fuzzing, my current gut feeling is it wouldn't be a productive fuzzing for now. 
+
+[10:57:17.0406] <mgaudet>
+confession: Just realized I'm chasing a bit of a wild goose on an assumption I made! (Fetch responses actually have `ReadableStreamDefaultReaders`, not `ReadableStreamBYOBReaders`!) 
+
+[10:57:19.0556] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[10:57:24.0751] <arai>
+Stencil itself is supposed not to be robust.  Stencil XDR is mildly supposed to be robust against memory/disk corruption, and currently has some check.  and the consumer (e.g. JSBC) is supposed to have checksum on their side
+
+[10:59:00.0551] <arai>
+currently Stencil XDR has boundary check for some indices or length, and marker between sections
+
+[11:00:34.0286] <arai>
+simple fuzzing will likely go through both of them and easily crash the engine
+
+[11:35:32.0058] <iain>
+nicolo-ribaudo: I haven't looked at the details of the patch, but just based on the description, it sounds like a promising approach
+
+[11:42:06.0376] <iain>
+One other thing that I'm thinking about: the vast majority of our objects are NativeObject, but ProxyObject and TypedObject also derive from JSObject. (Typed objects are nightly-only; we implemented a proposal years ago and it stalled. We've since removed much but not all of the code.) One downside is that functions that take a JSObject always have to consider whether a proxy or typed object can be passed in, and if so what should happen. This is a relatively frequent source of bugs.
+
+[11:43:21.0196] <iain>
+Do you have a sense of the extent to which implementing records/tuples as a subclass of NativeObject could lead to similar issues? How often do you find that you need to specialize functions that take native objects to ensure that they have the right behaviour for records/tuples?
+
+[14:54:15.0209] <mgaudet>
+Confession: Working on Fetch integration for Streams... by just... pushing it forward. Hopefully it gets to somewhere nice near the end! 
+
+[15:04:31.0676] <Tim>
+> <@arai:mozilla.org> Tim: Reflect it to getBuildConfiguration https://searchfox.org/mozilla-central/rev/a2118a17fe5e4f63d9f011db3111beb995b96a91/js/src/builtin/TestingFunctions.cpp#223
+
+Going back to this, is it preferable to use getBuildConfiguration() or to add a shell flag (for context, I'm implementing the change-array-by-copy methods and keeping it protected under a feature flag)?
+
+[15:04:47.0838] <Tim>
+I got the getBuildConfiguration() approach working, but then received the suggestion that it might be better to use a shell flag instead
+
+[15:05:08.0233] <Tim>
+but that seems like kind of a pain, since it involves making some static arrays dynamic instead so that the new methods can be added or not depending on the flag
+
+[15:12:58.0241] <Nicolò>
+> <@iain:mozilla.org> Do you have a sense of the extent to which implementing records/tuples as a subclass of NativeObject could lead to similar issues? How often do you find that you need to specialize functions that take native objects to ensure that they have the right behaviour for records/tuples?
+
+I think it only happened once, because generally functions either expect to be called with a "real" object (so we might add assertions that they are not "primitive objects", but we don't need to explicitly handle records and tuples), or with any value (and `value.isObject()` returns false for records and tuples)
+
+[15:31:34.0135] <arai>
+Tim: which bug is it?
+
+[15:32:05.0469] <Tim>
+> <@arai:mozilla.org> Tim: which bug is it?
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1729563
+
+[15:35:07.0857] <arai>
+so, if the feature is turned on, those new methods become available, right?
+
+[15:35:27.0016] <Tim>
+yes
+
+[15:38:04.0002] <arai>
+and this is about testcase?  or whether to use compile-time flag or runtime-flag for turning it on?
+
+[15:38:33.0289] <arai>
+for testcase, just checking the existence of those methods would be simple 
+
+[15:39:32.0657] <Tim>
+OK, yeah. Sounds good. The suggestion I was given was to emulate how this patch handles flags - https://phabricator.services.mozilla.com/D86571 - but because of how the methods are defined, it seems like too much hassle to add the shell flag in all those places
+
+[15:41:40.0555] <arai>
+the shell flag would be necessary anyway
+
+[15:43:21.0874] <arai>
+to turn on/off features, we use preferences on browser, and shell flag on JS shell
+
+[15:44:44.0711] <arai>
+and we can optionally have compile-time flag to enable/disable the code and flag
+
+[15:45:37.0623] <arai>
+to make the runtime flag works only on nightly, for example 
+
+[15:48:05.0997] <iain>
+Nicolò: My understanding was that a big advantage of records/tuples-as-objects was that it let us reuse the native object machinery (shapes, slots, etc), so I would expect there to be some code that is supposed to handle both real and "fake" objects, but if you haven't run into many problems with it so far, then that is promising
+
+[15:49:07.0563] <Nicolò>
+Yeah, but in those code paths R&T behave exactly as frozen objects so we don't need to distinguish them from "real" objects
+
+[15:49:47.0404] <Nicolò>
+However, there are some places that need special casing for the primitive-like prototype behavior
+
+[15:50:57.0524] <Tim>
+mgaudet: Would you be willing to review this patch? https://phabricator.services.mozilla.com/D126146
+
+[15:52:45.0516] <mgaudet>
+> <@tjc:igalia.com> mgaudet: Would you be willing to review this patch? https://phabricator.services.mozilla.com/D126146
+
+Sure. 
+
+[15:52:58.0362] <mgaudet>
+(Try to get to it this week!)
+
+[15:56:49.0275] <Tim>
+> <@mgaudet:mozilla.org> (Try to get to it this week!)
+
+thanks!
+
+
+2021-09-28
+[02:19:47.0401] <theduke>
+Hey. Is there a web version of Spidermonkey API docs somewhere? All I could find are apparently old, outdated mirrorslike [this](http://man.hubwiz.com/docset/JavaScript.docset/Contents/Resources/Documents/developer.mozilla.org/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference.html)
+
+[02:19:52.0709] <theduke>
+ * Hey. Is there a web version of Spidermonkey API docs somewhere? All I could find are apparently old, outdated mirrors like [this](http://man.hubwiz.com/docset/JavaScript.docset/Contents/Resources/Documents/developer.mozilla.org/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference.html)
+
+[02:21:52.0863] <greg>
+https://spidermonkey.dev/docs/
+
+[07:24:52.0667] <chaircrusher>
+Good morning!  I have more questions about embedding and the JSAPI
+
+I'm getting a regression when I'm porting code from JS1.8.5 to JS60 (maybe eventually a more current LTS version.
+
+I'm calling the exact same code to get a UTF8 string from a JS::Value (or jsval) and getting a different result back.
+
+I'm calling JS_EncodeString which drops a byte from the 2 byte sequence in JS60, which means I can't decode it properly.
+
+JS60 returns  "\t// crs_desc:This cours\351 uses writing as a tool for inquiry and"
+
+JS1.8.5 returns "\t// crs_desc:This cours\303\251 uses writing as a tool for inquiry and"
+
+In JS1.8.5 it returns non ASCII characters as 2 byte sequences. In JS60 it converts the two byte sequence to a single 8-bit ascii character.
+
+
+[07:26:29.0641] <chaircrusher>
+Yeah I guess ctrl-return doesn't survive formatting.
+
+[07:27:28.0669] <chaircrusher>
+Is there a way to get JS_EncodeString - or analog NOT to convert 2 byte UTF8 characters to 8 bit ascii?
+
+[07:27:44.0004] <chaircrusher>
+it's making our code to convert strings to 7 bit ascii barf
+
+[07:28:11.0106] <chaircrusher>
+ * Yeah I guess ctrl-return doesn't survive formatting in this chat.
+
+[07:29:52.0101] <evilpie>
+Maybe `JS_EncodeStringToUTF8` would work?
+
+[07:34:13.0164] <chaircrusher>
+I'll give it a go.
+
+[07:36:54.0766] <evilpie>
+Seems like `JS_EncodeString` in ESR60 was returning Latin1 data
+
+[07:38:01.0050] <chaircrusher>
+That's the thing, our code was expecting UTF8 and JS_EncodeString in JS60 returns 8 bit ASCII
+
+[07:38:35.0961] <chaircrusher>
+All this internationalization stuff still makes my head spin a bit.
+
+[07:39:09.0512] <chaircrusher>
+Since I started programming in 1983 before, apparently, any country besides the USA mattered to computing.
+
+[07:40:32.0176] <evilpie>
+ah https://hg.mozilla.org/integration/mozilla-inbound/rev/6676e8fedcb3
+
+[07:42:42.0729] <arai>
+yeah, functions with "encode" without explicit encoding name mostly meant Latin1
+
+[09:38:54.0746] <annevk>
+pbz: is migrating it to the user activation API too much work? That might make all this a lot easier
+
+[09:42:02.0185] <annevk>
+🔥
+
+[09:42:34.0574] <arai>
+I'll look into it
+
+[10:52:03.0585] <arai>
+pbz: can you assign the result of `document.requestStorageAccess().then(...)` to some variable?  it looks like the user-interaction flag's machinery doesn't work if the promise is optimized out
+
+[10:52:15.0233] <arai>
+(so, the condition for the optimization is wrong :/
+
+[10:53:10.0832] <arai>
+if the return value of `Promise#then` isn't used, we optimize it out, but the user-interaction code seems to use the result promise internally
+
+[10:53:28.0048] <arai>
+so, we should check the flag and skip the optimization if it has non-default value
+
+[10:57:57.0012] <arai>
+filed bug 1732953
+
+[10:57:59.0246] <botzilla>
+https://bugzil.la/1732953 — ASSIGNED (arai) — user-interaction flag isn't inherited if the result promise is optimized out
+
+[13:36:47.0903] <TheQwertiest>
+Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So a few small JS questions: 
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events. The question: can these Global/message loops be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs for the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:36:56.0098] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events. The question: can these Global/message loops be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs for the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:37:22.0418] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events. The question: can these Global/message loo pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs for the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:37:32.0009] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events. The question: can these Global/message loo pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs from the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:38:40.0517] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events for said Global. The question: can these Global/message loo pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs from the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:38:46.0694] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events for said Global. The question: can these Global/message loop pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs from the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing.
+
+[13:39:17.0300] <TheQwertiest>
+PS: By HTML event loop I mean this: https://html.spec.whatwg.org/multipage/webappapis.html#event-loops
+
+[14:03:01.0606] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events for said Global. The question: can these Global/message loop pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs from the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing for each of the corresponding loops.
+
+[14:23:13.0400] <TheQwertiest>
+ * Hey everyone!
+It's been three year since I've started working on my SM embedding and I'm starting to forget basic things =)
+
+So, a few small JS questions:
+- I have a single JSContext and multiple Global objects. Each Global has associated message loop that enqueues JS events for said Global. The question: can these Global/message loop pairs be considered as separate HTML event loops? Or are they considered to be the same HTML event loop because they share the same JSContext?
+- If they can be considered as separate HTML event loops, is it possible to make `js::RunJobs` execute only jobs from the specific global? So that I can respect mictrotask's `after-a-task-and-not-nested` execution timing in each of the corresponding loops.
+
+[14:30:15.0749] <mgaudet>
+You are... well off the beaten path. 
+
+To your first question, I have no idea. 
+
+To your second question... is this something you could implement as part of your implementation of JobQueue (I presume you have your own implementation here). Maybe? 
+
+Sorry for not having more answres
+
+[14:30:18.0183] <mgaudet>
+ * You are... well off the beaten path. 
+
+To your first question, I have no idea. 
+
+To your second question... is this something you could implement as part of your implementation of JobQueue (I presume you have your own implementation here). Maybe? 
+
+Sorry for not having more answers
+
+[14:50:02.0259] <mgaudet>
+confession: You learn a surprisingly large amount by just... pushing ahead. Slowly piecing together what the various DOM integration with Streams are going to look like... (was surprised to discover I'll apparently need to have ReadableByteStreamController built for this work too) 
+
+[14:50:05.0555] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:55:17.0150] <TheQwertiest>
+> To your second question... is this something you could implement as part of your implementation of JobQueue (I presume you have your own implementation here). Maybe? 
+
+Nope, not yet =) I'm using built-in `js::RunJobs`, but it executes the 'jobs' ('microtasks' in HTML terms?) from all the globals. I was hoping that there is another built-in something that I could use (without having to do any work myself xD)
+
+[15:00:23.0933] <evilpie>
+Pretty sure `js::RunJobs` is more or less a toy. Firefox has it's only implementation anyway
+
+[15:00:24.0155] <ptomato>
+probably not; the only 'off-the-shelf'
+
+[15:00:31.0329] <ptomato>
+ * probably not; the only 'off-the-shelf' one is for the JS shell
+
+[15:26:27.0817] <TheQwertiest>
+darn, now I have to code... :D
+
+[15:26:32.0036] <TheQwertiest>
+thanks anyway =)
+
+
+2021-09-29
+[17:05:14.0224] <greg>
+https://old.reddit.com/r/firefox/comments/px4vyi/whats_going_on_with_cranelift_and_smooshmonkey/
+
+[17:13:42.0255] <evilpie>
+* Pretty sure `js::RunJobs` is more or less a toy. Firefox has its only implementation anyway
+
+[17:28:23.0604] <iain>
+Cranelift is still being [actively developed](https://github.com/bytecodealliance/wasmtime/tree/main/cranelift) by the Bytecode Alliance, which Mozilla is a part of, but we're not currently using it in production. We're using the Ion backend instead, shared with JS. At the time we made the decision, cranelift wasn't mature/stable enough to replace Ion for all of our supported platforms, so we made the decision to ship based on Ion. I believe Cranelift support is still available behind a compile flag.
+
+[17:28:57.0338] <iain>
+Chris Fallin (a former Mozillian, now at Fastly) has written some great blog posts about ongoing work in Cranelift: https://cfallin.org/blog/
+
+[17:34:52.0576] <iain>
+Smooshmonkey is on hiatus. We had some ideas on how to make the parser faster and easier to work with, but in practice it turned out that recreating twenty-plus years of parser development is a whole lot of work, and IIRC the preliminary performance numbers weren't as promising as we'd hoped, so we adjusted our priorities.
+
+[03:45:42.0246] <cmeister2>
+hey all. I'm currently looking at porting http://www.speech.cs.cmu.edu/openvxi/ from spidermonkey 1.5.0 (!!) to 78.1.0esr. Unsurprisingly in the last 20 years there have been some changes. Is this a good place to ask about how to map old concepts to the current day?
+
+[04:33:23.0972] <Ms2ger 💉💉>
+No better place, probably
+
+[05:31:36.0798] <cmeister2>
+I'll try and summarise what I've found so far. 
+
+The old code uses a top level JS Runtime, and creates (potentially multiple according to the code) JS Contexts underneath it, for isolation. Within a Context it creates a custom Scope object and stores variables within that scope as named properties on the scope. Access to the Context _appears_ to be managed through Mutexes.
+
+AFAICT there are a few changes since 1.5.0: JS Context is now one-per-thread being the big one. To mitigate this my plan thus far has been to have a JSContext in place of the JSRuntime, and create multiple GlobalObjects in place of the contexts. Isolation is handled by entering a Realm using the different GlobalObject with the top-level JSContext. I was wondering if this was a sensible change. I'm planning on leaving the question of "does the threading work" to later.
+
+(I have other issues like the old code using JS_CompileUCScript with the Scope object to read properties off the Scope, which was deprecated in v45, but I'm working round those where I can)
+
+[06:20:03.0189] <jandem>
+cmeister2: that seems reasonable. If you want multiple threads, you will need multiple contexts. Different contexts/threads can't share globals/realms/objects, maybe you could use message passing similar to postMessage for web workers in the browser
+
+[06:20:18.0958] <jandem>
+ * cmeister2: that seems reasonable. If you want multiple threads, you'll need multiple contexts. Different contexts/threads can't share globals/realms/objects, maybe you could use message passing similar to postMessage for web workers in the browser
+
+[08:47:30.0212] <jonco>
+sfink: ping
+
+[08:48:06.0081] <sfink>
+oops, sorry, totally lost track of time
+
+[10:26:14.0123] <mgaudet>
+confession: Really feeling the "I haven't failed, I've just found 10,000 ways that don't work" quote right now 😬 
+
+
+2021-09-30
+[00:57:52.0030] <yulia>
+arai: are modules now cached? I saw some work happening there a little while ago
+
+[00:59:07.0826] <arai>
+I'm not aware of any change around that
+
+[00:59:23.0051] <yulia>
+ok
+
+[00:59:58.0870] <arai>
+which module is it about? web content, or chrome-priv code?
+
+[01:00:10.0896] <yulia>
+chrom-priv
+
+[01:00:44.0064] <yulia>
+but, i am also wondering about the general web content modules, as I am working heavily on that code but noticed on rebase that everything applied cleanly
+
+[01:01:32.0226] <arai>
+then, no change so far.  the cache itself should work, but decode part needs some work to support instantiating modules
+
+[01:01:58.0653] <arai>
+is there already a bug for it?
+
+[01:02:30.0894] <yulia>
+No, I can make one but it may be a little premature if it requires changes to the script loader
+
+[01:02:49.0362] <yulia>
+I am finishing up the required changes to the script loader now for supporting workers
+
+[01:04:18.0559] <arai>
+okay
+
+[01:04:53.0637] <arai>
+oh, also I think the cache part needs change given that same script can be loaded both as module and script, and the result is different
+
+[01:05:14.0642] <arai>
+so the cache system should include the type of the compilation target as key
+
+[01:06:36.0789] <arai>
+(not sure if that happens in normal case, given module without import/export doesn't make much sense, but it's still possible
+
+[01:11:06.0768] <arai>
+that part can be changed right now
+
+[01:11:12.0519] <yulia>
+ok, that sounds good
+
+[01:11:23.0334] <yulia>
+it looks like the desktop team wants to start using es6 soon
+
+[01:11:52.0175] <arai>
+I see
+
+[01:12:10.0185] <yulia>
+I have the prototype which does a naive implementation
+
+[01:12:36.0033] <yulia>
+but it isn't correct, it is only enough to see where es6 modules might be lacking compared to a full implementation
+
+[04:22:32.0468] <cmeister2>
+me again with a porting question. The library I'm working on has the concept of scoping. This is implemented by calling JS_NewObject with the custom class, and then variables are set within that scope with JS_DefineUCProperty. When a scope is pushed it does a similar thing - creates a new Scope object and sets it as a property of the parent Scope. 
+
+Variables are retrieved out of Scopes by using (what used to be JS_ExecuteScript and is now) JS_Evaluate just specifying the variable name. However it doesn't appear that within a Scope that I can access properties of a parent Scope. I've implemented this using a `JS::RootedVector<JSObject*> js_scope_chain(context)` and pushing all the scope objects into that vector before running `JS::Evaluate(context, js_scope_chain, options, source, &rval)`. 
+
+Is this something you'd expect to work? Am I missing something obvious?
+
+[04:39:58.0157] <arai>
+cmeister2: yes, it should work
+
+[04:40:06.0016] <arai>
+here's example https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/testJSEvaluateScript.cpp
+
+[04:40:39.0147] <arai>
+and another example that defines property on the object and retrieves from script https://paste.mozilla.org/nKY1cdQz
+
+[04:44:25.0179] <arai>
+if it doesn't, can you provide the code around that?
+
+[05:36:06.0681] <cmeister2>
+Thanks for those. Let me take another look at the source
+
+[06:00:11.0077] <TheQwertiest>
+> <@mgaudet:mozilla.org> You are... well off the beaten path. 
+> 
+> To your first question, I have no idea. 
+> 
+> To your second question... is this something you could implement as part of your implementation of JobQueue (I presume you have your own implementation here). Maybe? 
+> 
+> Sorry for not having more answers
+
+it seems that SM can only have a single job queue per Context. Of course, it is possible (or is it?) to emulate multiple queues by differentiating Promise object's Globals and chugging them into sub-queues inside the main queue, but that sounds like a pretty big undertaking...
+
+[06:16:31.0523] <mgaudet>
+> <@theqwertiest:mozilla.org> it seems that SM can only have a single job queue per Context. Of course, it is possible (or is it?) to emulate multiple queues by differentiating Promise object's Globals and chugging them into sub-queues inside the main queue, but that sounds like a pretty big undertaking...
+
+Yeah, that was sort of what I was alluding to 
+
+[06:16:37.0532] <mgaudet>
+😬
+
+[06:17:39.0878] <TheQwertiest>
+It's just a bit strange that Job queue is per Context and not per Global/Realm
+
+[06:19:19.0819] <arai>
+there can be multiple globals in single page, because of frame/iframe etc, but there's only one running context and job queue
+
+[06:19:29.0025] <mgaudet>
+/me gestures vaguely at the "web threading model" 
+
+[06:19:47.0281] <mgaudet>
+(Of which I only have the roughest cut of understanding) 
+
+[06:22:04.0433] <cmeister2>
+looking at my cutdown code it works :( so obviously there's something weird happening. is there a trivial way of printing out to stdout whenever something is GCed?
+
+[06:24:21.0599] <TheQwertiest>
+> <@arai:mozilla.org> there can be multiple globals in single page, because of frame/iframe etc, but there's only one running context and job queue
+
+I see, so it seems that I should actually consider all my Globals as a single HTML event loop
+
+[07:50:59.0577] <sfink>
+TheQwertiest: what communication do you need between these globals / event loops? If everything is separate, then one natural model would be multiple threads with a runtime (and JSContext) per thread. It's not great if they're going to be accessing anything shared, in your embedding or in the JS heap. Or if threads are a problem.
+
+[07:54:01.0417] <sfink>
+if you don't want to go the multiple thread route, then I think the right model would still depend on the degree of communication and control flow between your separate... globals or whatever they are. Could one global's thread of execution end up running code associated with a different global? Do they share any data? What data?
+
+[08:05:38.0545] <ochameau>
+Hello there, I do have some question about Debugger.Memory API and especiall its `trackingAllocationSites` feature, which also relate to `SavedFrame` class. Is this the right channel to ask questions about this code?
+
+[08:06:53.0534] <ochameau>
+Long story short is that this Memory API is useful to track leaks... but it introduces many. It looks like when we enable allocation site recording we hold references to `SavedFrame` itself forcing to keep in memory the globals/documents from which the `SavedFrame` originates :/
+
+[09:30:24.0170] <mgaudet>
+ochameau definitely the right channel
+
+[09:30:55.0414] <mgaudet>
+I think knowledge is a bit thin, but worth asking (having said that, it might be even better to open a bug just so this discussion can be preserved better) 
+
+[09:32:52.0899] <ochameau>
+Ok, let me do that. I'll try to also provide a mochitest to better highlights what's wrong.
+
+[09:38:11.0689] <mgaudet>
+That would be -amazing- 
+
+[09:43:18.0279] <TheQwertiest>
+> <@sfink:mozilla.org> TheQwertiest: what communication do you need between these globals / event loops? If everything is separate, then one natural model would be multiple threads with a runtime (and JSContext) per thread. It's not great if they're going to be accessing anything shared, in your embedding or in the JS heap. Or if threads are a problem.
+
+each global/realm is corresponding to a separate window (with it's own message loop), but everything happens (and must happen) on the main thread only.
+The only communication between Globals/Realms are 
+- GC stuff
+- job queue
+- `window.postMessage`-like method
+- some native shared stuff
+
+[09:45:37.0718] <sfink>
+so the relative ordering of job queue jobs is visible because of the existence of postMessage operations, I guess?  (Because otherwise if everything runs to completion, it doesn't seem like one global could detect that it's getting its jobs interleaved with another's.)
+
+[09:48:46.0368] <TheQwertiest>
+postMessage stuff is rarely used. I guess I have to explain what my embedding does to make the scenario easier to understand
+
+
+[10:08:00.0503] <TheQwertiest>
+There is an application that provides customization points. 
+One of those customization points is ability to create "panels", which makes it possible to replace the whole app interface.
+Each "panel" is an object that has `on_message(Message)` callback which is invoked by the host application (it can be invoked by the "panel" itself as well).
+Each `on_message(Message)` callback is always invoked on the main thread.
+
+My embedding is an implementation of these "panels", which allows user to use JS to create them.
+Each "panel" corresponds to a separate Global/Realm (so that user can create and use different panels without them interfering with each other). And all of those Globals/Realms belong to a single JSContext.
+
+Currently all messages that must be processed by the JS are queued as events/tasks in a separate internal event priority queue (one queue for each panel).
+`on_message` callback mimics (or tries to) HTML event loop:
+- if not nested, takes a single event/task from the corresponding internal queue and processes it.
+- after processing the event/task, if not nested, drains the job queue (aka `js::RunJobs`).
+
+The problem that I currently have is that while the execution of JS stuff in Realms/Globals is separate from each other, job processing (aka Promises) is not. So it makes the behaviour of each "panel" less intuitive (e.g. a Promise job might not be triggered in one panel, because another panel still has a nested call).
+
+[10:10:20.0238] <TheQwertiest>
+PS: this application is foobar2000, just in case anyone wondered :)
+
+[10:12:11.0787] <arai>
+if there's nested call, the other panel's event isn't processed?
+
+[10:13:56.0777] <TheQwertiest>
+I've not decided yet xD
+This is actually one of the reasons why I've delved in this "HTML event loop" stuff. My first implementation had a global "nested" counter. Now I'm contemplating if it should be made per "panel" instead.
+
+[10:14:03.0912] <TheQwertiest>
+ * I've not decided yet xD
+This is actually one of the reasons why I've delved into this "HTML event loop" stuff. My first implementation had a global "nested" counter. Now I'm contemplating if it should be made per "panel" instead.
+
+[10:14:18.0897] <TheQwertiest>
+ * I've not decided yet xD
+This is actually one of the reasons why I've delved into this "HTML event loop" stuff. My first implementation had a global "nested" counter. Now I'm contemplating if it should be made per "panel" instead to be more "canonical".
+
+[10:16:27.0496] <arai>
+err, which is it "loop" or "call" that nests?
+
+[10:16:34.0759] <TheQwertiest>
+Ideally my embedding should behave similar to JS built in browsers and NodeJS, so that users with previous JS experience won't get surprised by unexpected behaviour.
+
+[10:19:16.0324] <arai>
+can a panel block other panels' execution for long time, without just executing heavy task?
+
+[10:25:11.0880] <TheQwertiest>
+> <@arai:mozilla.org> err, which is it "loop" or "call" that nests?
+
+Something like this:
+```
+void on_messsage(msg) 
+{
+  if (IsInternalRunNextMessage(msg)) {
+     nestedCounter++;
+     
+     if (nestedCounter == 1) {
+       queue.ProcessNextEvent()
+     }
+
+     nestedCounter--;
+     if (!nestedCounter) {
+       PostMessage("i_want_next_event");
+       RunJobs()
+     }
+  }
+  else {
+     DoStuffWithOtherMessages();
+  }
+}
+
+```
+
+[10:26:49.0065] <arai>
+it sounds like `ProcessNextEvent` can call `on_messsage` ?
+
+[10:27:21.0988] <TheQwertiest>
+> <@arai:mozilla.org> can a panel block other panels' execution for long time, without just executing heavy task?
+
+should not happen
+
+[10:30:22.0607] <TheQwertiest>
+> <@arai:mozilla.org> it sounds like `ProcessNextEvent` can call `on_messsage` ?
+
+it's possible during some scenarios (e.g. ProcessNextEvent triggers WM_QUIT, which is synchronous IIRC).
+
+Nested calls can happen when modal dialog is created during ProcessNextEvent. If this happens then nested call guard is ignored for ProcessNextEvent (but still used for RunJobs). I don't like this, but I couldn't find a better way.
+
+[10:31:16.0358] <TheQwertiest>
+> <@arai:mozilla.org> it sounds like `ProcessNextEvent` can call `on_messsage` ?
+
+ * it's possible during some scenarios (e.g. ProcessNextEvent triggers WM_QUIT, which is synchronous IIRC).
+
+Nested calls can happen when modal dialog is created during ProcessNextEvent. If this happens then current on_messsage call is blocked (by the OS mechanism), and during the next on_messsage call the nested call guard is ignored for ProcessNextEvent (but still used for RunJobs). I don't like this, but I couldn't find a better way.
+
+[10:31:32.0937] <arai>
+ah, so the "message" directly maps Windows' message?
+
+[10:32:00.0248] <TheQwertiest>
+> <@arai:mozilla.org> ah, so the "message" directly maps Windows' message?
+
+Msg in `on_message` is a Windows message, yes =)
+
+[10:32:07.0315] <TheQwertiest>
+> <@arai:mozilla.org> ah, so the "message" directly maps Windows' message?
+
+ * `Msg` in `on_message` is a Windows message, yes =)
+
+[10:35:54.0792] <TheQwertiest>
+I can link the source code if you want, but I think it will be much easier to understand if I continue to use a simplified description instead (though some parts of event loop processing are adapted directly from Mozilla source=)).
+
+[10:36:34.0367] <arai>
+is the modal dialog's content related to the JS ?
+
+[10:36:43.0269] <arai>
+I mean, does it require processing JS ?
+
+[10:38:45.0246] <TheQwertiest>
+> <@arai:mozilla.org> I mean, does it require processing JS ?
+
+hm... I don't think so, no. I can't recall immediately any such calls
+
+[10:40:45.0336] <arai>
+so, if "modal" dialog is opened, message handling is stopped for all panels, right?
+
+[10:41:35.0465] <TheQwertiest>
+> <@arai:mozilla.org> so, if "modal" dialog is opened, message handling is stopped for all panels, right?
+
+no, because as I've said above "If this happens ... during the next on_messsage call the nested call guard is ignored for ProcessNextEvent (but still used for RunJobs)"
+
+[10:42:21.0182] <TheQwertiest>
+because otherwise the whole panel becomes blocked which is not a good UX =)
+
+[10:42:32.0592] <TheQwertiest>
+ * because otherwise the whole panel becomes frozen which is not a good UX =)
+
+[10:45:30.0208] <arai>
+I guess I mixed up which is JS and which is native :P
+
+[10:46:11.0728] <arai>
+JS is executed in `ProcessNextEvent` and `RunJobs` ?
+
+[10:49:26.0996] <sfink>
+iiuc `ProcessNextEvent` is the main dispatch mechanism that triggers JS execution, and `RunJobs` is draining the microtask queue (I think that's HTML terminology) which means it'll run JS to resolve Promises
+
+[10:50:11.0376] <sfink>
+(or whatever the right Promise terminology is; I can never get my head straight wrt that stuff)
+
+[10:50:21.0447] <TheQwertiest>
+> <@arai:mozilla.org> JS is executed in `ProcessNextEvent` and `RunJobs` ?
+
+yep
+
+[10:50:57.0489] <TheQwertiest>
+> <@sfink:mozilla.org> iiuc `ProcessNextEvent` is the main dispatch mechanism that triggers JS execution, and `RunJobs` is draining the microtask queue (I think that's HTML terminology) which means it'll run JS to resolve Promises
+
+yepyep
+
+[10:52:39.0213] <arai>
+so, if modal dialog is opened and nested native event loop happens, `nestedCounter` is 2, and ProcessNextEvent isn't called until the modal dialog is closed?
+
+[10:54:07.0888] <arai>
+btw, is "modal dialog" already provided in the current system?  I seems to recall that modal dialog was really troublesome around the nested loop, in Firefox/Thunderbird development
+
+[10:57:02.0223] <TheQwertiest>
+ugh, my bad:
+- if modal dialog is opened and nested native event loop happens, nestedCounter is 2, *but* ProcessNextEvent is called (so as not to freeze the UI)
+- I can't remember immediately which other scenarios can trigger the nested event, but if it *does* happen then ProcessNextEvent *won't* be called
+i.e. modal dialogs remove the "no nested calls" rule for the ProcessNextEvent
+
+[10:57:06.0636] <TheQwertiest>
+ * ugh, my bad:
+- if modal dialog is opened and nested native event loop happens, nestedCounter is 2, _but_ ProcessNextEvent is called (so as not to freeze the UI)
+- I can't remember immediately which other scenarios can trigger the nested event, but if it _does_ happen then ProcessNextEvent _won't_ be called
+
+i.e. modal dialogs remove the "no nested calls" rule for the ProcessNextEvent
+
+[10:58:35.0075] <TheQwertiest>
+> <@arai:mozilla.org> btw, is "modal dialog" already provided in the current system?  I seems to recall that modal dialog was really troublesome around the nested loop, in Firefox/Thunderbird development
+
+modal dialogs can be triggered when interacting with the host app from JS
+
+[10:59:29.0715] <TheQwertiest>
+those are problematic, but I can't avoid them, since they are a part of the host app and are required for some operations
+
+[11:00:01.0532] <TheQwertiest>
+ * ugh, my bad:
+- if modal dialog is opened and nested native event loop happens, nestedCounter is 2, _but_ ProcessNextEvent is still called (so as not to freeze the UI)
+- I can't remember immediately which other scenarios can trigger the nested event, but if it _does_ happen then ProcessNextEvent _won't_ be called
+
+i.e. modal dialogs remove the "no nested calls" rule for the ProcessNextEvent
+
+[11:22:47.0689] <arai>
+hmm, for nested loop and promise jobs, I think you can mimic what Firefox does for the task + microtask with nested loop's case, but if "modal" isn't really modal and it still handles other messages and triggers JS code, it would behave somewhat surprisingly anyway (that was true also on Firefox, that XBL + microtask checkpoint was very troublesome)
+
+[12:19:07.0705] <TheQwertiest>
+what do you mean by "what FF does" though? =)
+
+[13:00:08.0904] <Tim>
+mgaudet: Thanks for the review comments. The problem I ran into when I tried to add a pref+command-line flag was that in js/src/builtin/Array.cpp, the Array methods are defined as a static const array, and when I tried to make that dynamically computed based on the command-line flag, it ended up requiring a lot of invasive changes
+
+[13:00:37.0024] <Tim>
+I can try to do it anyway if necessary, but it would be helpful to see an example of another change adding new methods that does this
+
+[13:16:34.0258] <sfink>
+Tim: look at `ShouldIgnorePropertyDefinition`. For example, `FinalizationRegistry`'s `cleanupSome` method is conditional.
+
+[13:51:06.0792] <TheQwertiest>
+ * @arai,  what do you mean by "what FF does" though? =)
+
+[13:51:18.0162] <TheQwertiest>
+ * arai:  what do you mean by "what FF does" though? =)
+
+[14:53:23.0628] <ochameau>
+mgaudet: here is the bug about the leak https://bugzilla.mozilla.org/show_bug.cgi?id=1733480 with an attached mochitest. Let me know if you have any question.
+
+[15:09:20.0865] <mgaudet>
+ochameau: Thanks! I'm past EOD today, but I'll take a look tomorrow, and at worst 'triage' it into a ni? for... someone :P 
+

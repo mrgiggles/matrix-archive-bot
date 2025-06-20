@@ -1,0 +1,47 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2023-01-30</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2023-01-30<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2023-01-27" class="nav-link"><span>prev</span></a>
+<a href="2023-01-31" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Mon Jan 30 2023 07:57:21 GMT-0800 (Pacific Standard Time)">15:57</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-7" title="@bthrall:mozilla.org">Bryan Thrall [:bthrall]</span>&gt;</div></td><td class="msg-cell">To clarify my understanding of when rooting is needed a little more: I'm looking at <a href="https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#738-739">how <code>frontend::PrepareForInstantiate()</code> is used</a>, and it seems like the <code>gcOutput_</code> parameter does not need to be rooted. Is it true that this is because there is no possibility that the GC knows about pointers inside <code>gcOutput_</code>? For example, <code>CompilationGCOutput::scopes</code> is a <code>GCVector</code>, but the GC doesn't know about it until instantiation?</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Mon Jan 30 2023 08:26:34 GMT-0800 (Pacific Standard Time)">16:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><span class="nick-7">Bryan Thrall [:bthrall]</span>: I think it works because we explicitly <a href="https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#570,580">provide and call a trace method</a>, which are explicitly traced by the <a href="https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2645,2689,2692">GlobalHelperThreadState</a>, which is traced <a href="https://searchfox.org/mozilla-central/source/js/src/gc/RootMarking.cpp#279,294,345">here</a></td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Mon Jan 30 2023 08:28:29 GMT-0800 (Pacific Standard Time)">16:28</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">Rooting is (AIUI) essentially a shortcut for saying "this is an object which must be traced by the GC, so please ensure it happens"; but we do have alternative mechanisms which can be used in circumstances which make sense.</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Mon Jan 30 2023 08:28:37 GMT-0800 (Pacific Standard Time)">16:28</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">(ie. explicit tracing) </td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Mon Jan 30 2023 08:39:23 GMT-0800 (Pacific Standard Time)">16:39</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-7" title="@bthrall:mozilla.org">Bryan Thrall [:bthrall]</span>&gt;</div></td><td class="msg-cell">I see the <code>trace()</code> now, thanks!<br>So it seems like <code>gcOutput_</code> needs to be traced by the GC.<br>I don't see why it needs to be, though. It doesn't seem like the GC would need to know about that memory until the stencil was instantiated.</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Mon Jan 30 2023 08:44:43 GMT-0800 (Pacific Standard Time)">16:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><span class="nick-7">Bryan Thrall [:bthrall]</span>: I'm inclined to agree based on some cursory searchfoxing...</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Mon Jan 30 2023 08:45:04 GMT-0800 (Pacific Standard Time)">16:45</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">AFAICT gcOutput_ may be created off thread, but it remains empty until main-thread instantiation happens? </td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Mon Jan 30 2023 08:49:21 GMT-0800 (Pacific Standard Time)">16:49</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@jonco:mozilla.org">jonco</span>&gt;</div></td><td class="msg-cell">Rooting is generally used for things on the stack, which are known to be live but are not otherwise reachable. The GC marks everything transitively reachable from roots (including the stack but also things associated with the runtime, like the helper thread state). </td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Mon Jan 30 2023 08:54:33 GMT-0800 (Pacific Standard Time)">16:54</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@jonco:mozilla.org">jonco</span>&gt;</div></td><td class="msg-cell">Maybe we need to trace gcOutput_ in case main-thread instantiation triggers a GC part way through?  </td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Mon Jan 30 2023 08:59:22 GMT-0800 (Pacific Standard Time)">16:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-7" title="@bthrall:mozilla.org">Bryan Thrall [:bthrall]</span>&gt;</div></td><td class="msg-cell">Do you mean in case a GC is triggered part way through an instantiation?</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Mon Jan 30 2023 09:00:38 GMT-0800 (Pacific Standard Time)">17:00</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@jonco:mozilla.org">jonco</span>&gt;</div></td><td class="msg-cell">Yes</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Mon Jan 30 2023 09:03:48 GMT-0800 (Pacific Standard Time)">17:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-7" title="@bthrall:mozilla.org">Bryan Thrall [:bthrall]</span>&gt;</div></td><td class="msg-cell">I can see how that would require tracing gcOutput_.
+Thanks!</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Mon Jan 30 2023 09:37:55 GMT-0800 (Pacific Standard Time)">17:37</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@smaug:mozilla.org">smaug</span>&gt;</div></td><td class="msg-cell">do we have some easy way to check if there are cross-realm references? Same origin iframe uses the same zone as its parent, so zones don't help here (thinking about some optimizations for the  case when a same origin iframe is removed from the doc).</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Mon Jan 30 2023 09:56:14 GMT-0800 (Pacific Standard Time)">17:56</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@jonco:mozilla.org">jonco</span>&gt;</div></td><td class="msg-cell">AFAIK we only track pointers between compartments, and cross-realm references may be same-compartment</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

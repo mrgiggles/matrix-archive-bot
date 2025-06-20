@@ -1,0 +1,1643 @@
+2025-05-01
+[19:47:18.0866] <mayankleoboy1>
+Many massive improvements on jetstream2-wasm tests. Probably due to enabling lazt tiering. Backfills in progress
+
+[23:38:57.0787] <mayankleoboy1>
+[1.4% improvement](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&selected=3415656,2016700898&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1744153362935,1746089980638,120.87080847186193,131.00800395341489) on embenchen-wasm-misc-baseline-compile . Just a guess that its from bug 1961674
+
+[23:38:59.0372] <botzilla>
+https://bugzil.la/1961674 — RESOLVED (bvisness) — Use the whole-cell store buffer for wasm
+
+[03:53:54.0054] <jandem>
+if anyone here is on an Arm64 Mac that has clang++ available and wants to help track down what looks like a CPU issue, I'm interested in the output of [this test case](https://gist.github.com/jandem/e6b5660975f145b85d533b97ad054f08)
+
+[03:55:06.0763] <jandem>
+when the Flush-to-Zero flag is set, we've seen different results for the fjcvtzs instruction with denormals on  M1 vs M4
+
+[03:55:57.0426] <jandem>
+having additional data points for M1/M2/M3/M4 would help
+
+[04:00:12.0626] <jandem>
+that was fast, thanks! so far everyone on M2-M4 gets 0 for the zero flag and only my M1 gets 1
+
+[06:16:28.0011] <bvisness>
+> <@mayankleoboy1:mozilla.org> [1.4% improvement](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&selected=3415656,2016700898&series=mozilla-central,3415656,1,13&timerange=5184000&zoom=1744153362935,1746089980638,120.87080847186193,131.00800395341489) on embenchen-wasm-misc-baseline-compile . Just a guess that its from bug 1961674
+
+Uh?! Does embenchen even do wasm gc at all?
+
+[06:17:41.0277] <bvisness>
+I wouldn’t have expected any changes to embenchen
+
+[06:37:04.0263] <mayankleoboy1>
+That was my best guess. I'm curious if you agree there is an improvement and whats the reason. 
+
+[07:54:56.0368] <bvisness>
+it does look a good bit lower
+
+[07:55:36.0154] <bvisness>
+although, we've had some low outliers in that range before by the looks of it
+
+[08:00:41.0859] <bvisness>
+also, what exactly does that compile job measure? I'm not sure where these are defined, but if it's just timing how long it takes to run the baseline compiler, the post barrier bug should have basically zero impact on that
+
+[08:28:12.0267] <mayankleoboy1>
+and the improvement is only on the baseline-compile mode.
+
+[08:30:43.0017] <mayankleoboy1>
+* and the improvement is only on the baseline-compile mode. Edit: And [here](https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=mozilla-central,5273319,1,13&timerange=5184000&zoom=1743651660436,1746061151829,51.4528785923545,66.50227289008471) are the windows results.
+
+[11:04:28.0125] <leftmostcat>
+Am I understanding https://searchfox.org/mozilla-central/source/js/src/jit/GenerateLIRFiles.py#422 and https://searchfox.org/mozilla-central/source/js/src/jit/GenerateMIRFiles.py#160 correctly that behavior should not be distinct between omitting the `operands` property in the YAML and an explicit `operands: `?
+
+[11:04:42.0297] <leftmostcat>
+* Am I understanding https://searchfox.org/mozilla-central/source/js/src/jit/GenerateLIRFiles.py#422 and https://searchfox.org/mozilla-central/source/js/src/jit/GenerateMIRFiles.py#160 correctly that behavior should not be distinct between omitting the `operands` property in the YAML and an explicit `operands:`?
+
+[11:42:18.0098] <jandem>
+leftmostcat: correct. `operands:` can be omitted if there are no operands
+
+[11:50:09.0064] <jandem>
+`RegExpSearcherLastLimit` is a MIR/LIR instruction with explicit-but-empty `operands:` in the YAML, but usually we omit it
+
+[11:52:58.0851] <leftmostcat>
+Yeah, it's that one I was wondering about. It's a candidate for automated generation of the LIR op save that the code for that asserts that `operands` is a dict, which isn't the case if it's explicit-but-empty. So if omission is the same as explicitly empty, then it's possible to drop the explicit-but-empty field and generation works just fine. :)
+
+
+2025-05-05
+[02:15:21.0189] <mayankleoboy1>
+I have a huge js generated source code. When i run it in the browser as html page , it spends all of time in PCToLineNumber, SrcNoteIterator, srcnote:delta etc.
+Is there a way to skip all of that
+
+[02:15:46.0720] <mayankleoboy1>
+* I have a huge generated js  code. When i run it in the browser as html page , it spends all of time in PCToLineNumber, SrcNoteIterator, srcnote:delta etc.
+Is there a way to skip all of that
+
+[02:22:06.0005] <mayankleoboy1>
+If that even makes sense
+
+[02:55:56.0856] <jandem>
+that's bug 929950. We should fix the source note representation to allow faster lookups (bug 1604121)
+
+[03:01:52.0117] <mayankleoboy1>
+That is still open for a long time so i assumed its not easy/simple or worth the effort. 
+
+[07:28:17.0072] <ochameau>
+I'm trying to assert the logged stack traces in stdout or as a string in DevTools, but I'm running into trouble because the stack trace is too complete and goes up to xpcshell or mochitest test harness. This includes objdir and src dir paths which change based on the test environment.
+
+[07:28:54.0860] <ochameau>
+Is there a way to do an `eval` (or similar) while stashing the stack trace, so that if any exception is thrown, we only see the stack from within the eval and nothing more?
+
+[07:30:34.0634] <arai>
+how about putting the `eval` inside a function which has a special name, and remove the string after that?
+
+[07:31:12.0263] <arai>
+or maybe post-processing is not available in the test scenario?
+
+[07:31:48.0404] <ochameau>
+yes, I'd like to avoid any post-processing. These tests are covering many data types other than stack traces
+
+[07:34:06.0784] <ochameau>
+It sounds like I'm going against a design choice where we want to always have the most complete stack traces possible, so, do not hesitate to tell me this is not possible.
+
+[07:35:48.0443] <ochameau>
+Here is an example of [such tests](https://phabricator.services.mozilla.com/D244246), with [the related doc](http://gecko-docs.mozilla.org-l1.s3-website.us-west-2.amazonaws.com/main/c20bdec1-25e4-11f0-a715-0242ac110004/devtools/tests/js-object-tests.html) about this new type of test.
+
+[07:47:44.0093] <arai>
+hmm, using nsITimer callback detaches the callback's stack from the caller, but still it has the stack of `Services.tm.spinEventLoop*` calls at least in xpcshell
+
+[07:47:49.0912] <arai>
+it might work in mochitest tho
+
+[07:56:53.0874] <arai>
+disabling the async stack (`javascript.options.asyncstack=false`) and performing the test inside a promise reaction job might also help
+
+[08:02:57.0393] <arai>
+(also only in mochitest.  xpcshell-test always has the stack trace for [the spinEventLoopUntil call](https://searchfox.org/mozilla-central/rev/4c065f1df299065c305fb48b36cdae571a43d97c/testing/xpcshell/head.js#245) )
+
+[08:39:50.0450] <arai>
+evaluating the script with less-privileged sandbox can omit the higher-privileged frames
+
+[08:41:21.0027] <arai>
+I mean, the enclosing frames are hidden from stack trace retrieved inside the sandbox
+
+[08:44:35.0772] <arai>
+e.g. evaluate the script in `new Cu.Sandbox(null)`
+
+[08:44:50.0030] <arai>
+(not sure if this is applicable to the above tests tho)
+
+[08:45:51.0792] <arai>
+ochameau: ^ maybe some of the above could be used, depending on the environment and goal of the harness
+
+[08:47:59.0157] <ochameau>
+arai: thanks for all the options, I'll test them all and see if one works!
+
+[11:34:43.0441] <mayankleoboy1>
+bug 1957504 seems to have caused some changes to [pdfpaint tests](https://treeherder.mozilla.org/perfherder/alerts?id=44985&hideDwnToInv=0): 
+
+[11:35:04.0134] <mayankleoboy1>
+* bug 1957504 seems to have caused some changes to [pdfpaint tests](https://treeherder.mozilla.org/perfherder/alerts?id=44985&hideDwnToInv=0). Headsup before the regression bug is filed.
+
+[11:37:35.0948] <Ryan Hunt>
+huh, I did not know pdfjs used wasm. That'll be an interesting bug
+
+[11:40:55.0877] <mayankleoboy1>
+IIRC it uses emscripten compiled jpeg decoders that run in WASM (among other things)
+
+[16:17:49.0368] <leftmostcat>
+Am I good to hand https://phabricator.services.mozilla.com/D247513 off to Lando?
+
+[16:21:00.0734] <leftmostcat>
+(Still not 100% sure on the workflow for patches for Firefox. 😅)
+
+[16:23:50.0781] <iain>
+Yeah, you can go ahead and land that. Right now it looks like it will warn you that there are "unresolved comments" because I forgot to check "done" on a couple of my review compliments, but you can either mark those as done yourself or just check the lando box to ignore the warning.
+
+[16:24:08.0189] <leftmostcat>
+Thanks!
+
+[16:28:13.0417] <leftmostcat>
+Ahh, hmm, it looks like my level 3 access isn't working. I'll create a bug, but would you (or someone else) mind landing it for me?
+
+
+2025-05-06
+[12:08:38.0304] <Bryan Thrall [:bthrall]>
+Does anyone here know what a [cgc build](https://treeherder.mozilla.org/jobs?repo=try&revision=b91b1fe5949652582de95ff1ef74130c7ad91119&selectedTaskRun=C94ocOZMQMGq2fsA7OxtAg.0 ) is, or why it might be failing?
+
+[12:09:10.0983] <sfink>
+it's a compacting GC job
+
+[12:10:43.0246] <sfink>
+https://searchfox.org/mozilla-central/source/js/src/devtools/automation/variants/compacting#1
+
+[12:10:54.0724] <sfink>
+I'm not sure why it's not getting crash stacks in that job
+
+[12:14:31.0468] <sfink>
+Bryan Thrall [:bthrall]: first thing to try would be running tests locally with `JS_GC_ZEAL=IncrementalMultipleSlices`
+
+[12:15:57.0873] <Bryan Thrall [:bthrall]>
+Ah! JS_GC_ZEAL was the bit I was missing, thanks!
+
+
+2025-05-07
+[17:16:06.0238] <thinker>
+One question about JSON.stringify(), it uses StringBuilder as the buffer during stringify. However, when the capacity of the buffer in StringBuilder is exhuasted, it reallocates buffer. That means data copy several times with a big size of result. I also found that there is another StringBuilder in dom/base/nsContentUtils.cpp. It keep entries that refer to the data source (origin array, string, ... etc). And, when the capacity entries is exhausted, it will allocates new entries instead of relocating buffers.  Is there any reason JS's StringBuilder taking this approach? The other day (1 month ago), I found stringify may expansive when I studying a profile although I have lost that one now. I just wondering if it is possible to improve it.
+
+[04:06:04.0581] <jandem>
+thinker: it's not a bad suggestion. This has come up recently in bug 1963431 and bug 1957918. The latter one is the next thing on my list so I want to collect some data to see how common it is to have large strings appended to string builders for JSON.stringify, join etc
+
+[04:09:12.0121] <jandem>
+the JS StringBuilder allows stealing the vector's buffer for the result string in some cases, but we often over allocate this buffer now (to avoid reallocs) so I also want to see how well that works in practice
+
+[04:12:56.0840] <jandem>
+we're also moving away from raw malloc for JS string chars now that we have nursery allocated chars, ref-counted StringBuffers and ongoing work on the buffer allocator
+
+[04:13:05.0967] <jandem>
+* the JS StringBuilder allows stealing the vector's malloced buffer for the result string in some cases, but we often over allocate this buffer now (to avoid reallocs) so I also want to see how well that works in practice
+
+[04:17:54.0467] <jandem>
+* thinker: it's a good suggestion. This has come up recently also in bug 1963431 and bug 1957918. The latter one is the next thing on my list so I want to collect some data to see how common it is to have large strings appended to string builders for JSON.stringify, join etc
+
+[05:18:04.0049] <nbp>
+There is an approach I wanted to try in the past for JSON.stringify(), which is to use a different buffering mechanism which only copy twice, once to aggregate the chunks, and a second time to linearize the buffer. We have a Printer class named `LSprinter` which was made to avoid copies during buffer extensions. It makes small allocations backed by a LifoAlloc-ator and coalesce adjoint allocation in bigger chunks.
+
+[05:18:38.0254] <nbp>
+Except that moving from a `StringBuffer` to an `LSprinter` is quite invasive.
+
+[09:27:13.0580] <mgaudet>
+I am prototyping something; is it possible to have a JSFunction with a custom class (w Finalizer) or should I just keep pushing down the JSObject+callHook road? 
+
+[09:31:06.0529] <iain>
+mgaudet: I think we currently have exactly two classes for JSFunction: https://searchfox.org/mozilla-central/source/js/public/Class.h#688-690
+
+[09:31:52.0052] <iain>
+Which share the same finalizer-less classops: https://searchfox.org/mozilla-central/source/js/src/vm/JSFunction.cpp#1185-1196
+
+[09:33:14.0333] <arai>
+can it be JSFunction+custom class object in the function's slot, so that they'll be GCed at almost same timing? or does the finalizer have to be directly associated with the function/callable?
+
+[09:34:22.0095] <mgaudet>
+Hmm. That probably would be fine too, but trying to reduce allocations in general, so I think I'll keep pushing along JSObject + callHook for now. (All this prototype has to be rewritten eventually anyhow) 
+
+[09:48:43.0959] <iain>
+mgaudet: This is for promise reaction jobs?
+
+[09:48:53.0174] <leftmostcat>
+I see Speedometer 3 vendored in the tree, but I'm not clear on how to run it against a local build. I see directions for running in the Speedometer3 directory, but it's not clear whether I should be running the browser separately or wha.
+
+[09:50:48.0445] <iain>
+leftmostcat: You can run it [here](https://browserbench.org/Speedometer3.1/), or, for more control over specific subtests, [here](https://browserbench.org/Speedometer3.1/InteractiveRunner.html).
+
+[09:51:13.0107] <leftmostcat>
+Thank you.
+
+[10:11:32.0479] <mgaudet>
+No; a JS side holder for non-JS microtask jobs 
+
+[10:12:33.0506] <iain>
+Ah, interesting. I expect that to be a slightly less hot path, so an extra allocation there might not be the worst (but if we can do it without allocation so much the better)
+
+[10:16:09.0594] <mgaudet>
+/me nods
+
+
+2025-05-08
+[11:15:02.0348] <tcampbell>
+do people here use `mach try auto` a lot or do they not trust it
+
+[11:18:45.0772] <tcampbell>
+I've been using it a bunch for platform stuff, but people keep warning me it doesn't cover android well (and I think I agree?)
+
+[11:19:38.0741] <iain>
+I use it when I think my patches might affect code that only runs in the browser. Otherwise I mostly use `mach try --preset sm-shell`.
+
+[11:20:27.0886] <iain>
+I've certainly written patches that broke arm32/arm64, but I'm not sure I've ever written a patch that passed tests everywhere else but was broken on Android.
+
+[12:06:08.0466] <mgaudet>
+I use mach try auto a lot; if it's not covering Android well we could talk to the team that does test slection to see if they can lean more weight on thta.
+
+[12:06:15.0174] <mgaudet>
+* I use mach try auto a lot; if it's not covering Android well we could talk to the team that does test selection to see if they can lean more weight on that.
+
+[12:08:57.0124] <Ryan Hunt>
+I haven't really trusted it before, but mostly out of ignorance. If it works well I probably should use it
+
+[12:52:37.0144] <Bryan Thrall [:bthrall]>
+I use it when I'm pretty sure my patches are ok, but I want to take a shotgun testing approach to make sure I didn't break anything unexpected
+
+[16:31:07.0484] <sfink>
+I use it pretty often.
+
+
+2025-05-09
+[06:19:59.0250] <smaug>
+nbp: You might know something about SourceCompression
+
+[06:20:50.0132] <smaug>
+Looks like in some cases it runs at rather bad time taking basically a full CPU core for quite some time
+
+[06:23:05.0921] <nbp>
+smaug: Very little, I walk past it but never dig into.
+
+[06:23:46.0908] <smaug>
+ok, my memory was wrong then
+
+[06:24:07.0164] <nbp>
+I know the rough corner of it, that's about all.
+
+[06:25:19.0211] <nbp>
+About running at a bad time, I had the same issue where the compression came too late for it to be encoded in the alternate data type that is written on disk.
+
+[06:26:25.0848] <jandem>
+I looked into this a little a few months ago in bug 1943337. It'd be nice to schedule compression tasks better
+
+[06:26:42.0301] <nbp>
+I honestly do not recall the arguments for keeping it, as opposed to reusing the one from the original stream of bytes.
+
+[06:27:15.0583] <nbp>
+I presumed we would have to make the parser work on the compressed content :/
+
+[06:27:49.0440] <nbp>
+and the fact that we are chunking it to make it easier to seek into it for on-demand delazification.
+
+[06:28:40.0223] <nbp>
+iain: ^ This might be a topic for sm-perf-next, maybe.
+
+[09:06:55.0520] <iain>
+I don't know much about source compression. Digging into the history via searchfox, it looks like we initially added it [here](https://bugzilla.mozilla.org/show_bug.cgi?id=761723) because we need to keep the source around for Function.toString, we moved it to use helper threads instead of a dedicated thread [here](https://bugzilla.mozilla.org/show_bug.cgi?id=908301), then we scheduled it to run during GC (instead of eagerly) [here](https://bugzilla.mozilla.org/show_bug.cgi?id=1348134).
+
+[09:09:06.0841] <iain>
+It seems to me that it's low priority work and should only run during idle time, *except* that we would ideally like to write compressed source to the cache. When do we write things to the cache? Is that also triggered by idleness?
+
+[09:10:07.0143] <iain>
+I think this might be a good topic for a stupid questions meeting, or maybe a brief discussion during our monthly meeting next week
+
+[09:21:45.0792] <jandem>
+we don't write this to the cache afaik. We should also consider using more modern and faster compression algorithms (we currently use zlib with `Z_BEST_SPEED` or level 2 when we're using the Rust version)
+
+[09:21:55.0211] <mgaudet>
+Could someone do a mach try perf with source compression disabled to see what is potentially on the table?
+
+[09:21:58.0087] <mgaudet>
+(plz?) 
+
+[09:22:19.0172] <jandem>
+* we don't write this to the cache afaik. We should also consider using more modern and faster compression algorithms (we currently use zlib with `Z_BEST_SPEED` or level 2 when we're using the Rust version). We allow decompressing in chunks so it's not completely trivial
+
+[09:22:35.0486] <mgaudet>
+(and in particular include android: I'm curious about that) 
+
+[09:23:16.0285] <jandem>
+mgaudet: I had some A55 numbers in https://bugzilla.mozilla.org/show_bug.cgi?id=1943337#c0 but perf numbers are no longer available. I can redo that for sp3 now. Any other tests you're interested in?
+
+[09:23:37.0586] <jandem>
+* mgaudet: I had some A55 numbers in https://bugzilla.mozilla.org/show\_bug.cgi?id=1943337#c0 but perf numbers are no longer available. I can redo that for sp3 now. Any other tests/suites you're interested in?
+
+[09:24:35.0069] <mgaudet>
+App link startup
+
+[09:24:52.0047] <mgaudet>
+I would hope that this doesn’t impact it, but we can’t be surprised if we check
+
+[09:26:32.0266] <nbp>
+We do hazardly write the compressed source to the cache, hazardly because it depends which happens first.
+
+[09:26:58.0394] <iain>
+When do we write to the cache?
+
+[09:27:09.0936] <nbp>
+at the idle time of the page.
+
+[09:27:44.0045] <iain>
+So hypothetically could we just delay all of our source compression until idle time, and then compress all the source we have before writing it to the cache?
+
+[09:28:33.0188] <nbp>
+Yes, in addition to doing it for memory-pressure GC.
+
+[09:28:55.0290] <nbp>
+(given that this manage to reduce the memory footprint)
+
+[09:28:56.0788] <jandem>
+our source compression triggers after ~2 major gc cycles so will currently often happen later 
+
+[09:30:56.0068] <iain>
+Straw proposal: only trigger source compression during a compacting GC. When we reach idle time, dispatch all of our batched-up source compression tasks, and wait for them to complete before writing source to the cache.
+
+[09:31:00.0394] <nbp>
+I wonder if there is any mean to make existing compressed sources seekable, by keeping a vocabulary table aside. and whether it would be better in terms of ratio than compressing chunks.
+
+[09:32:10.0091] <nbp>
+Writing to the cache might happen later with the in-memory cache.
+
+[09:32:23.0383] <nbp>
+* Writing the cache to disk might happen later with the in-memory cache.
+
+[09:34:08.0018] <iain>
+How often is reading from compressed source on a hot path?
+
+[09:34:53.0484] <iain>
+I think from a performance standpoint the main goal here is to avoid wasting cycles compressing source if we have anything better to do with those cycles
+
+[09:35:01.0282] <nbp>
+Are we still doing full-parse?
+
+[09:35:22.0294] <nbp>
+* Are we still doing full-parse? Yes => Rare 
+
+[09:37:14.0316] <iain>
+Full parse vs syntax parse? I don't understand. I thought the main case where we would need to look up the source after compression was for the expression decompiler when printing errors.
+
+[09:38:13.0300] <nbp>
+If we do syntax parse, and then we happen to compress the source while needing a function to be delazified, then we would have to decompress the chunks to read the source.
+`toSource` might be more frequent, now that I think about it…
+
+[09:38:41.0555] <jandem>
+when we delazify a function we need the source for it. That doesn't apply when we do full parsing for everything
+
+[09:39:17.0578] <iain>
+Ah, right.
+
+[09:39:50.0336] <iain>
+If we lazy-parse a function, then compress the source, and then delazify it, does the source stay compressed, or do we decompress it at that point?
+
+[09:40:13.0392] <tcampbell>
+Ideally we don't write source to cache because we just fetch the text stream from cache, but I think the alt-data API may need tweake
+
+[09:40:16.0734] <jandem>
+there's a cache for uncompressed chunks I think
+
+[09:40:19.0454] <iain>
+It seems plausible to me that if we delazify one compressed function from that source file, we are likely to also delazify others
+
+[09:40:28.0351] <iain>
+Ah, a cache makes sense
+
+[09:40:31.0424] <nbp>
+It stays compressed. in chunks of 512 bytes of source code, IIRC
+
+[09:40:33.0045] <jandem>
+* there's a cache for decompressed chunks I think
+
+[09:41:05.0473] <iain>
+tcampbell: Oh, we don't want to write compressed source to cache?
+
+[09:41:32.0478] <iain>
+I thought that saving disk space was one of the goals of source compression. So it's only about reducing memory usage?
+
+[09:41:58.0920] <nbp>
+iain: ideally no, but the alt-data, is an alternative, and it does not transfer the source back, by design.
+
+[09:42:41.0782] <nbp>
+except that we need it to do delazification, as the encoded stencil can contain lazy functions.
+
+[09:43:05.0668] <nbp>
+so the alt-data contains the source compressed or not, in addition to the stencil.
+
+[09:43:21.0252] <jandem>
+* when we delazify a function we need the source for it. That doesn't apply when we do full parsing for everything (edit: oops, what nicolas just said)
+
+[09:44:01.0849] <iain>
+I am beginning to realize that I have no idea how the cache works
+
+[09:46:11.0755] <nbp>
+Once you learn, you should be thankful that we are no longer using XDR.
+
+[09:46:51.0162] <nbp>
+despite having the name as a legacy to scare people away.
+
+[09:47:46.0623] <tcampbell>
+When we request a source from network, we can also specify a buildid we are compatible with and necko will return the alt-data if it exists and is compatible and otherwise returns the original network source (in compressed form that came over network)
+
+[09:48:34.0888] <iain>
+Is the alt-data the stencil?
+
+[09:48:42.0712] <tcampbell>
+Since it returns "or" instead of "and", we include source text in our bytecode version 
+
+[09:48:46.0950] <tcampbell>
+Yeah, stencil
+
+[09:49:06.0053] <tcampbell>
+(there was a wasm machine code option at one point too)
+
+[09:49:16.0877] <iain>
+So right now we have to store the source in the cache
+
+[09:49:26.0963] <iain>
+And we would prefer it to be compressed
+
+[09:49:30.0640] <nbp>
+the alt-data is the name of the API to store anything in necko. It contains the stencil, the source and a version number.
+
+[09:49:42.0895] <nbp>
+* the alt-data is the name of the API to store anything in necko's cache. It contains the stencil, the source and a version number.
+
+[09:50:11.0872] <iain>
+But in a Beautiful Future World where Necko is Good, we would be able to retrieve the stencil *and* the source, so we wouldn't need to save a second copy of the source.
+
+[09:50:25.0450] <iain>
+Y/N?
+
+[09:50:31.0690] <tcampbell>
+So would be nice to fix, but need support form necko
+
+[09:51:57.0176] <tcampbell>
+The landscape of necko has changed a fair bit since I looked at that a few years ago
+
+[09:52:22.0643] <iain>
+Okay. My understanding is that Beautiful Future Necko improvements happen on a 5-year timescale if at all, so in the meantime, having compressed source available before writing to the cache is a reasonable goal.
+
+[09:53:07.0056] <mgaudet>
+(What actually sounds like needs to happen is we need two necko engineers and two spidermonkey engineers to sit in a room for an hour or two and figure out what the min-cut is to make progress on this) 
+
+[09:53:21.0995] <iain>
+So I return to my straw proposal: we should only run source compression tasks if we're doing a compacting GC, or if we reach idle time and we're about to write source to the Necko cache.
+
+[09:54:37.0311] <iain>
+And if Necko improves and we don't need to store source in it, then we can get rid of the second half and only run source compression tasks as part of compacting GC.
+
+[09:54:42.0567] <Ryan Hunt>
+Wasm is in a similar boat now, we can cache optimized machine code in alt-data cache, but we also have to store the original bytecode (at least just the code section) in alt-data so that we can tier up functions that don't have optimized code yet. It'd be nice if necko could give us both the alt-data and the original source
+
+[09:54:42.0975] <nbp>
+mgaudet: If we do that when we have other topic to discuss for the in-memory cache, to clarify the cache-entry uuid to have smoother in-memory cache invalidation.
+
+[09:54:43.0569] <tcampbell>
+It could happen far sooner if we demonstrated value
+
+[09:55:10.0114] <tcampbell>
+It isn't enormous changes, but requires more than a rubber stamp
+
+[09:56:56.0186] <jandem>
+the android experiment for this will have to wait, I'm getting "The API is in maintenance" from lando :)
+
+[09:57:01.0153] <iain>
+* And if Necko improves and we don't need to store source in it, then we can get rid of the second half and only run source compression tasks as part of compacting GC. Edit: Actually, maybe it's still worth to compress at idle time; we just don't block writing to the cache on it.
+
+[09:58:04.0027] <mgaudet>
+:) 
+
+[09:59:00.0880] <nbp>
+The WASM case might actually be more pressing than the JS case in terms of overhead caused by the alt-data.
+
+[09:59:32.0227] <nbp>
+* The WASM case is actually be more pressing than the JS case in terms of overhead caused by the alt-data.
+
+[09:59:41.0539] <nbp>
+* The WASM case is actually more pressing than the JS case in terms of overhead caused by the alt-data.
+
+[10:04:39.0642] <iain>
+Continuing to expand on my straw proposal until somebody huffs and puffs and blows it down, my proposed straw action plan:
+1. Stop dispatching source compression tasks during normal major GCs.
+2. Instead, dispatch them during compacting GCs.
+3. Also dispatch them at idle time, using the same signal we currently use to write to the Necko cache.
+4. Block writing to the Necko cache during idle time until source compression tasks are finished.
+5. Reach out to the Necko team to add an API that gives us both the original source and the alt-data.
+6. When that's available, delete the code from step 4 and all the currently existing code (both Wasm and JS) that stores source in the alt-data.
+
+[10:05:11.0781] <iain>
+0. Measure stuff
+
+[10:07:18.0511] <nbp>
+0. If this even appears anywhere at the moment.
+1-4. Sounds good, this might cause stupid regressions in CI due to the way we manage the idle time between runs of benchmarks.
+5. YES
+
+[10:07:31.0374] <nbp>
+* - 0. If this even appears anywhere at the moment.
+- 1-4. Sounds good, this might cause stupid regressions in CI due to the way we manage the idle time between runs of benchmarks.
+- 5. YES
+
+[10:07:34.0503] <jandem>
+there are also some issues mentioned in bug 1943337 that we should fix. For example we currently only finish compressed sources during sweeping so if an off-thread compression misses that point it has to wait until the next gc sweeping
+
+[10:08:27.0205] <iain>
+We would do that with an interrupt, I assume?
+
+[10:09:10.0956] <jandem>
+yeah. Also matches what we do for other things
+
+[10:12:46.0448] <tcampbell>
+can someone plant the seed of the request in the #necko:mozilla.org channel and suggest we can make a more concrete proposal but are looking for initial thoughts on feasibility
+
+[10:14:07.0091] <tcampbell>
+actually, they may be travelling today from meetup
+
+[10:16:13.0180] <nbp>
+FYI, @valentin is the person who implemented the alt-data, not sure he is still responsible for it.
+
+[10:16:53.0871] <nbp>
+The most productive breakfast I ever had in a all-hands :P
+
+[10:17:32.0332] <nbp>
+* The most productive breakfast I ever had at a all-hands :P
+
+[10:17:38.0159] <nbp>
+* The most productive breakfast I ever had at an all-hands :P
+
+[10:22:27.0266] <nbp>
+* FYI, @valentin is the person who implemented the alt-data (in necko), not sure he is still responsible for it.
+
+[10:48:56.0065] <nbp>
+So apparently we already have the API: https://bugzilla.mozilla.org/show_bug.cgi?id=1487113#c114
+
+[12:23:32.0863] <smaug>
+Hmm, I'm seeing COMPARTMENT_REVIVED GCs again 😕 
+
+[13:06:13.0475] <leftmostcat>
+For https://bugzilla.mozilla.org/show_bug.cgi?id=1962519, I have a raw number of unused snapshots from Speedometer 3.1, but no context for interpreting that number, and I'm not sure what context would be needed. Should I just add the raw number to the bug, or is there more I can do to interpret that?
+
+[13:28:55.0720] <Shobhit>
+Hello, I have a question regarding how to exactly build spider-monkey for risc-v backend? After reading this document - https://firefox-source-docs.mozilla.org/js/build.html, I have gotten some idea that I might need to define the backend architecture using the MOZCONFIG file. But can anyone point me to a more comprehensive document or steps regarding how to build it for risc-v?
+
+[13:30:39.0857] <mgaudet>
+If this is a cross compilation situation start from ` ac_add_options --target=<riscv target name>` in the mozconfig 
+
+[13:35:15.0329] <iain>
+leftmostcat: The raw number doesn't tell us a huge amount, because I'm not sure anybody has memorized the total number of Ion compilations in an SP3 run, but certainly the order of magnitude would be interesting
+
+[13:35:32.0298] <iain>
+So I would go ahead and post it in the bug (and also here, because I'm curious)
+
+[13:36:11.0163] <leftmostcat>
+I hit 14748 total, including whatever came up in just Running the Browser.
+
+[13:36:29.0555] <iain>
+That seems worth fixing, I think
+
+[13:36:48.0418] <iain>
+Have you run an experiment where you dump the op name, so that we can see how many individual culprits there are?
+
+[13:37:06.0639] <iain>
+The distribution across ops would be pretty interesting
+
+[13:37:25.0602] <leftmostcat>
+Yeah, all the op names are logged. I can try to awk something together.
+
+[13:38:12.0207] <iain>
+I do a lot of `sort | uniq -c` for this kind of thing
+
+[13:39:33.0184] <leftmostcat>
+Oh, I messed up my grep, so the raw number is off, but only by about 300.
+
+[13:40:29.0387] <sfink>
+`perl -lne 'print $1 if /op_name="(.*?)"/' | sort | uniq -c` is a nice extension if you need to parse it out and are friendly with regex, though the awk version is probably shorter
+
+[13:42:54.0461] <leftmostcat>
+~4200 AddI, ~5100 ArrayLength, ~300 StoreElementHoleT, ~1000 StoreElementHoleV, ~1700 SubI, ~1900 UnboxFloatingPoint
+
+[13:44:15.0610] <iain>
+Cool beans. That is definitely useful information!
+
+[13:44:38.0037] <iain>
+And that's a small enough number of cases that we should just fix them all and add an assertion.
+
+[13:45:22.0604] <leftmostcat>
+Trying to clean this up a bit, but I have a lot of weird logging artifacts. Created a new JitSpew channel, but I get some "[UnusedSnapshot[UnusedSnapshot[UnusedSnapshot] ] ] UnboxFloatingPoint". Not sure if that's expected with JitSpew.
+
+[13:46:09.0392] <iain>
+Hmm, might just be multithreaded printing rearing its ugly head. Don't remember if jitspew tries to lock anything.
+
+[13:46:23.0876] <iain>
+We probably don't need to land the spewing if we have an assertion
+
+[13:46:56.0239] <leftmostcat>
+Yeah, I just did it to have an easy way of spitting it out for my own purposes. :)
+
+[13:47:13.0564] <leftmostcat>
+I'll post what I have in the bug.
+
+[14:34:54.0662] <iain>
+My general approach for impromptu data collection is to write code to open up a file named `"/tmp/output-%d", getpid()` in append mode and print my output to that. It's not elegant, but it dodges the multithreaded printing collisions.
+
+[15:16:17.0980] <leftmostcat>
+That's a good tip, thanks.
+
+
+2025-05-11
+[20:39:39.0498] <mstange>
+> <@sfink:mozilla.org> `perl -lne 'print $1 if /op_name="(.*?)"/' | sort | uniq -c` is a nice extension if you need to parse it out and are friendly with regex, though the awk version is probably shorter
+
+There's also njn's "counts" tool: https://github.com/nnethercote/counts?tab=readme-ov-file#a-simple-usage-example
+
+
+2025-05-12
+[02:23:54.0563] <padenot>
+https://padenot.github.io/fouineur/ + Firefox Profiler markers allows counting, measuring, computing, visualizing, etc. discrete events, with or without duration
+
+[08:46:10.0219] <smaug>
+Is there some nice way to implement RAII-type of thingie in JS. Basically set a state at the beginning and reset it at the end of a function
+
+[08:47:18.0542] <nicolo-ribaudo>
+> <@smaug:mozilla.org> Is there some nice way to implement RAII-type of thingie in JS. Basically set a state at the beginning and reset it at the end of a function
+
+This? https://github.com/tc39/proposal-explicit-resource-management
+
+[08:47:25.0728] <nicolo-ribaudo>
+It's stage 3
+
+[08:48:01.0520] <Redfire>
+In native land, you can set the `finalize` op.
+
+[08:48:14.0621] <iain>
+You can also use try/finally
+
+[08:48:40.0420] <iain>
+Explicit resource management is in some senses just a complicated wrapper around try-finally
+
+[08:49:31.0696] <smaug>
+right, I was using try-finally, but it isn't quite the same. Need to add a bit more code
+
+[08:49:43.0410] <iain>
+But if you want the more ergonomic version, there's `javascript.options.experimental.explicit_resource_management`
+
+[08:51:03.0855] <smaug>
+I can't figure out how https://github.com/tc39/proposal-explicit-resource-management does the release part 
+
+[08:51:11.0115] <smaug>
+(but doesn't matter if it isn't enabled by default)
+
+[08:52:15.0693] <nicolo-ribaudo>
+> <@smaug:mozilla.org> I can't figure out how https://github.com/tc39/proposal-explicit-resource-management does the release part 
+
+The object you pass to `using` has a `Symbol.dispose` method that gets called at the end of the block, and it's responsible for releasing whatever resources it's holding onto
+
+[08:52:18.0305] <smaug>
+perhaps it is the Symbol.dispose part
+
+[10:51:29.0354] <iain>
+Stupid question: how does stencil caching interact with chrome JS?
+
+
+2025-05-13
+[01:55:27.0156] <mavavilj>
+Soo, was interested a long time in Node.js, but now sort of deciding to try rely more on SpiderMonkey. I am a bit confused about why the SpiderNode project is abandoned.
+
+[02:26:54.0937] <nbp>
+From what I recall from afar, is that Node.js is tailored toward v8 internal API.
+Attempting to replicate the same API on top of SpiderMonkey was either not feasible nor possible without sacrificing performance.
+
+[02:29:58.0171] <mavavilj>
+I also wondered whether it makes any significant difference ultimately. Like why is reflecting the Node API necessary, why not use another API?
+
+[02:30:56.0933] <mavavilj>
+Node.js was supposed to be an API though, so it shouldn' tbe coupled to any engine
+
+[02:31:13.0197] <mavavilj>
+* Node.js was supposed to be an API though, so it shouldn't be coupled to any engine. Unless Google has consumed it in practice.
+
+[02:32:24.0185] <mavavilj>
+* Node.js was supposed to be an API though, so it shouldn't be coupled to any engine. Unless Google has consumed it in practice. Or maybe the open source community around it just happened to couple it.
+
+[02:33:22.0267] <mavavilj>
+the Node site says: "Node.js runs the V8 JavaScript engine, the core of Google Chrome, outside of the browser. This allows Node.js to be very performant.". Possibly this implies that V8 is integral.
+
+[02:36:36.0966] <mavavilj>
+not feasible nor possible without sacrificing performance". Well this is of course reasonable too.
+
+[02:36:43.0839] <mavavilj>
+* "not feasible nor possible without sacrificing performance". Well this is of course reasonable too.
+
+[02:45:02.0133] <arai>
+which chrome JS specifically?  there are multiple caching mechanism
+
+[02:45:04.0043] <mavavilj>
+I also wondered is there something like Webpack for SM projects
+
+[02:46:34.0370] <arai>
+some of them may be the target of startup cache, or script preloader, or maybe not target of anything but just excluded by the upcoming scriptloader cache (because of being local file)
+
+[02:56:47.0187] <arai>
+StartupCache covers:
+  * JS used by XUL
+  * system ESM (ChromeUtils.importESModule etc)
+  * subscript (Services.scriptloader.loadSubScript etc)
+  * self-hosted JS
+  * and some other non-JS, such as font
+
+ScriptPreloader covers:
+  * frame script (mm.loadFrameScript etc)
+  * process script (ppmm.LoadProcessScript etc)
+  * system ESM (ChromeUtils.importESModule etc)
+  * subscript (Services.scriptloader.loadSubScript etc)
+
+
+[02:57:56.0747] <arai>
+The upcoming cache for the DOM ScriptLoader targets the web contents.  ScriptLoader is used also by some chrome-priv code, but those scripts are excluded by the target
+
+[02:58:03.0931] <arai>
+iain: ^
+
+[03:27:26.0742] <nbp>
+Well Node is already used for linking against C and other languages, which is where the value is.
+Otherwise people can embed SpiderMonkey, some have done it in this channel, but this definitely less popular than Node API.
+
+[03:28:05.0960] <mavavilj>
+"Well Node is already used for linking against C and other languages, which is where the value is." What do you mean?
+
+[03:28:40.0130] <mavavilj>
+Also, w.r.t. value, for me the license is the most significant thing
+
+[03:29:23.0753] <mavavilj>
+* Also, w.r.t. value, for me the license is the most significant thing. I am > 50% certain that V8 is a cash cow.
+
+[03:30:04.0077] <mavavilj>
+* Also, w.r.t. value, for me the license is the most significant thing. I am > 50% certain that V8 is a cash cow (however, Node.js exists without V8 too)
+
+[03:30:21.0535] <mavavilj>
+* Also, w.r.t. value, for me the license is the most significant thing. I am > 50% certain that V8 is a cash cow (however, Node.js used to exist without V8 too)
+
+[03:31:28.0892] <mavavilj>
+* Also, w.r.t. value, for me the license is the most significant thing. I am > 50% certain that V8 is a cash cow due to the BSD license (however, Node.js used to exist without V8 too)
+
+[03:38:32.0391] <mavavilj>
+anyways, I was going to use this initially for what I would use Node.js instead. Interested in contributing too w.r.t.
+
+[03:39:00.0257] <mavavilj>
+* anyways, I was going to use this initially for what I would use Node.js instead (thus the question about SpiderNode). Interested in contributing too w.r.t.
+
+[03:41:26.0260] <mavavilj>
+* anyways, I was going to use this initially for what I would use Node.js instead (thus the question about SpiderNode). Interested in contributing too w.r.t. that.
+
+[03:45:42.0737] <Redfire>
+v8 is traditionally considered easier to embed than SM
+
+[03:53:14.0157] <mavavilj>
+maybe that's something I could work on
+
+[04:32:09.0195] <mavavilj>
+why cannot the shell be considered embedded(?) https://marmelab.com/blog/2024/02/05/bun-shell.html
+
+[04:52:27.0133] <mavavilj>
+* maybe that's something I could work on. EDIT: although as of now I thought the WASI implementation is interesting enough.
+
+[04:57:48.0405] <smaug>
+if one calls throw foo inside catch, does the finally still run?
+
+[04:57:50.0538] <smaug>
+in js
+
+[04:58:00.0853] <smaug>
+* if one calls throw foo; inside catch, does the finally still run?
+
+[04:58:13.0494] <smaug>
+I should test
+
+[05:00:52.0062] <smaug>
+looks like finally is called
+
+[05:00:55.0935] <smaug>
+as I expected
+
+[05:02:00.0410] <mavavilj>
+* why cannot the shell be considered embedded(?) https://marmelab.com/blog/2024/02/05/bun-shell.html. Or https://en.wikipedia.org/wiki/Aptana#Aptana_Jaxer for that matter.
+
+[05:16:53.0222] <mavavilj>
+* why cannot the shell be considered embedded(?) https://marmelab.com/blog/2024/02/05/bun-shell.html. Or https://en.wikipedia.org/wiki/Aptana#Aptana_Jaxer for that matter. Or https://en.wikipedia.org/wiki/Synchronet for a more recent idea.
+
+[08:36:27.0680] <sfink>
+SpiderMonkey's JS shell is considered embedded. (Actually, SpiderMonkey is embedded within Gecko too.) But the JS shell is only meant for testing: it is insecure, it intentionally exposes unsafe internals, it doesn't provide a lot of useful system integration that is necessary when using it for "real" scripting, etc.
+
+[08:37:31.0625] <sfink>
+That said, it *can* be used for writing useful scripts. For example, we have a whole-program C++ static analysis that runs on it.
+
+[08:38:26.0086] <sfink>
+It's more of a resource issue than anything else. SpiderNode iirc was really a 1-person project.
+
+[08:39:54.0406] <sfink>
+Doing and maintaining a Node.js-like thing properly would take a lot of time and effort. It would be cool, and fun to work on, but hard to make a business case for spending a bunch of money to support.
+
+[08:47:06.0281] <sfink>
+As for Node.js, the problem aiui isn't so much that it's written with the V8 API, it's that node packages are also compiled with the V8 API. So it's not enough to be source-compatible, we'd have to be binary-compatible if you wanted to use npm packages. And without npm, Node isn't that interesting; you might as well just write your own shell.
+
+[08:48:15.0891] <sfink>
+I think there's also some funky host extensions that Node relies on, in particular the Buffer object? I don't actually know much about it, but my understanding is that it's sort of like a pre-ArrayBuffer ArrayBuffer, and used as a basis for a lot of stuff. (I may be wildly incorrect and/or out of date.)
+
+[09:27:00.0055] <mgaudet>
+What's the component for the thing which prints our our stacks on crash dump? Is it crash reporter? 
+
+I want to open a bug saying: "Hey, all these JS::Trace* functions which take a const char* argument... can we print said argument in the dump so we know _what_ was being traced"
+
+[09:27:30.0092] <mgaudet>
+(Which to me seems fine if the pointer is set to something in the .data section of an elf) 
+
+[09:55:57.0575] <iain>
+arai: For context, I was looking at this bug: https://bugzilla.mozilla.org/show_bug.cgi?id=542144.
+
+[09:58:01.0089] <sfink>
+I would guess Toolkit :: Crash Reporting. There's a mozcrash.py script that is the frontend-ish thing.
+
+[09:58:45.0045] <sfink>
+* I would guess Toolkit :: Crash Reporting. There's a [mozcrash.py](https://searchfox.org/mozilla-central/source/testing/mozbase/mozcrash/mozcrash/mozcrash.py) script that is the frontend-ish thing.
+
+[09:59:46.0464] <iain>
+And trying to figure out whether there was any use looking into speeding up chrome code any further.
+
+[10:00:48.0272] <iain>
+Right now it sounds like most of the important chrome code has a cached stencil
+
+[10:01:06.0679] <iain>
+And I don't frequently see chrome JS in profiles, so I don't think it's a big hotspot relative to content JS
+
+[10:01:15.0575] <iain>
+But maybe I'm not looking at the right profiles
+
+[10:01:18.0015] <sfink>
+I think it runs minidump-stackwalk
+
+[10:20:37.0078] <iain>
+Did we just land waitAsync and self-hosted baseline caching in the same day?
+
+[10:22:01.0486] <iain>
+* Did we just land [waitAsync](https://bugzilla.mozilla.org/show_bug.cgi?id=1467846#c73) and [self-hosted baseline caching](https://bugzilla.mozilla.org/show_bug.cgi?id=1827914#c43) in the same day?
+
+[10:30:59.0840] <mgaudet>
+O.o 
+
+[10:31:07.0183] <mgaudet>
+Woah 
+
+[11:42:01.0268] <Bryan Thrall [:bthrall]>
+Well, self-hosted baseline caching was backed out ☹️
+
+[11:42:37.0979] <iain>
+Alas!
+
+[11:44:09.0884] <sfink>
+Not unexpected for something of that size. It would be more shocking if it stuck on the first try!
+
+[11:58:29.0427] <Bryan Thrall [:bthrall]>
+True
+
+[12:01:49.0380] <mgaudet>
+Anyone want a puzzle: Doxbee Promise just... stops on my phone: https://bugzilla.mozilla.org/show_bug.cgi?id=1966162 
+
+
+2025-05-14
+[21:18:48.0506] <tcampbell>
+Looks like Fenix just kills scripts that exceed 30s jank
+
+[21:58:03.0504] <mstange>
+Nice find. Looks like its ContentDelegate just doesn't implement onSlowScript so it gets the default implementation which returns null, which means "always stop": https://searchfox.org/mozilla-central/rev/25a38ac3b851b63e7d85a850940c354609e8126d/mobile/android/geckoview/src/main/java/org/mozilla/geckoview/GeckoSession.java#980
+
+[21:58:27.0119] <mstange>
+I'm surprised this is even remotely web compatible
+
+[22:02:58.0082] <tcampbell>
+Intentional but not clear to me the history https://searchfox.org/mozilla-central/rev/25a38ac3b851b63e7d85a850940c354609e8126d/modules/libpref/init/StaticPrefList.yaml#5576
+
+[02:55:37.0800] <mavavilj>
+I was looking for a lower barrier entry to SpiderMonkey. ATM I think https://wasmer.io/posts/winterjs-v1 might be the easiest entry.
+
+[02:55:54.0518] <mavavilj>
+They say that WinterJS is also faster than Node.js, so ...
+
+[02:56:23.0740] <mavavilj>
+It might have a marketing problem though, because it was quite challenging to discover it.
+
+[02:57:57.0326] <mavavilj>
+Also, there's the possibly interesting viewpoint that by not having a Node API means diverging from the Node.js ecosystem, which might motivate Node.js users to switch too instead of using other projects as means of extension or something. Just an idea.
+
+[02:58:27.0143] <mavavilj>
+* Also, there's the possibly interesting viewpoint that by not having a Node API means diverging from the Node.js ecosystem, which might motivate Node.js users to switch too instead of using other projects as means of extension or something. I thought the licenses are reasonably different. Just an idea.
+
+[03:06:11.0505] <arai>
+For startup, most of the code should be covered by the startup cache ([mozJSModuleLoader::GetScriptForLocation](https://searchfox.org/mozilla-central/rev/3d294b119bf2add880f615a0fc61a5d54bcd6264/js/xpconnect/loader/mozJSModuleLoader.cpp#802-803))
+
+[03:06:37.0119] <arai>
+* For startup, most of the code should be covered by the startup cache ([mozJSModuleLoader::GetScriptForLocation](https://searchfox.org/mozilla-central/rev/3d294b119bf2add880f615a0fc61a5d54bcd6264/js/xpconnect/loader/mozJSModuleLoader.cpp#802-803) etc)
+
+[08:05:08.0656] <mavavilj>
+This is on the verge of being on topic, but based on the above discussion I am trying to install WinterJS, and I noticed that while it's also about building SpiderMonkey, then there's some odd additional dependency on NodeJS. https://github.com/wasmerio/winterjs?tab=readme-ov-file#building-from-source I just thought, whether anyone has input on this from SpiderMonkey's viewpoint.
+
+[08:07:30.0295] <mavavilj>
+* This is on the verge of being on topic, but based on the above discussion I am trying to install WinterJS, and I noticed that while it's also about building SpiderMonkey, then there's some odd additional dependency on NodeJS. https://github.com/wasmerio/winterjs?tab=readme-ov-file#building-from-source I just thought, whether anyone has input on this from SpiderMonkey's viewpoint. It seems like it's not related to SM, but it sounds unideal considering that it was supposed to be a SpiderMonkey web server.
+
+[08:12:34.0554] <mavavilj>
+* This is on the verge of being on topic, but based on the above discussion I am trying to install WinterJS, and I noticed that while it's also about building SpiderMonkey, then there's some odd additional dependency on NodeJS. https://github.com/wasmerio/winterjs?tab=readme-ov-file#building-from-source I just thought, whether anyone has input on this from SpiderMonkey's viewpoint. It seems like it's not related to SM, but it sounds unideal considering that it was supposed to be a SpiderMonkey web server. It's required for .ts support(?)
+
+[08:33:09.0220] <jandem>
+it sounds like they use Node as a build step to compile TypeScript modules to JS
+
+[08:33:34.0169] <jandem>
+only for debug builds because for release builds they have the pre-compiled JS code
+
+[08:37:45.0314] <mavavilj>
+aah
+
+[08:37:51.0180] <mavavilj>
+* aah. That makes sense.
+
+[14:47:41.0431] <Redfire>
+> <@mavavilj:matrix.org> I was looking for a lower barrier entry to SpiderMonkey. ATM I think https://wasmer.io/posts/winterjs-v1 might be the easiest entry.
+
+Oh hey, it's the one project that uses my code. (with some questionable decisions)
+
+[14:48:51.0530] <mavavilj>
+what does this mean?
+
+[14:50:50.0578] <Redfire>
+winterjs uses spiderfire (well, a fork) under the hood, which is my js runtime, for stuff like the event loop and library code. https://github.com/redfire75369/spiderfire
+
+
+2025-05-15
+[10:50:15.0102] <mgaudet>
+mccr8: Small review ping on https://phabricator.services.mozilla.com/D248083 (or let me know if you want me to find another xpcom reviewer) 
+
+[10:54:53.0072] <mccr8>
+Oh sorry, I didn't see that I was a blocking reviewer on that.
+
+[10:56:08.0564] <mgaudet>
+No worries. Just going through my old patches :) 
+
+[11:25:56.0293] <iain>
+jonco: I tested out your tooling from [bug 1894012](https://bugzilla.mozilla.org/show_bug.cgi?id=1894012). Once I realized that I had to use a build with gczeal enabled, I started getting output that looked like this from 3d-cube-sp:
+```
+Pretenuring info after minor GC 0 for OUT_OF_NURSERY reason with promotion rate 47.0%:
+  Site             Zone             Location             BytecodeOp   SiteKind  TraceKind NAllocs  Promotes PRate  State     
+    0x7a36bc8fd880   0x7a36bdaa4000 @evaluate:321        New          missing   JS Object      269      269 100.0% LongLived 
+  17 alloc sites created, 2 active, 1 pretenured, 0 invalidated
+```
+Am I reading this right in thinking that this means that the JSOp::New at source location `@evaluate:321` does not have an alloc site but tenures 100% of its allocations? (The bad source location is an artifact of how JS3 runs tests.)
+
+[11:25:58.0866] <botzilla>
+https://bugzil.la/1894012 — RESOLVED (jonco) — Investigate a way to find which missing allocation sites would be beneficial to add
+
+[11:27:05.0965] <sfink>
+that's my interpretation too
+
+[11:27:16.0372] <iain>
+Seems like maybe we should consider adding allocation sites for JSOp::New?
+
+[11:28:21.0823] <jonco>
+yes, that's correct
+
+[11:28:50.0754] <jonco>
+although 269 allocations is not a lot in the greater scheme of things
+
+[11:29:15.0443] <jonco>
+we don't have alloc sites for scripted constructors which is what I guess this is
+
+[11:29:17.0453] <iain>
+That example isn't great because if I'm reading the log lower down it looks like it eventually hits a tenure rate of 0
+
+[11:29:40.0304] <iain>
+I'm more interested in the observation that we don't have alloc sites for scripted constructors
+
+[11:30:03.0014] <jonco>
+there was some complication about adding these, I don't remember the details though
+
+[11:30:23.0509] <jonco>
+it would be a good idea to work on
+
+[11:32:26.0760] <iain>
+If I filter on `missing,long` it should report non-existent alloc sites where we would have done pretenuring if we had an alloc site?
+
+[11:32:43.0255] <jonco>
+that's right
+
+[12:05:43.0015] <iain>
+Refreshing myself on the code, I suspect that the complication with alloc sites for scripted constructors was that our generated baseline code for a scripted new is MetaScriptedThisShape + CallScriptedFunction, which is kind of a hack to let us use CallScriptedFunction for constructors without needing an extra slot that is unused for regular calls. But I think we can either clean up that hack or extend it to cover this case. I'll open a bug.
+
+[13:31:25.0992] <iain>
+Opened bug 1966773.
+
+[13:31:28.0675] <botzilla>
+https://bugzil.la/1966773 — NEW (nobody) — Pretenure thisObject allocations for scripted JSOp::New
+
+
+2025-05-16
+[05:10:45.0633] <Bas>
+Hi, I was looking at https://bugzilla.mozilla.org/show_bug.cgi?id=1963578. That profile definitely shows something bad, because of buffer size constraints we only get the last bits, but there's almost exclusively JS running, and it shows some reeeaaally deep recursive stacks in a single function.. Anyone know if that could somehow be a Firefox or site bug? It seems odd that Chrome would be orders of magnitude faster.
+
+[05:17:06.0879] <Bas>
+Trying to reproduce this, it says this shouldn't happen :P
+
+[05:26:50.0519] <padenot>
+code is `function Rv(e,t,n=!1){const r=e.getNodeByIdOrMessageId(t),o=r.id!==e.rootId?Rv(e,r.parentId,n):YM,s=r.message,i=jh.get(o,s);if(i)return i;const a=ZM(o,s,n);return jh.set(o,s,a),a}` there's clearly a recursion
+
+[05:30:19.0003] <Bas>
+Right, I guess a better formulated question is whether there's any reason for this recursion to run deeper, or be more expensive in Firefox vs Chrome.
+
+[05:30:47.0985] <Bas>
+This seems like just some framework DOM nonsense to me, but I could be wrong.
+
+[05:40:46.0409] <padenot>
+I can repro, you just need a long conversation
+
+[05:41:26.0215] <mccr8>
+It could be that Chrome blows through the stack very quickly and so it doesn't get bogged down in this call. We had a similar kind of issue with a regular expression before, where Chrome just had tighter limits so it gave up before it spent much time.
+
+[05:42:19.0196] <padenot>
+from the look of it, it makes one recursive call per message of the conversation until it reaches the beginning, at least the order of magnitude looks right in my case
+
+[06:33:39.0547] <arai>
+Bryan Thrall [:bthrall]: what's the expected behavior of `topLevel` option in https://phabricator.services.mozilla.com/D249679 ?  can you add a document?
+
+[07:30:04.0550] <Bryan Thrall [:bthrall]>
+Will do!
+
+
+2025-05-20
+[09:52:47.0658] <padenot>
+If, in Gecko, I'm allocating memory for an ArrayBuffer I'm returning, should I use JS_Malloc, or is `js_pod_arena_malloc<char>(js::ArrayBufferContentsArena, size));` better somehow ? It seems more precise
+
+[09:52:56.0346] <padenot>
+I see both in the tree
+
+[11:10:32.0373] <sfink>
+the latter is probably better; we might want to get all ArrayBuffers into that arena at some point
+
+
+2025-05-21
+[23:39:57.0054] <glandium>
+can someone remind me how to make the jit print out the instructions it's compiling to?
+
+[00:08:40.0162] <debadree25>
+IONFLAGS=codegen would be the one i guess?
+
+[01:03:47.0488] <glandium>
+debadree25: thanks
+
+[03:05:31.0747] <padenot>
+This is what I ended up doing, thanks for confirming
+
+[08:03:22.0559] <henry-x>
+Hello. How do I enable `JitSpew` log messages? E.g. https://searchfox.org/mozilla-central/rev/dbef1a2f75798fb0136b7428d959c8feb09ad5d1/js/src/jsapi.cpp#4351 . I figured it would be through `MOZ_LOG`, but I'm not sure about the module names.
+
+[08:07:10.0718] <iain>
+henry-x: Ah, no, we have our own bespoke mechanism. You set IONFLAGS=name-of-channel. Look [here](https://searchfox.org/mozilla-central/source/js/src/jit/JitSpewer.cpp#415-531) for the exact string->channel mapping
+
+[08:07:28.0976] <mstange>
+henry-x: note that your build needs to be complied with `--enable-jitspew`
+
+[08:07:30.0764] <iain>
+(You can enable multiple channels with `IONFLAGS=foo,bar`)
+
+[08:09:18.0889] <henry-x>
+ah ok. Thanks for the information. I guess I need a recompile
+
+[10:02:25.0285] <mgaudet>
+JitSpew actually should work through MOZ_LOG (c.f. https://searchfox.org/mozilla-central/source/js/src/vm/Logging.h#99) 
+
+[10:04:06.0834] <mgaudet>
+MOZ_LOG=IonScripts:5 should work. 
+
+Having said that, that's not _100%_ true, as there are some JitSpew functions which don't go through that path 
+
+[10:04:52.0884] <mgaudet>
+but that one henry-x linked to should be accessible via JIT_SPEW, but markus does point out correctly you still need `--enable-jitspew`. 
+
+the MOZ_LOG approach is nice because it will work in browser and dump logs into profiles tooo 
+
+[12:38:16.0583] <kfjvj>
+I'm calling JS_NewPlainObject, and it's causing a segfault.  Does anyone know why this might be occurring?
+
+[13:34:56.0868] <sfink>
+lots of potential reasons. You'll probably need to get a stack trace. And are you compiling with -DDEBUG?
+
+[13:44:57.0480] <kfjvj>
+Yeah, I'm about to analyze the core dump.
+
+[14:50:18.0225] <kfjvj>
+I've just attempted analyzing the core dump, and I'm having an issue.  The stack trace says that the failure is occurring in jsapi.cpp.
+
+However, my local clone of mozjs has no such file.
+
+[14:55:28.0573] <iain>
+kfjvj: It should be [right at the root of src](https://searchfox.org/mozilla-central/source/js/src).
+
+[15:37:05.0802] <kfjvj>
+Maybe there's just something wrong with my local clone.  Does anyone know how to specify a particular version on searchfox?
+
+[15:37:25.0851] <kfjvj>
+Maybe I can use the same version as my local instance to find the correct line in the source code.
+
+[15:38:34.0377] <iain>
+Searchfox indexes old ESR versions separately: https://searchfox.org/ (scroll down and look for eg mozilla-esr128)
+
+
+2025-05-22
+[12:39:59.0292] <jlink>
+What is the protocol for "geez that's a lot of time spent in GC/CC" type issues? (I'm triaging a bug where high memory and CPU use were reported and they included a profile that shows us in Incremental CC for at least the entire 5.7s of the profile.)
+
+[12:41:21.0823] <mccr8>
+That's basically a normal thing that happens when you are leaking a lot of DOM stuff. The CC is pretty slow and leaked things can't be skipped easily by the CC so you get mega hangs. You need to figure out what is leaking and why.
+
+[13:07:17.0680] <jlink>
+So there isn't any mechanism to try and do incremental CC ... incrementally? I was thinking that there was something in place to try and do only a certain amount of work each time through. Am I mis-remembering?
+The particular profile that I have doesn't have a whole lot in the way of markers (possibly the profile was ended too soon) but is there any marker that could tell how many "things" (GCThings, I presume) that we had to sort through in the CC? I'd like to get some idea how many is a lot.
+
+[13:11:44.0119] <mccr8>
+Yes, cycle collection is done incrementally, but there's a basic limitation that we can't GC at the same time as we're doing an incremental CC, so when we decide we need to GC, we have to synchronously finish the CC. There's a fundamental trickiness where the CC will have anywhere from 5ms to 5s of work to do.
+
+[13:14:04.0444] <mccr8>
+GC things are allocated in the GC heap. The CC traverses a combination of JS GC things and C++ DOM objects, although in the instance of a super slow CC, it is usually 90% or more GC things. We do gather some stats on the CC graph but I'm not sure if we expose that to the profiler.
+
+
+2025-05-23
+[09:29:39.0383] <jonco>
+mgaudet: what do the numbers mean in bug 1968286?
+
+[09:29:42.0176] <botzilla>
+https://bugzil.la/1968286 — NEW (nobody) — [meta] Improve rooting in JetStream3
+
+[09:30:18.0036] <mgaudet>
+:D 
+
+[09:31:14.0219] <mgaudet>
+So each time you call registerWithRootLists, bpf takes the top 3 frames of the stack, then creates a map from stack -> count 
+
+[09:31:29.0974] <mgaudet>
+So this is the frequency of each call to registerWithRootLists, sorted by who is the caller 
+
+[09:32:05.0674] <mgaudet>
+One of my hopes had been that by identifying lots of high-frequency duplicated stacks you'd be able to identify high value opportunities for deploying RootedTuple
+
+[09:32:50.0477] <jonco>
+Oh I see. 
+
+[09:33:17.0564] <mgaudet>
+Or, potentially if there are dyanamically hot high frequency superflous roots we could straight up remove rooting. Arai pointed out a bit in the promises code already 
+
+[09:33:55.0790] <mgaudet>
+The idea is that this is a view on something which is not -individually hot- but might be still worth improving because it won't show up much in profiling 
+
+[09:34:05.0414] <mgaudet>
+and so choosing a non-statistical method is valuable 
+
+[09:34:15.0708] <mgaudet>
+This is the BPF edition of https://bugzilla.mozilla.org/show_bug.cgi?id=1963832 
+
+[09:34:22.0428] <jonco>
+We should definitely remove superfluous roots.  
+
+[09:35:16.0961] <jonco>
+I think the hazard analysis might report on these? But I'm not sure whether it can detect all of them or even how it does.
+
+[09:37:49.0358] <jonco>
+Yeah, there's an unnecessary.txt.gz generated.
+
+[09:38:17.0762] <jonco>
+Finding hot roots where we can reduce the overhead with RootedTuple also sounds like a good idea.
+
+[09:39:08.0594] <mgaudet>
+(I'm super happy I got this working tbh. I'm hoping in the next hour or two I can see about getting a run of the browser working) 
+
+[09:40:51.0356] <sfink>
+I haven't looked at that file in a long time. It looks like it's having trouble with the source locations.
+
+[09:41:18.0876] <sfink>
+and the browser analysis is flooded with autogenerated dom bindings code, which is sort of hard to track down
+
+[09:41:50.0953] <sfink>
+I'm a bit suspicious of the output; it complains a lot of unnecessarily rooted return values. You can't root a return value.
+
+[09:44:32.0027] <sfink>
+also, when I look at a [random example](https://searchfox.org/mozilla-central/rev/5813af297bb0e6581ab49029ba897c3e12a9134c/js/src/vm/TypedArrayObject.cpp#979), it's being a bit overzealous. It's saying "you went to the trouble of rooting `proto`, but then you pass it into `makeProtoInstance` and never look at it again. It's `makeProtoInstance`'s problem, not yours."
+
+[09:45:07.0676] <sfink>
+but `makeProtoInstance` is called by other things, so it takes a `Handle`, as it should.
+
+[09:47:26.0603] <mgaudet>
+(Side note: I do wonder if you could spit out a count of "roots per function" to identify statically cases like https://phabricator.services.mozilla.com/D250837#8667405 where RootedTuple is a good idea, because we have 8 roots in that frame 
+
+[09:47:36.0434] <mgaudet>
+* (Side note: I do wonder if you could spit out a count of "roots per function" to identify statically cases like https://phabricator.services.mozilla.com/D250837#8667405 where RootedTuple is a good idea, because we have 8 roots in that frame)
+
+[09:47:44.0885] <sfink>
+what the hazard analysis is computing is pretty simple. It knows what variables can hold GC pointers based on their types, and only looks at those. Then it computes the answer to 2 questions: is the type rooted? Is it live across a function call that can GC? (no, yes)=>hazard. (yes,no)=>unnecessary root.
+
+[09:48:28.0720] <jonco>
+OK that does sounds a bit over eager
+
+[09:48:59.0231] <sfink>
+with some work, I'm sure the noise could be trimmed down drastically with various heuristics (and perhaps outright fixes, in the return value case)
+
+[09:51:00.0048] <sfink>
+but maybe the best filter would be mgaudet's eBPF thing: only report unnecessary roots that are hot
+
+[09:52:02.0336] <mgaudet>
+"Hot roots, hot roots, getcha hot roots here" 
+
+[09:53:00.0000] <sfink>
+it could be called the Yam Project.
+
+[09:54:07.0104] <sfink>
+* what the hazard analysis is computing is pretty simple. It knows what variables can hold GC pointers based on their types, and only looks at those. Then it computes the answer to 2 questions: is the variable rooted? Is the variable live across a function call that can GC? (no, yes)=>hazard. (yes,no)=>unnecessary root.
+
+[09:58:26.0863] <iain>
+mgaudet: Can you use your BPF data to automatically find cases where we have multiple hot roots in a single function?
+
+[09:58:52.0641] <mgaudet>
+Sort of yes. Basically look for groups where we have the same counts 
+
+[09:58:54.0143] <iain>
+Seems like that would help find opportunities for RootedTuple
+
+[09:58:57.0901] <mgaudet>
+exactly 
+
+[09:59:50.0441] <mgaudet>
+e.g I found in cdnjs https://searchfox.org/mozilla-central/source/js/src/builtin/intl/Collator.cpp#443-462 which has 3 roots which are run 30,000,000 times each in the same frame 
+
+[10:00:31.0644] <iain>
+Seems like it should at least in principle be possible to automate that filtering process
+
+[10:00:41.0290] <mgaudet>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1968290 
+
+[10:00:58.0219] <mgaudet>
+Oh for sure :) 
+
+[10:02:35.0860] <mgaudet>
+Can't make -too- much hay of all this though; for example, I built with debug-opt for symbols, but that means for example https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.cpp#117-125 is highlighted in Air
+
+[10:39:39.0220] <sfink>
+I stumbled across my ignorance about AllocPolicy yet again, and decided to make a [table](https://docs.google.com/spreadsheets/d/15yml_SGqlmlmdk9a1FNS0U1N17hAEKAVP_io2e0_szo/edit?gid=0#gid=0). Does it seem right? Are there important nuances that I should be including? Is `TempAllocPolicy` *really* the only thing that auto-reports, and why is it called "Temp"?
+
+[10:39:54.0338] <sfink>
+oh. For that last one, I skimmed through the naming fight in https://bugzilla.mozilla.org/show_bug.cgi?id=647103
+
+[10:44:50.0351] <sfink>
+it's "temporary" as in, it's not attached to a GC cell and set free.
+
+[10:45:24.0680] <sfink>
+that's... awful. It could easily outlive lots of GC cells.
+
+[10:46:12.0553] <kfjvj>
+Hi.  I was asking a few days ago about what would cause JS_NewPlainObject to fail.  I analyzed a core dump of the failure, and was pointed to the assertion in this function:
+
+```
+JS_PUBLIC_API JSObject* JS_NewPlainObject(JSContext* cx) {
+  MOZ_ASSERT(!cx->zone()->isAtomsZone());
+  AssertHeapIsIdle();
+  CHECK_THREAD(cx);
+
+  return NewPlainObject(cx);
+}
+```
+
+
+[10:50:38.0331] <iain>
+sfink: I basically remember which one is which by noting that you have to pass a cx when constructing a data structure with TempAlloc (because it needs to store the cx so that it knows where to report the error) but not for SystemAlloc (because you have to report the error yourself if anything fails). The name `TempAlloc` is an opaque token to me.
+
+[10:53:46.0496] <sfink>
+That's good logic. I ran into this because I was calling some parsing code that didn't take a cx and didn't report anything, so I gave it a `mozilla::Vector` instead of a `js::Vector`, thinking that `mozilla::Vector` was a more direct way of saying `Vector<SystemAllocPolicy>`. Only it's not. (`mozilla::Vector` is `Vector<mozilla::MallocAllocPolicy>`, not `Vector<SystemAllocPolicy>`.)
+
+[10:55:32.0484] <sfink>
+not that I care about the difference (it's which heap stuff gets put in, Gecko's malloc vs JS's js_malloc) since it's a temporary.
+
+[10:57:26.0911] <sfink>
+I haven't been able to settle on your logic because I remembered seeing some code that grabs the cx out of TLS to report an error. And that convinced me that I don't understand anything.
+
+[10:59:00.0802] <sfink>
+It's possible that such code never existed and I misinterpreted whatever it was I was readnig.
+
+[10:59:05.0757] <sfink>
+* It's possible that such code never existed and I misinterpreted whatever it was I was reading.
+
+[11:00:30.0294] <iain>
+I suspect that code probably exists somewhere and it's probably a bad idea
+
+[11:02:09.0206] <kfjvj>
+Does anyone know what MOZ_ASSERT(!cx->zone()->isAtomsZone()); means?
+
+[11:02:23.0924] <kfjvj>
+And, more importantly, how do I get that assertion to pass?
+
+[11:06:00.0790] <sfink>
+kfjvj: do you juggle multiple globals or compartments or anything? Normally, you'd use `JSAutoRealm` to enter the realm of your global object and stay there throughout execution. See the [JS shell's REPL](https://searchfox.org/mozilla-central/rev/5813af297bb0e6581ab49029ba897c3e12a9134c/js/src/shell/js.cpp#12050) for example.
+
+[11:06:23.0612] <iain>
+Zones are the unit of garbage collection. There's a special shared zone that owns atoms (interned strings) and some trampoline code. You are trying to allocate regular objects into the Atom Zone.
+
+[11:06:55.0347] <kfjvj>
+So, do you think it would be fixed if I used JSAutoRealm?
+
+[11:07:35.0815] <sfink>
+the error is that you haven't entered the right Realm. But if you're running a JS function, you can assume you're already in its realm. What's the callstack above that assertion?
+
+[11:07:52.0673] <sfink>
+oh, but if you're not entering a realm at all right now, then yes the `JSAutoRealm` should fix it.
+
+[11:11:20.0484] <sfink>
+(the connection between Realms and the Zones that iain and the assertion are talking about is that Realms are associated with a global object, which is within a compartment, which is within a Zone. So entering a Realm implicitly enters a Zone.)
+
+[11:12:55.0108] <kfjvj>
+I'll try Auto Realm and get back to you
+
+[11:45:25.0355] <kfjvj>
+Turns out I was just running everything in the wrong thread.
+
+[13:02:24.0509] <sfink>
+Hmm... bug 1908253's findings kinda look real to me. It's saying that both `js::jit::SparseBitSet` and `js::jit::VirtualRegister` could allocate stuff with `BackgroundSystemAllocPolicy` and presumably never free anything. Is there a jit person around who can tell me how I'm being stupid?
+
+[13:02:26.0178] <botzilla>
+https://bugzil.la/1908253 — NEW (nobody) — Static LifoAlloc Misuse Analysis
+
+[14:34:41.0297] <iain>
+sfink: Oh, interesting. I just tested this out by setting a breakpoint on ~VirtualRegister in rr. It looks like if you destroy a JitAllocPolicy-backed vector of VirtualRegisters, then we still call their destructors, even though the JitAllocPolicy presumably ignores the subsequent frees.
+
+[14:35:35.0672] <iain>
+So for example in ~BacktrackingAllocator, we will destroy the VirtualRegisters in [vregs](https://searchfox.org/mozilla-central/source/js/src/jit/BacktrackingAllocator.h#677)
+
+[14:36:19.0488] <iain>
+* sfink: Oh, interesting. I just tested this out by setting a breakpoint on ~VirtualRegister in rr. It looks like if you destroy a JitAllocPolicy-backed vector of VirtualRegisters, then we still call their destructors, even though the JitAllocPolicy presumably [ignores the subsequent frees](https://searchfox.org/mozilla-central/source/js/src/jit/JitAllocPolicy.h#122).
+
+[14:36:54.0861] <iain>
+It was surprising to me that we could have such blatant memory leaks without any of our sanitizers noticing
+
+[14:40:08.0485] <iain>
+I bet the SparseBitSet code is in a similar boat.
+
+[16:03:21.0516] <sfink>
+I was guessing that the register allocator must be getting explicitly destroyed by something, but didn't track down what that might be. 
+
+[16:04:36.0617] <iain>
+Yeah, looks like it's just destroyed in the normal boring way because it's [stack allocated](https://searchfox.org/mozilla-central/source/js/src/jit/Ion.cpp#1615), and then it handles cleaning everything else up
+
+
+2025-05-27
+[12:59:16.0292] <davidj361>
+For `node.jsObjectClassName()` from
+```c++
+```
+
+[13:00:57.0485] <davidj361>
+ * For `node.jsObjectClassName()` from
+```cpp
+JS::ubi::Edge& edge;
+auto node = edge.referent;
+```
+I notice that I'm not getting Person.prototype when getting ubi node information from:
+```cpp
+            function Person() {}
+            Person.prototype.greet = function() {
+                let str = "asdf";
+            };
+            const person = new Person()
+```
+
+[13:02:19.0043] <davidj361>
+ * For
+```cpp
+JS::ubi::Edge& edge;
+auto node = edge.referent;
+std::cout << node.jsObjectClassName();
+```
+
+I notice that I'm not getting `Person.prototype` when getting ubi node information from:
+
+```cpp
+            function Person() {}
+            Person.prototype.greet = function() {
+                let str = "asdf";
+            };
+            const person = new Person()
+```
+But I can see other stuff like `Date.prototype`. Is this normal?
+
+[13:02:56.0445] <davidj361>
+ * For
+```cpp
+JS::ubi::Edge& edge;
+auto node = edge.referent;
+std::cout << node.jsObjectClassName();
+```
+
+I notice that I'm not getting `Person.prototype` when getting ubi node information from:
+
+```cpp
+            function Person() {}
+            Person.prototype.greet = function() {
+                let str = "asdf";
+            };
+            const person = new Person()
+```
+
+But I can see other stuff like `Date.prototype`. Is this normal?
+
+[14:03:38.0975] <sfink>
+That's the behavior I would expect. `Date.prototype` is an [internal JSClass](https://searchfox.org/mozilla-central/rev/bd1603a168d35648f2f62f1c89162a15a8180952/js/src/jsdate.cpp#4778). `Person.prototype` is a plain object with no special JSClass (it's the Object JSClass).
+
+[14:05:01.0673] <kfjvj>
+I have a question regarding ubi::Nodes.
+
+What exactly is Node::allocationStack?
+
+Also, under what circumstances will a Node have an allocation stack?
+
+[14:07:43.0698] <sfink>
+I think it might be this?: https://firefox-source-docs.mozilla.org/js/Debugger/Debugger.Memory.html#allocation-site-tracking
+
+
+2025-05-28
+[23:27:40.0160] <mayankleoboy1>
+40%-60% regressions on some subtests of sixspeed **only on m-c**. https://bugzilla.mozilla.org/show_bug.cgi?id=1968849
+
+[04:28:28.0421] <Aapo Alasuutari>
+Random question: is there any nice and easy description of SM's object memory layout somewhere?
+
+[04:29:03.0244] <Aapo Alasuutari>
+(eg. Comparing to JSC's butterfly pointer usage and V8's elements + properties pointers.)
+
+[04:34:54.0638] <evilpie>
+https://searchfox.org/mozilla-central/search?q=smdoc.*%3F%28jsobject%7Cnative%29&path=.h&case=false&regexp=true
+
+[04:37:28.0614] <Aapo Alasuutari>
+Aah, sorry, I was more looking for a blog post if one exists. My C++ Fu is limited, my apologies :(
+
+[04:38:24.0065] <ptomato>
+those "SMDOC" tagged comments in the search results are somewhat akin to blog posts, FWIW
+
+[04:41:10.0580] <Aapo Alasuutari>
+> <@pchimento:igalia.com> those "SMDOC" tagged comments in the search results are somewhat akin to blog posts, FWIW
+
+Ah, oh thank you. I either clicked the wrong link (going to the file generally, not to smdoc line) or just ignored the jump to line.
+
+My apologies for the noise, and thank you <3
+
+[06:31:57.0732] <davidj361>
+> <@sfink:mozilla.org> That's the behavior I would expect. `Date.prototype` is an [internal JSClass](https://searchfox.org/mozilla-central/rev/bd1603a168d35648f2f62f1c89162a15a8180952/js/src/jsdate.cpp#4778). `Person.prototype` is a plain object with no special JSClass (it's the Object JSClass).
+
+Not seeing JSClass in the print out, just JSObject
+
+[07:24:44.0853] <kfjvj>
+So, this would most likely only be usable during a debugging session?
+
+[08:07:50.0831] <sfink>
+You're displaying [`node.jsObjectClassName()`](https://searchfox.org/mozilla-central/rev/85d6bf1b521040c79ed72f3966274a25a2f987c7/js/src/vm/UbiNode.cpp#346-348) which prints out the name field of the `JSClass` underlying a JS object. That's used for behavior defined in the embedding, it's not a JS thing. It'll tell you if something is an Object or Array or Date or Date.prototype or whatever. It won't tell you anything about the prototype of a `MyFunc.prototype` coming from `function MyFunc() {}`. Even `class MyClass { ... }` won't produce anything special.
+
+[08:09:56.0689] <sfink>
+there might be some way to trigger it otherwise? I mean, you can use the Debugger API to enable it in a "regular" script, but you'll probably have to create a separate compartment and global for it and things. I'd probably grep through the tests for an example.
+
+[08:10:19.0769] <sfink>
+(I'll be out for a bit, so can't give more complete answers atm.)
+
+[08:13:53.0749] <Patrick Clochesy>
+Greetings. I have a bit of an odd request, we have a legacy application which is using a Spidermonkey build from ESR52. Yes, from 2017. We are currently using a binary, but would like to re-build this from sources. Is it possible there is documentation somewhere on how to build this?
+
+[08:14:09.0941] <Patrick Clochesy>
+I completely understand the facepalms from reading the above. :)
+
+[08:16:20.0599] <Ms2ger (🇧🇪)>
+Not the oldest spidermonkey in production I'm aware of by a long way
+
+[08:17:09.0622] <Patrick Clochesy>
+It's worked very well for us for those 8+ years :)
+
+[08:17:25.0865] <Patrick Clochesy>
+But the build instructions/steps seem completely missing
+
+[08:38:12.0323] <jandem>
+Patrick Clochesy: [here](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr60/docs/Building%20SpiderMonkey.md) are build instructions for ESR60, shouldn't be too different for ESR52 I think?
+
+[09:20:48.0263] <Patrick Clochesy>
+Appreciate that, thank you. We'll take a look and see if it gets us closer :)
+
+[12:49:10.0456] <sfink>
+Heh, bug 1968290 went in unexpected directions.
+
+[12:49:12.0751] <botzilla>
+https://bugzil.la/1968290 — ASSIGNED (anba) — cdjs has multiple roots constructed 30,000,000+ times over execution.
+
+[12:50:54.0987] <sfink>
+(it was a simple "remove a root or two". anba started removing, and discovered more and more stuff that wasn't doing anything)
+
+[12:59:21.0844] <mgaudet>
+Oh interesting. That does hit more places than I expected 
+
+
+2025-05-29
+[00:45:23.0866] <liam_g>
+I finally got modules working in my embedding. But I'm getting occasional crashes in JS::CompileModule(). I can't see a pattern with it. Is this a known issue? Using mozjs 102a1.
+
+[01:15:47.0631] <ptomato>
+oof, I feel like I ran into that as well at the time, but I have no idea what it was anymore
+
+[01:16:38.0534] <ptomato>
+you could check GJS's pull requests from the port to 102 and see if anything rings a bell: https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/785/commits and https://gitlab.gnome.org/GNOME/gjs/-/merge_requests/765/commits
+
+[01:17:38.0234] <ptomato>
+also you could use 102.9.0 instead of the 102a1 prerelease, and see if the issue fixes itself
+
+[03:55:49.0278] <liam_g>
+Thanks @ptomato, I'll try updating it. Has the build process changed recently, or are there any updated docs for building? Last time I did it it took me a month 😬
+
+[04:02:21.0207] <ptomato>
+102.9 should have the same build steps as 102a1
+
+[06:50:18.0700] <davidj361>
+> <@sfink:mozilla.org> You're displaying [`node.jsObjectClassName()`](https://searchfox.org/mozilla-central/rev/85d6bf1b521040c79ed72f3966274a25a2f987c7/js/src/vm/UbiNode.cpp#346-348) which prints out the name field of the `JSClass` underlying a JS object. That's used for behavior defined in the embedding, it's not a JS thing. It'll tell you if something is an Object or Array or Date or Date.prototype or whatever. It won't tell you anything about the prototype of a `MyFunc.prototype` coming from `function MyFunc() {}`. Even `class MyClass { ... }` won't produce anything special.
+
+Would there be a difference between functions written in Javascript vs binded to the engine in embedding like `JS_DefineFunctions(..)`
+Would both be listed as Function and JSObject: node.JsObjectClassName() and node.typeName()
+
+[07:05:05.0891] <davidj361>
+> <@sfink:mozilla.org> You're displaying [`node.jsObjectClassName()`](https://searchfox.org/mozilla-central/rev/85d6bf1b521040c79ed72f3966274a25a2f987c7/js/src/vm/UbiNode.cpp#346-348) which prints out the name field of the `JSClass` underlying a JS object. That's used for behavior defined in the embedding, it's not a JS thing. It'll tell you if something is an Object or Array or Date or Date.prototype or whatever. It won't tell you anything about the prototype of a `MyFunc.prototype` coming from `function MyFunc() {}`. Even `class MyClass { ... }` won't produce anything special.
+
+ * Would there be a difference between functions written in Javascript vs binded to the engine in embedding like `JS_DefineFunctions(..)`
+Would both be listed as "Function" and "JSObject" from node.JsObjectClassName() and node.typeName()
+
+[07:05:14.0503] <davidj361>
+ * Would there be a difference between functions written in Javascript vs binded to the engine in embedding like `JS_DefineFunctions(..)`
+Would both be listed as "Function" and "JSObject" from `node.JsObjectClassName()` and `node.typeName()`
+
+[09:15:01.0129] <mgaudet>
+The aformentioned lazy pointer stack paper http://www.filpizlo.com/papers/baker-ccpe09-accurate.pdf 
+
+[09:27:07.0683] <mayankleoboy1>
+Whats Int52? 
+
+[09:28:48.0702] <mgaudet>
+Uhh.. not sure? 
+
+[09:28:56.0372] <mgaudet>
+context? 
+
+[09:38:19.0369] <iain>
+Int52 is a V8 optimization to use integer arithmetic for JS numbers up to 2^52, which is the point at which IEEE754 doubles stop being able to represent every integer precisely
+
+[09:39:41.0112] <iain>
+If you can guarantee/guard that your integers don't leave that range, then you can continue to represent them as an int64_t instead of a double, and you will get the same results
+
+[09:41:50.0849] <iain>
+Er, maybe Int52 is the JSC name for the optimization?
+
+[09:42:30.0858] <iain>
+(Lots of hits [here](https://searchfox.org/wubkat/search?q=int52&path=&case=false&regexp=false))
+
+[09:43:56.0662] <iain>
+V8 has a similar optimization, though. I think it's this [SafeInteger](https://source.chromium.org/search?q=safeinteger%20path:v8%2Fsrc&ss=chromium) stuff
+
+[10:32:00.0926] <beth>
+Congrats on shipping explicit resource management. I've had this earmarked to use in tests for ages!
+
+[11:09:11.0723] <debadree25>
+its still behind a flag i think
+
+[11:18:22.0301] <debadree25>
+oh https://bugzilla.mozilla.org/show_bug.cgi?id=1967744 soon wont be!
+
+[11:24:14.0589] <beth>
+Intent-to-ship email went out today :)
+
+[11:24:22.0378] <beth>
+debadree25: thanks for all your hard work!
+
+[11:25:19.0368] <debadree25>
+oh yay! 🚀
+
+[15:59:51.0484] <iain>
+Not sure I remember the last time I found [a line of code](https://searchfox.org/mozilla-central/source/js/src/vm/Time.h#19) where the searchfox blame points directly at "Free the lizard" with no intervening changes at all
+
+
+2025-05-30
+[02:27:31.0556] <nbp>
+Now it all comes back to reformatting the code base. One might wonder if with this code-formatting global order whether any lizard is ever free anymore…
+
+[02:28:10.0627] <nbp>
+* Now it all comes back to reformatting the code base. One might wonder, given this code-formatting global order, whether any lizard is ever free anymore…
+

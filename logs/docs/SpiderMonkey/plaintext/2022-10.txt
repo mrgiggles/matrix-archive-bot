@@ -1,0 +1,3645 @@
+2022-10-01
+[04:57:19.0643] <arai>
+is it about doing remote-debugging for application (C++ code), or JavaScript code?
+
+[07:07:25.0535] <Mohamed Atef>
+arai: Can you suggest another bug? Thanks.
+
+[07:10:36.0781] <arai>
+how about the bug about reducing the paddings in structs?
+
+[07:14:13.0760] <Mohamed Atef>
+Seems good.
+BTW, should I examine the etire fronten classes? 
+
+[07:15:22.0526] <arai>
+the bug is about entire SpiderMonkey code. so, I'd suggest filing a bug for each part or file and work on it there
+
+[07:16:50.0454] <Mohamed Atef>
+What about the cach bug? 
+
+[07:17:00.0525] <arai>
+when filing a bug, put that bug number in "Blocks" field, to set dependency
+
+[07:17:05.0411] <Mohamed Atef>
+> <@mohamed_atef:matrix.org> What about the cach bug? 
+
+Is there any work on it? 
+
+[07:19:15.0432] <arai>
+I'm afraid there's not much available tasks right now in cache bugs, due to dependencies
+
+[07:20:23.0907] <arai>
+so, for now, I'd suggest looking into different part of the code
+
+[07:22:15.0468] <Mohamed Atef>
+> <@arai:mozilla.org> how about the bug about reducing the paddings in structs?
+
+I will look into other parts, but is there any work other than this bug I am not very interested in it 😅
+
+[07:35:48.0972] <arai>
+if you have specific interests, one option is to look into the list of open bugs and find bugs that matches your interest
+
+[07:55:14.0602] <pslack>
+> <@arai:mozilla.org> is it about doing remote-debugging for application (C++ code), or JavaScript code?
+
+It's about debugging javascript and using modern tools.  This looks like what I'm after :  DAP protocol .. https://code.visualstudio.com/api/extension-guides/debugger-extension. 
+
+[07:57:32.0554] <arai>
+most of the JS remote debugging feature is implemented in developer tools code, that's outside of SpiderMonkey code.  so, you'll need to port or reimplement that part
+
+[07:59:17.0827] <arai>
+SpiderMonkey provides Debugger API for basic debugging functionality (e.g. breakpoints, evaluation), but that doesn't include remote protocols 
+
+[08:02:43.0475] <arai>
+* most of the JS remote debugging feature is implemented in developer tools and remote code, that's outside of SpiderMonkey code. so, you'll need to port or reimplement that part
+
+[08:04:03.0397] <arai>
+people in #devtools:mozilla.org or #webdriver:mozilla.org would know better
+
+
+2022-10-03
+[06:38:41.0708] <davidj361>
+esr 68 doesn't have a types for JS exceptions does it? like SyntaxException vs MemoryException?
+
+[06:39:12.0324] <davidj361>
+looking to throw C++ exceptions depending on what kind of JS Exception happened
+
+[08:51:32.0462] <mgaudet>
+davidj361: I think if I were you what I'd be trying is [JS_ErrorFromException](https://searchfox.org/mozilla-esr68/source/js/src/jsapi.h#2881-2889), and taking advantage of the [exnType](https://searchfox.org/mozilla-esr68/source/js/public/ErrorReport.h#223) field of the error report, which reports the [exception type](https://searchfox.org/mozilla-esr68/source/js/public/ErrorReport.h#45)
+
+[08:52:31.0193] <mgaudet>
+Of course, in the general case, an exception can be an arbitrary JS object so you can't always deploy this. But this could be nevertheless useful.
+
+[08:52:56.0919] <davidj361>
+Thank you mgaudet, will take a look
+
+[14:53:58.0414] <mgaudet>
+confession: Investigating a mysterious unhandled rejection error from Streams code. 
+
+[14:54:01.0594] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-10-04
+[08:41:05.0119] <yulia>
+I have a really stupid question
+
+[08:41:24.0124] <yulia>
+how do I add an rr breakpoint when running ./mach wpt <testname> --debugger=rr
+
+[08:44:11.0871] <yulia>
+or maybe we have a video someone of doing debugging with rr?
+
+[08:44:29.0439] <iain>
+I don't know `./mach wpt` very well, but I know `rr`.
+
+[08:44:59.0204] <yulia>
+ok, maybe ill message you directly
+
+[08:55:31.0268] <mgaudet>
+debugging wpt can be a bit of a pain trying to figure out what process you're in; highly recommend using pernosco to make things easier
+
+[08:55:48.0551] <mgaudet>
+[workflow here](https://www.mgaudet.ca/technical/2021/4/29/my-pernosco-workflow) 
+
+[08:56:35.0216] <yulia>
+thank you, this is very helpful
+
+[08:57:23.0315] <mgaudet>
+yulia: no problem. I won't be able to provide tonnes of guidance on how-to-pernosco today, but we can meet tomorrow if you would like some walk through
+
+[08:57:25.0869] <yulia>
+is latest-trace a safe one to pick?
+
+[08:58:01.0493] <mgaudet>
+yulia: yeah,if it's your last recording (I usually use the explicit trace dir, but have been playing with latest trace more lately_ 
+
+[08:58:22.0594] <yulia>
+and how important is `rr record --disable-avx-512 "$@"`?
+
+[08:58:36.0376] <mgaudet>
+yulia: Quite
+
+[08:58:45.0513] <yulia>
+ok
+
+[09:08:06.0055] <yulia>
+hm, i will ask you about this tomorrow!
+
+[10:50:54.0460] <nbp>
+does anybody even use avx 512? I thought even intel deprecated it.
+
+[10:58:14.0914] <iain>
+I believe that the original implementation was so power-hungry that it was powered down when not in use and throttled frequency when turned on, but I have a vague impression that it's better in newer chips.
+
+[10:58:35.0593] <iain>
+https://en.wikipedia.org/wiki/AVX-512#Performance
+
+[10:59:42.0439] <mgaudet>
+zen3 fixes a lot of the throttling issues: https://www.mersenneforum.org/showthread.php?p=614191 
+
+[10:59:58.0002] <sdetar>
+nbp:  Yury might be able to provide some insight on AVX-512
+
+[11:00:46.0563] <mgaudet>
+ * zen4 fixes a lot of the throttling issues: https://www.mersenneforum.org/showthread.php?p=614191 
+
+[11:01:39.0944] <yury>
+Yep. Much much use of avx-512 on consumers' computers.
+
+[11:01:53.0330] <nbp>
+ok, that might have been Alder lake references that I had heard about.
+
+[11:10:03.0322] <yury>
+ * Yep. Not much use of avx-512 on consumers' computers.
+
+
+2022-10-05
+[18:09:01.0523] <Redfire>
+AVX-512 definitely hasn't been deprecated.
+Intel: Ice Lake onwards fixed throttling and it is quite a bit more power efficient
+AMD: Just added with Zen 4 but little throttling and better efficiency
+
+[05:54:32.0218] <nbp>
+jandem: Does Baseline / Baseline-interpreter supports with statements? (see [Bug 793345](https://bugzil.la/793345) & [Bug 1647276](https://bugzil.la/1647276))
+
+[05:54:34.0357] <botzilla>
+https://bugzil.la/793345 — REOPENED (nobody) — Code executed with Debugger.executeInGlobalWithBindings (Scratchpad or Webconsole) runs 10x - 80x slower than the same code in a script tag
+
+[05:54:35.0202] <botzilla>
+https://bugzil.la/1647276 — NEW (nobody) — Performance issue when using JavaScript within the Console
+
+[08:15:44.0489] <tcampbell>
+The with statements are supported in Baseline, but are still env chain lookups that are pretty slow. The executeInGlobalWithBindings forces global lookups (including "undefined") to be env chain lookups in the same way.
+
+[08:17:34.0221] <tcampbell>
+One theoretical thing we could do is make a concrete environment for those debugger bindings that the parser can see so that it can differentiate between debugger binding and global binding.
+
+[08:20:06.0913] <tcampbell>
+The debugger evaluation stuff is always a bit tricky since it never technically follows ecmascript so we are off well defined paths once we start injecting scopes. With IonBuilder removed and a bunch of debugger simplification work over the years, it is probably more attainable to try and address this finally 
+
+[08:28:40.0029] <nbp>
+Maybe there is something which can be done in the parser.
+IIRC in the past the parser was aware of the scope chain, and these problem might have appeared when switching to stencil then.
+
+[08:39:36.0570] <@allstarschh>
+sfink, sdetar : just sent a mail about I cannot join the gc meeting later
+
+[08:51:44.0844] <sfink>
+yeah, looks like we're skipping the meeting today
+
+[11:56:28.0881] <kfjvj>
+I'm looking for some more information about how to use functions/classes defined in js/Promise.h and js/Result.h.
+
+Does anyone know of documentation and/or examples of them being used?
+
+[12:21:37.0486] <kfjvj>
+I'd also like to know if anyone knows the best way to store a reference to a class's prorotype object.  Currently, I have something like this:
+
+```
+static bool DefineClass(JSContext* ctx, JS::HandleObject global) {
+        // Create the class prototype
+        JS::RootedObject protoObj(ctx, JS_InitClass(
+                                           // Context, handle, parent_proto
+                                           ctx, global, nullptr,
+                                           // Class
+                                           &SelfType::ClassDef,
+                                           // Constructor
+                                           ConstructorJsCallback, 0,
+                                           // Class properties / methods
+                                           SelfType::ClassProperties, SelfType::ClassMethods,
+                                           // Static properties / methods
+                                           SelfType::StaticProperties, SelfType::StaticMethods));
+        if (!protoObj) {
+            return false;
+        }
+
+        return true;
+    }
+```
+
+[12:21:57.0434] <kfjvj>
+I'm not sure how I can maintain some reference to protoObj for later use.
+
+[12:50:54.0139] <tcampbell>
+> <@nbp:mozilla.org> Maybe there is something which can be done in the parser.
+> IIRC in the past the parser was aware of the scope chain, and these problem might have appeared when switching to stencil then.
+
+It is unfortunately an old issue. In the parser it shows up as a non-syntactic-global scope and we don't actually have the debugger bindings visible to the parser.
+
+[12:57:14.0297] <tcampbell>
+ * It is unfortunately an old issue. In the parser it shows up as a non-syntactic-global scope and we don't actually have the debugger bindings visible to the parser. If I understand correctly, this was related to "non-syntactic" scripts and our ability to transform to/from a non-syntactic global by cloning the script. Now that we have removed the ability to clone existing script, a bunch of the concerns around incompatible environment chain lengths are gone.
+
+[13:02:22.0765] <tcampbell>
+kfjvj: Storing the reference for prototype is similar to storing references to any other type of object within your embedding. In short, you always need to trace/root to your values. The [Rooting Guide](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md) has some good notes. For the specific case of a handful of user-defined classes, I'd start with a `PersistentRooted` and then optimize it later if I had too many
+
+[13:02:47.0480] <ptomato>
+> <@kfjvj:mozilla.org> I'm not sure how I can maintain some reference to protoObj for later use.
+
+in addition to what tcampbell said, I believe JS_InitClass defines a global property with the name of the class, so you can find it that way. you can also give your global object a reserved slot and store the prototype there
+
+[13:03:51.0308] <kfjvj>
+> <@tcampbell:mozilla.org> kfjvj: Storing the reference for prototype is similar to storing references to any other type of object within your embedding. In short, you always need to trace/root to your values. The [Rooting Guide](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md) has some good notes. For the specific case of a handful of user-defined classes, I'd start with a `PersistentRooted` and then optimize it later if I had too many
+
+I saw PersistentRooted mentioned in the rooting guide, but it seemed to advise against using it.
+
+[13:04:32.0586] <tcampbell>
+PersistentRooted is slow if you have lots of them and create and destroy them often.
+
+[13:05:01.0482] <kfjvj>
+> <@tcampbell:mozilla.org> PersistentRooted is slow if you have lots of them and create and destroy them often.
+
+They'll be static variables.  One for each class I define.
+
+[13:05:35.0077] <tcampbell>
+If you had many classes, you could also use a PersistentRooted to a GCVector (or hashtable) to your data.
+
+[13:07:24.0260] <tcampbell>
+You always need at least _some_ roots. Either a handful of PersistentRooted, stashing things on the Global as ptomato describes, or using CustomAutoRooters like gecko does (though these are probably more problematic than a persistentrooted).
+
+[13:08:59.0822] <tcampbell>
+The case we discourage PersistentRooted is if you had some custom C++ type that you made many of and then shoved a PersistentRooted in for simplicity. That would prevent the GC from traversing the graph incrementally and the full list of roots would need to be frequently revisited.
+
+[13:09:43.0768] <kfjvj>
+Essentially, what I have in mind is that there is a static variable for each class that I define.  When I call that class's static DefineClass function, it should set the PersistentRooted prototype static variable to the prototype it created.
+
+[13:10:37.0969] <kfjvj>
+The reason I want to do this is that I want to be able to invoke a particular class's constructor from C++.
+
+[13:11:54.0928] <tcampbell>
+that sounds reasonable at a glance
+
+[13:12:28.0274] <kfjvj>
+However, I'm worried about the lifetime of these static variables, and how to deal with multiple JSContexts and threads
+
+[13:14:36.0199] <tcampbell>
+These objects are only valid for a single thread
+
+[13:15:20.0598] <kfjvj>
+I forget.  Is there at most one JsContext per thread?
+
+[13:15:39.0922] <tcampbell>
+Generally JSContext is 1:1 with a thread.
+
+[13:16:02.0882] <tcampbell>
+(There are a few odd uses of JSContext on other threads _inside_ spidermonkey, but we are phasing them out)
+
+[13:16:52.0005] <tcampbell>
+In the browser case when you use Web Workers, we have a differing context/thread for each worker, and then they communicate they use `postMessage` to serialize/deserialize data into a byte-array that crosses threads.
+
+[13:17:12.0475] <kfjvj>
+Also, this is kind of related: What happens if I attempt to call DefineClass twice for the same class? 
+
+[13:17:46.0657] <kfjvj>
+That is, JS_InitClass
+
+[13:21:31.0675] <tcampbell>
+if you did it twice on the same Global, it would probably just make a new one an replace the property on the Global of the same name.
+
+[13:21:55.0957] <kfjvj>
+OK, so it doesn't fail or return null if there's already a class defined
+
+[13:22:09.0584] <tcampbell>
+Which would probably just confuse you, since things like `instanceof` would get confused.
+
+[13:23:17.0169] <tcampbell>
+JS_InitClass can be thought of as creating a new constructor/prototype object, and then setting a property on the Global to point to the contstructor. There isn't anything magic about a C++ defined class.
+
+[13:23:46.0871] <tcampbell>
+In the same way with JS you could write `function makeFooClass() { return class Foo { }; }`
+
+[13:23:53.0340] <kfjvj>
+Yeah.  I'm working on adding JS wrappers to a very large C++ API, and trying to map the C++ structs we have.  So I have to keep track of this mapping between C++ types and their JS equivalents.
+
+[13:24:33.0771] <tcampbell>
+You could assert in your helper function that the Global does not have a property with the same name already.
+
+[13:25:00.0225] <tcampbell>
+ * You could assert in your helper function that the Global does not have a property with the same name already. Probably worthwhile in your case. Especially if names are the same as some standard JS class and you want to detect taht.
+
+[13:25:05.0070] <tcampbell>
+ * You could assert in your helper function that the Global does not have a property with the same name already. Probably worthwhile in your case. Especially if names are the same as some standard JS class and you want to detect that.
+
+[13:30:10.0215] <kfjvj>
+That's a good point.
+
+[13:30:24.0053] <kfjvj>
+Anyway, thanks very much for you help.  I will attempt to use this information.
+
+[15:22:22.0008] <sfink>
+kfjvj: re: PersistentRooted. It's true that we discourage its use because of the potential for memory leaks. But as tcampbell said, that's really only a problem if you're putting a PersistentRooted into a place that (1) has a non-static lifetime, and (2) can be pointed back to from anything in JS. It's because if it points to anything, then the global will almost certainly be reachable, and then if the struct or object holding the PersistentRooted is reachable in any way from the global, then you have yourself an uncollectable cycle containing everything reachable from the global. Your case sounds like a great use of PersistentRooted.
+
+[15:23:06.0620] <sfink>
+as for performance, it's a linked list traversal during a GC, and a doubly-linked list insertion/deletion when it's created/destroyed. Not the best for the cache, but pretty minor in the larger scheme.
+
+[15:23:14.0262] <tcampbell>
+ah right, accidental cycles. that is a stronger reason
+
+[15:25:50.0816] <sfink>
+ * kfjvj: re: PersistentRooted. It's true that we discourage its use because of the potential for memory leaks. But as tcampbell said, that's really only a problem if you're putting a PersistentRooted into a place that (1) has a non-static lifetime, and (2) can be pointed back to from anything in JS. It's because if it points to anything, then the global will almost certainly be reachable, and then if the struct or object holding the PersistentRooted is reachable in any way from the global, then you have yourself an uncollectable cycle entraining everything reachable from the global. Your case sounds like a great use of PersistentRooted.
+
+
+2022-10-06
+[06:51:57.0627] <davidj361>
+What is a JSErrorNote? Why is this function declared empty? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/repl.cpp#L110-L111
+
+[07:00:15.0399] <davidj361>
+ * What is a `JSErrorNotes::Note`? Why is this function declared empty? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/repl.cpp#L110-L111
+
+[07:25:46.0133] <arai>
+davidj361: `JSErrorNotes` is a struct to hold additional information for error. for example, if a error is syntax error about missing closing brace, it can have note that tells where the brace is opened
+
+[07:27:34.0599] <arai>
+I think the function is empty simply because the error note is not used in the example
+
+[07:28:15.0940] <arai>
+you can do the same thing as the `JSErrorReport` variant of the function to print the note
+
+[10:57:42.0467] <kfjvj>
+Is it at all possible to somehow provide a lambda to functions that expect a JSNative?  If not, is there some way of passing additional state at all?
+
+[11:03:01.0979] <kfjvj>
+I'm creating a large number of functions with almost identical form, and it would be great to eliminate some redundancy.  For example, I have a lot of C++ structs that need to be wrapped in JS objects, with properties corresponding to each of their members.  Each of these needs a get/set function.  It's a lot of extra code to provide a unique JSNative function for each one.  Templates can provide a partial solution, but it's incomplete.
+
+[13:47:52.0493] <kfjvj>
+Regarding ProtoKeys.  I know I can use them to look up standard class prototypes.  Does anyone know how I go about constructing an object when I have the prototype?
+
+[13:49:45.0110] <kfjvj>
+I 
+
+[13:50:27.0213] <kfjvj>
+ * I see that there's a function called JS_NewObjectWithGivenProto, but this takes a JSClass* as well.  I'm not sure how to get the correct JSClass* for the prototype I just looked up.
+
+[13:55:30.0945] <iain>
+kfjvj: The class pointer is optional. If you pass a null class pointer, [it'll use a default class](https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#1819-1822).
+
+[13:56:21.0388] <kfjvj>
+> <@iain:mozilla.org> kfjvj: The class pointer is optional. If you pass a null class pointer, [it'll use a default class](https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#1819-1822).
+
+How will that affect the object that's created.  I'm trying to create a Uint8Array.  Will it be created from the Uint8Array prototype but not have a class?
+
+[13:59:30.0241] <kfjvj>
+I'm not completely familiar with JavaScript, so I'm a little lost on the distinction between "class" and "prototype" in this context.
+
+[14:00:27.0686] <iain>
+Class is an implementation detail, not a JS spec thing.
+
+[14:01:04.0271] <iain>
+Is there a reason you're not creating your Uint8Array using [JS_NewUint8Array](https://searchfox.org/mozilla-central/source/js/public/experimental/TypedData.h#64-86)?
+
+[14:01:27.0273] <kfjvj>
+I'm using version 68.  Maybe it's not in there
+
+[14:01:47.0542] <kfjvj>
+oh, I didn't realize it was in experimental
+
+[14:02:44.0679] <iain>
+https://searchfox.org/mozilla-esr68/source/js/src/jsfriendapi.h#1501
+
+[14:03:53.0780] <kfjvj>
+OK, I see.  I found it.  Thanks.
+
+[14:09:48.0725] <iain>
+For future reference: objects in JS can have a prototype object that holds various properties. For example, Array.prototype (the prototype object shared by all arrays) is where methods like push/map/concat live. TypedArray proto properties can be seen [here](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray#instance_properties)
+
+[14:12:51.0047] <iain>
+Class is an internal implementation detail that is used to add additional behaviour to objects. This is mostly done through tables of function pointers (similar to a vtable in C++, if you know how that works). For example, the class for ArrayObject [has an addProperty hook](https://searchfox.org/mozilla-central/source/js/src/builtin/Array.cpp#4908-4934) that is used to update the `length` property when a new integer-indexed property is added
+
+[14:14:03.0846] <iain>
+(As in `var arr = []; arr[3] = 0; assert(arr.length === 4);`)
+
+
+2022-10-07
+[06:42:00.0623] <pslack>
+Hello folks, I am getting an error cloning mercurial, I am following instructions from this site https://wiki.mozilla.org/JavaScript:New_to_SpiderMonkey. .. the clone dies at the end :  hg clone https://hg.mozilla.org/mozilla-central spidermonkey
+applying clone bundle from https://hg.cdn.mozilla.net/mozilla-central/517d690052a2c3b4011b937aa9d0220e52f754e6.zstd-max.hg
+adding changesets
+adding manifests                                                                                                                                                                                       
+adding file changes                                                                                                                                                                                    
+transaction abort!                                                                                                                                                                                     
+rollback completed
+abort: stream ended unexpectedly  (got 16010 bytes, expected 32768)
+
+[07:22:11.0448] <tcampbell>
+pslack: I'd suggest asking the #introduction channel. That is a general issue and someone may have better workarounds there. I have seen that in the past with slow network/disk but I'm not sure what the normal fix is..
+
+[07:30:31.0808] <pslack>
+> <@tcampbell:mozilla.org> pslack: I'd suggest asking the #introduction channel. That is a general issue and someone may have better workarounds there. I have seen that in the past with slow network/disk but I'm not sure what the normal fix is..
+
+Hi , thanks for your response, my connection is 1.2 Gbs up and down .. I tried verbose it gave a little more info: .. (sent 2 HTTP requests and 450 bytes; received 5269 bytes in responses)
+abort: stream ended unexpectedly  (got 15850 bytes, expected 32768) .. I'll post to the other channel.
+
+[07:32:48.0480] <tcampbell>
+Ah, I think that error comes up for a few odd reasons. The other channel hopefully has seen it recently and has ideas
+
+[08:39:33.0516] <puucee>
+Hello. I was redirected here from Mozilla general.
+
+[08:40:08.0843] <puucee>
+I'm trying to find Array.indexOf implementation in Firefox from mozilla source code. Is this the right function? https://hg.mozilla.org/mozilla-central/file/tip/js/src/builtin/Array.cpp#l4197
+
+[08:41:46.0965] <Ms2ger 💉💉💉>
+Yes
+
+[08:42:07.0858] <Ms2ger 💉💉💉>
+That was easy, wan't it :)
+
+[08:43:01.0191] <puucee>
+apparently it was, the codebase was just pretty big and i was feeling lost :P. Thanks 
+
+[08:47:01.0306] <puucee>
+There was debate in our workplace today whether it makes any difference to just iterate two arrays in nested loops or using Array.indexOf (apparently the reason was  optimization - things like does it leverage processor string commands or sse) and even though it doesn't really matter for everyday use it's interesting question
+
+[08:51:49.0654] <puucee>
+ * There was debate in our workplace today whether it makes any difference to just iterate two arrays in nested loops or using Array.indexOf to find the first occurence of start of subarray (apparently the reason was  optimization - things like does it leverage processor string commands or sse) and even though it doesn't really matter for everyday use it's interesting question
+
+[08:52:19.0890] <puucee>
+ * There was debate in our workplace today whether it makes any difference to just iterate two arrays in nested loops or using Array.indexOf to find the first occurence of start of search sequence "subarray" (apparently the reason was  optimization - things like does it leverage processor string commands or sse) and even though it doesn't really matter for everyday use it's interesting question
+
+[08:55:20.0930] <tcampbell>
+In general a builtin will be faster. Often for the reason that Clang on average optimizes C++ between than a web browser optimizes JS (since we optimize JS on client, we can't spend too much time in the JITs).
+
+[08:55:58.0502] <tcampbell>
+Whether things like SSE are used varies across different builtins, browsers, and time (these types of optimizations may get added or removed).
+
+[11:29:05.0599] <kfjvj>
+Is there an easy way to pass a RootedValue as a HandleObject?
+
+I'd like to avoid declaring an extra variable if possible:
+
+```
+JS::RootedValue testVecVal; // This stores a Uint8_Array
+    JS::RootedObject testVecObj(testVecVal.toObjectOrNull());
+    JS::DetachArrayBuffer(ctx, testVecObj);
+
+```
+
+[11:30:49.0819] <iain>
+kfjvj: No, you have to re-root.
+
+[11:32:42.0058] <kfjvj>
+( I realize I missed the context parameter in the testVecObj constructor)
+
+[11:33:41.0196] <iain>
+Under the covers a Handle<Foo> is a pointer to a Rooted<Foo>, which is just a Foo stored in a location the GC knows about. So HandleObject is a pointer to a JSObject*, and RootedValue is a Value, and you can't point a JSObject** at a Value.
+
+[11:34:47.0242] <kfjvj>
+Got it, I guess I'm stuck declaring a billion variables.
+
+[11:35:58.0375] <kfjvj>
+Not a huge deal, though.
+
+[11:40:14.0295] <ptomato>
+sometimes spidermonkey APIs have overloads so they can accept both HandleObject and HandleValue
+
+[11:42:54.0169] <kfjvj>
+> <@pchimento:igalia.com> sometimes spidermonkey APIs have overloads so they can accept both HandleObject and HandleValue
+
+Looks like buffer detaching isn't one of those.  It makes sense, since it's dealing with memory management.
+
+[12:26:14.0760] <sfink>
+kfjvj:  out of curiosity, why would you be detaching a large number of Uint8Arrays?
+
+[14:57:40.0856] <kfjvj>
+> <@sfink:mozilla.org> kfjvj:  out of curiosity, why would you be detaching a large number of Uint8Arrays?
+
+I'm not detatching a large number of Uint8Arrays.  I'm just exaggerating to complain about the fact that I have to declare an extra variable instead of using an expression.
+
+[14:58:43.0744] <sfink>
+the bits, they are different
+
+[14:58:58.0852] <sfink>
+(between `JSObject*` and `JS::Value`)
+
+
+2022-10-10
+[21:10:30.0525] <liam_g>
+I'm trying to understand the `ObjectOps` section of `JSClass` a bit better. I understand the basic principle, but I'm not sure exactly what distinguishes all of the different functions. Specifically, I'm confused about the difference between `LookupPropertyOp`, `GetPropertyOp`, `GetOwnPropertyOp`. Also, I'm confused about `DefinePropertyOp` vs. `SetPropertyOp`. Is this documented somewhere, or can someone give me an explanation about the differences here?
+
+[00:25:45.0451] <jandem|pto>
+liam_g: you shouldn't be using `ObjectOps`, they're mostly used for internal non-native objects
+
+[01:01:24.0431] <jandem>
+if you want to override those operations, consider using a proxy instead
+
+[06:28:07.0774] <liam_g>
+> <@jandem:mozilla.org> if you want to override those operations, consider using a proxy instead
+
+Oh OK. I'm using a proxy already. I was thinking of switching over to avoid some of the virtual function overhead. But it sounds like I should just stick with what I've got and keep things simple.
+
+[11:42:27.0628] <chunmin>
+Hey, does anyone happen to know how to clone a `OwningArrayBufferViewOrArrayBuffer`? I am implementing a Web API that needs to copy a `OwningArrayBufferViewOrArrayBuffer` from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly. TBH, I don't really know what I am doing 😅:
+```cpp
+
+/* The below are helpers for CloneBuffer */
+
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+/* This is the core part to clone a OwningArrayBufferViewOrArrayBuffer */
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```   
+
+[11:43:21.0324] <chunmin>
+ * Hey, does anyone happen to know how to clone a `OwningArrayBufferViewOrArrayBuffer`, or what is the best practice? I am implementing a Web API that needs to copy a `OwningArrayBufferViewOrArrayBuffer` from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly. TBH, I don't really know what I am doing 😅:
+
+```cpp
+
+/* The below are helpers for CloneBuffer */
+
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+/* This is the core part to clone a OwningArrayBufferViewOrArrayBuffer */
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+[11:44:49.0388] <chunmin>
+ * Hey, does anyone happen to know how to clone a `OwningArrayBufferViewOrArrayBuffer`, or what is the best practice? I am implementing a Web API that needs to copy a `OwningArrayBufferViewOrArrayBuffer` from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (e.g. how do the JSObject and its friends work?). TBH, I don't really know what I am doing 😅:
+
+```cpp
+
+/* The below are helpers for CloneBuffer */
+
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+/* This is the core part to clone a OwningArrayBufferViewOrArrayBuffer */
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+[11:53:20.0657] <chunmin>
+* Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+/* The below are helpers for CloneBuffer */template <class T>static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(    const T& aBuffer) {  // Get buffer's data and length before using it.  aBuffer.ComputeState();  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));  byteLength *= aBuffer.Length();  if (NS_WARN_IF(!byteLength.isValid())) {    return Err(NS_ERROR_INVALID_ARG);  }  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),                   byteLength.value());}static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {  if (aBuffer.IsArrayBufferView()) {    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());  }  MOZ_ASSERT(aBuffer.IsArrayBuffer());  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());}/* This is the core part to clone a OwningArrayBufferViewOrArrayBuffer */static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(    const GlobalObject& aGlobal,    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {  auto r = GetArrayBufferData(aBuffer);  if (r.isErr()) {    return Err(r.unwrapErr());  }  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));  if (!length.isValid()) {    return Err(NS_ERROR_UNEXPECTED);  }  JSObject* obj =      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());  if (NS_WARN_IF(!obj)) {    return Err(NS_ERROR_OUT_OF_MEMORY);  }  JS::Rooted<JS::Value> value(aGlobal.Context());  value.setObject(*obj);  OwningArrayBufferViewOrArrayBuffer buffer;  if (!buffer.Init(aGlobal.Context(), value)) {    return Err(NS_ERROR_UNEXPECTED);  }  return buffer;}
+
+[12:00:21.0767] <chunmin>
+ * Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+```cpp
+```
+
+[12:00:30.0317] <chunmin>
+ * Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+
+```cpp
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+[12:01:41.0690] <chunmin>
+ * Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+
+```cpp
+/* The following are helpers for CloneBuffer */
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+/* The core part to clone a  OwningArrayBufferViewOrArrayBuffer */
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+[16:03:24.0395] <chunmin>
+ * Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled and run. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+
+```cpp
+/* The following are helpers for CloneBuffer */
+template <class T>
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const T& aBuffer) {
+  // Get buffer's data and length before using it.
+  aBuffer.ComputeState();
+
+  CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+  byteLength *= aBuffer.Length();
+  if (NS_WARN_IF(!byteLength.isValid())) {
+    return Err(NS_ERROR_INVALID_ARG);
+  }
+
+  return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+                   byteLength.value());
+}
+
+static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+    const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBufferView()) {
+    return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBuffer());
+  return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+}
+
+/* The core part to clone a  OwningArrayBufferViewOrArrayBuffer */
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    const GlobalObject& aGlobal,
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  auto r = GetArrayBufferData(aBuffer);
+  if (r.isErr()) {
+    return Err(r.unwrapErr());
+  }
+
+  Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+  RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+  CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+  if (!length.isValid()) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JSObject* obj =
+      ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+  if (NS_WARN_IF(!obj)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aGlobal.Context());
+  value.setObject(*obj);
+
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (!buffer.Init(aGlobal.Context(), value)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+
+2022-10-11
+[00:43:19.0833] <big-r>
+Hi, is there a way to get the used spidermonkey version? Something like MAJOR.MINOR.PATCH version?
+
+[00:52:21.0552] <jandem>
+big-r: see `JS_GetImplementationVersion`, it returns a string
+
+[01:08:15.0678] <big-r>
+> <@jandem:mozilla.org> big-r: see `JS_GetImplementationVersion`, it returns a string
+
+thank you 🙏
+
+[04:44:43.0796] <smaug>
+yulia | sick: (too bad that you're sick). Ah, so the CSP issue was resolved in a reasonable way.
+
+[05:08:05.0386] <evilpie>
+> <@smaug:mozilla.org> yulia | sick: (too bad that you're sick). Ah, so the CSP issue was resolved in a reasonable way.
+
+So who is going to take on changing the spec and tests?
+
+[05:13:04.0794] <smaug>
+Hmm, actually, I'm not sure what https://github.com/w3c/webappsec-csp/issues/336#issuecomment-1273072329 is trying to say.
+
+[05:15:46.0434] <evilpie>
+Yeah, I am also a bit confused. The first sentence seems to contradict the rest and they just closed the issue.
+
+[06:21:10.0511] <yulia | sick>
+hm. I thought it might be clear
+
+[06:22:04.0857] <yulia | sick>
+@smaug @evilpie or at least, I understood it as follows: this is related to the fetch client settings object, which includes the policy container, and this comes from the window. All child modules are fetched with the same one as the initial module
+
+[06:22:43.0974] <yulia | sick>
+if it isn't clear, lets reopen
+
+[06:23:26.0633] <yulia | sick>
+I was about to start work on our client source object to make it possible to fetch with the window settings object, while having the client work correctly as before. It looks like it will be a non-insignificant amount of work
+
+[06:25:35.0852] <evilpie>
+Frankly I am not convinced we should be blocking es6 modules in workers on this. 
+
+[06:28:26.0487] <yulia | sick>
+Anne's response makes sense in terms of spec expectation, but in terms of what we have -- we *do* have the csp from the worker response in the channel
+
+[06:28:43.0062] <yulia | sick>
+and if i change the test in question to rely on the worker csp, it passes
+
+[06:29:49.0302] <yulia | sick>
+(that is, have that test apply the same requirements to static imports as it does to dynamic imports)
+
+[06:57:52.0594] <yulia | sick>
+honestly I don't understand the justification for it, but i agree that this is what the spec currently says
+
+[07:08:20.0069] <mgaudet>
+> <@chunmin:mozilla.org> Hey, does anyone happen to know how to clone a OwningArrayBufferViewOrArrayBuffer, or what is the best practice? I am implementing a Web API that needs to copy a OwningArrayBufferViewOrArrayBuffer from one to another. I have some code that can be compiled and run. But I am not sure if it really works. I am not sure if the ownership of an allocated memory is set correctly (I have no idea how JSObject and its friends work). TBH, I don't really know what I am doing 😅:
+> 
+> ```cpp
+> /* The following are helpers for CloneBuffer */
+> template <class T>
+> static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+>     const T& aBuffer) {
+>   // Get buffer's data and length before using it.
+>   aBuffer.ComputeState();
+> 
+>   CheckedInt<size_t> byteLength(sizeof(typename T::element_type));
+>   byteLength *= aBuffer.Length();
+>   if (NS_WARN_IF(!byteLength.isValid())) {
+>     return Err(NS_ERROR_INVALID_ARG);
+>   }
+> 
+>   return MakeTuple(RangedPtr(aBuffer.Data(), byteLength.value()),
+>                    byteLength.value());
+> }
+> 
+> static Result<Tuple<RangedPtr<uint8_t>, size_t>, nsresult> GetArrayBufferData(
+>     const dom::OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+>   if (aBuffer.IsArrayBufferView()) {
+>     return GetArrayBufferData(aBuffer.GetAsArrayBufferView());
+>   }
+> 
+>   MOZ_ASSERT(aBuffer.IsArrayBuffer());
+>   return GetArrayBufferData(aBuffer.GetAsArrayBuffer());
+> }
+> 
+> /* The core part to clone a  OwningArrayBufferViewOrArrayBuffer */
+> static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+>     const GlobalObject& aGlobal,
+>     const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+>   auto r = GetArrayBufferData(aBuffer);
+>   if (r.isErr()) {
+>     return Err(r.unwrapErr());
+>   }
+> 
+>   Tuple<RangedPtr<uint8_t>, size_t> bufInfo = r.unwrap();
+>   RangedPtr<uint8_t> ptr(Get<0>(bufInfo));
+>   CheckedUint32 length(Get<1>(bufInfo) / sizeof(uint8_t));
+>   if (!length.isValid()) {
+>     return Err(NS_ERROR_UNEXPECTED);
+>   }
+> 
+>   JSObject* obj =
+>       ArrayBuffer::Create(aGlobal.Context(), length.value(), ptr.get());
+>   if (NS_WARN_IF(!obj)) {
+>     return Err(NS_ERROR_OUT_OF_MEMORY);
+>   }
+> 
+>   JS::Rooted<JS::Value> value(aGlobal.Context());
+>   value.setObject(*obj);
+> 
+>   OwningArrayBufferViewOrArrayBuffer buffer;
+>   if (!buffer.Init(aGlobal.Context(), value)) {
+>     return Err(NS_ERROR_UNEXPECTED);
+>   }
+> 
+>   return buffer;
+> }
+> ```
+
+When you say clone... I guess I'm curious what the spec text you're trying to implement looks like
+
+[07:16:24.0585] <padenot>
+mgaudet: I assume something in Web Codecs: https://w3c.github.io/webcodecs/, probably something on the `VideoFrame`, `clone()` maybe? chunmin is west coast so will wake up soon
+
+[07:17:34.0023] <mgaudet>
+Ok. I don't want to leave them hanging, but also want to make sure what gets built it fit-for-purpose. Depending on on the text, we may want to build the support into the platform rather than have a one-of implementation
+
+[09:33:18.0101] <nbp>
+Are all test262 JavaScript related?
+
+[09:39:54.0222] <iain>
+nbp: The 262 is from ECMA-262, which is the JS spec, so it would be weird if there was something non-JS-related in there
+
+[09:53:52.0725] <chunmin>
+> <@mgaudet:mozilla.org> When you say clone... I guess I'm curious what the spec text you're trying to implement looks like
+
+The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens in  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step , for [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig), in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). `VideoDecoderConfig` has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko.
+
+[09:54:26.0125] <chunmin>
+> <@mgaudet:mozilla.org> When you say clone... I guess I'm curious what the spec text you're trying to implement looks like
+
+ * The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens at the  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step , for [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig), in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). `VideoDecoderConfig` has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko.
+
+[09:55:27.0379] <chunmin>
+ * The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens at the  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step (4-1-1) in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig) has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko.
+
+[09:56:47.0440] <chunmin>
+ * The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens at the  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step (4-1-1) in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig) has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko, so I am trying to figure out how to clone a `OwningArrayBufferViewOrArrayBuffer`. 
+
+[10:26:30.0464] <chunmin>
+ * mgaudet , padenot: The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens at the  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step (4-1-1) in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig) has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko, so I am trying to figure out how to clone a `OwningArrayBufferViewOrArrayBuffer`.
+
+[10:35:13.0271] <mgaudet>
+> <@chunmin:mozilla.org> mgaudet , padenot: The web API is WebCodecs. The clone from one `OwningArrayBufferViewOrArrayBuffer` to another happens at the  [`clone-configuration`](https://w3c.github.io/webcodecs/#clone-configuration)  step (4-1-1) in [`VideoDecoder::isConfigSupported`](https://w3c.github.io/webcodecs/#dom-videodecoder-isconfigsupported). [`VideoDecoderConfig`](https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig) has a `BufferSource` member, which is translated to `OwningArrayBufferViewOrArrayBuffer` in gecko, so I am trying to figure out how to clone a `OwningArrayBufferViewOrArrayBuffer`.
+
+(I have to run for a bit, but to help unblock you a bit: two things to  consider: We have a couple of [clone functions for ArrayBuffers](https://searchfox.org/mozilla-central/source/js/public/ArrayBuffer.h#273-302); not quite sure what the appropriate way to handle views is. Probably need to convert a view to a new array buffer would be my guess, but this isn't quite my area of expertise... sfink?) 
+
+[10:56:04.0994] <kfjvj>
+Would someone be able to help me understand exactly what's being described in the comment for JS_IsArrayObject?  What does it mean to return false on "failure" in this case?
+
+```
+/**
+ * On success, returns true, setting |*isArray| to true if |value| is an Array
+ * object or a wrapper around one, or to false if not.  Returns false on
+ * failure.
+ *
+ * This method returns true with |*isArray == false| when passed an ES6 proxy
+ * whose target is an Array, or when passed a revoked proxy.
+ */
+extern JS_PUBLIC_API bool JS_IsArrayObject(JSContext* cx, JS::HandleValue value,
+                                           bool* isArray);
+```
+
+[10:58:28.0142] <ptomato>
+kfjvj: there are 3 outcomes
+
+[10:59:39.0844] <ptomato>
+- return true, `*isArray = true` -> the object is an array (roughly)
+- return true, `*isArray = false` -> the object is not an array (roughly)
+- return false → the check caused an exception, or the engine ran out of memory, etc
+
+[11:00:17.0400] <kfjvj>
+Oh, OK.  It's strange, because JS_IsInt32Array and related methods only have the single return value.
+
+[11:01:08.0845] <ptomato>
+I would guess that's because those don't allocate any memory or have any opportunity to cause an exception to be thrown
+
+[11:03:26.0939] <kfjvj>
+Btw, regarding this recurring pattern of JS-related C++ functions returning bool to indicate errors, is there some helper function or macro to avoid the tedious repetition of if statements?
+
+[11:04:33.0062] <ptomato>
+here's where Rust's `?` operator is really nice, eh
+
+[11:05:08.0891] <kfjvj>
+Yeah. I mean, I suppose we have short-circuit operators.
+
+[11:07:00.0522] <ptomato>
+my code ends up looking like this usually:
+```c++
+DoSomething1();
+if (!JS_Operation1(cx, ...))
+  return false;
+DoSomething2();
+return JS_Operation2(cx, ...) && JS_Operation3(cx, ...);
+```
+
+[11:07:41.0816] <kfjvj>
+Yeah, mine too, more or less.  I tried using some macros to clean things up, but my team mates seem to think that they make code look "like it's from 1997"
+
+[11:07:47.0942] <ptomato>
+I make all my functions return bool as well (or null/non-null pointer) and "catch" the exceptions as little as possible
+
+[11:14:59.0147] <ptomato>
+FWIW js/src/jsapi-tests does use such a macro, `CHECK(JS_Operation(cx, ...))` to make the test fail if the operation returns false
+
+[11:59:22.0231] <sfink>
+chunmin: hm, there isn't a great answer to this right now. mgaudet' s suggestion of `JS::ArrayBufferClone` definitely seems like the best thing for the ArrayBuffer case. In your code, it looks like any ArrayBufferView (Uint8Array or whatever) would get "cloned" into an ArrayBuffer, which seems like strange behavior for something called "clone". But it might be ok from the spec language? I couldn't tell.
+
+[12:00:59.0262] <sfink>
+the implementation that would make sense to me is probably something like: if it's an ArrayBuffer, use `JS::ArrayBufferClone`. Otherwise, get the ArrayBuffer from the view and then use `JS::ArrayBufferClone`. But I'm still looking to find a decent way of retrieving the buffer from an arbitrary view from outside of SpiderMonkey.
+
+[12:02:34.0025] <sfink>
+peterv: what would your recommendation be on cloning a BufferSource object? (Which I guess ends up being `OwningArrayBufferViewOrArrayBuffer`.) Do we have decent APIs for that yet?
+
+[12:03:00.0316] <sfink>
+I'll need to run for a bit. I'll keep looking for something when I get back.
+
+[13:05:42.0614] <kfjvj>
+How can I get indexed elements from an array I created with JS_NewArrayObject?
+
+[13:07:35.0680] <kfjvj>
+oh... I just found "GetElement".  Is that it?
+
+[13:41:54.0713] <ptomato>
+kfjvj: yes. although GetPropertyById would work as well, since jsid can be an integer property key
+
+[16:27:27.0065] <chunmin>
+> <@sfink:mozilla.org> chunmin: hm, there isn't a great answer to this right now. mgaudet' s suggestion of `JS::ArrayBufferClone` definitely seems like the best thing for the ArrayBuffer case. In your code, it looks like any ArrayBufferView (Uint8Array or whatever) would get "cloned" into an ArrayBuffer, which seems like strange behavior for something called "clone". But it might be ok from the spec language? I couldn't tell.
+
+Does something like this make more sense?
+
+```cpp
+static JSObject* GetTypedArrayObject(
+    const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  return aBuffer.IsArrayBuffer() ? aBuffer.GetAsArrayBuffer().Obj()
+                                 : aBuffer.GetAsArrayBufferView().Obj();
+}
+
+static JSObject* GetArrayBufferObject(
+    JSContext* aCx, const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  if (aBuffer.IsArrayBuffer()) {
+    return aBuffer.GetAsArrayBuffer().Obj();
+  }
+
+  MOZ_ASSERT(aBuffer.IsArrayBufferView());
+  bool isSharedMemory;
+  JS::Rooted<JSObject*> obj(aCx, aBuffer.GetAsArrayBufferView().Obj());
+  return JS_GetArrayBufferViewBuffer(aCx, obj, &isSharedMemory);
+}
+
+static Result<OwningArrayBufferViewOrArrayBuffer, nsresult> CloneBuffer(
+    JSContext* aCx, const OwningArrayBufferViewOrArrayBuffer& aBuffer) {
+  JSObject* typedArrayObj = GetTypedArrayObject(aBuffer);
+  if (NS_WARN_IF(!typedArrayObj)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  JS::Rooted<JSObject*> arrayBufferObj(aCx, GetArrayBufferObject(aCx, aBuffer));
+  if (NS_WARN_IF(!arrayBufferObj)) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  size_t byteOffset = JS_GetTypedArrayByteOffset(typedArrayObj);
+  size_t byteLength = JS_GetTypedArrayByteLength(typedArrayObj);
+  JS::Rooted<JSObject*> cloned(
+      aCx, JS::ArrayBufferClone(aCx, arrayBufferObj, byteOffset, byteLength));
+  if (NS_WARN_IF(!cloned)) {
+    return Err(NS_ERROR_OUT_OF_MEMORY);
+  }
+
+  JS::Rooted<JS::Value> value(aCx, JS::ObjectValue(*cloned));
+  OwningArrayBufferViewOrArrayBuffer buffer;
+  if (NS_WARN_IF(!buffer.Init(aCx, value))) {
+    return Err(NS_ERROR_UNEXPECTED);
+  }
+
+  return buffer;
+}
+```
+
+[16:47:46.0925] <sfink>
+chunmin: Yes! That looks good. I somehow couldn't find `JS_GetArrayBufferViewBuffer` earlier; that was the missing piece. Note that your offset/length retrieval isn't quite right, since the main function has a `typedArrayObj` variable that might actually be an `ArrayBufferObject`. But I think that just means that your `GetArrayBufferObject` will need outvars for the offset and length (with offset=0 if you already have an ArrrayBuffer).
+
+[16:52:42.0304] <sfink>
+generally speaking, it's not a good idea to extract out the data pointer until just before you need it, because it might actually give you a pointer into movable GC memory. So it's better to do what your new code is doing, and leave the data pointer safely held in a `JSObject*` (or perhaps a `JS::ArrayBufferOrView` or a subclass from `#include "js/experimental/TypedData.h"` which just wraps the `JSObject*`) that will get automatically updated if you happen to do something that GCs. (Or said otherwise: the rooting hazard static analysis will yell at you and our APIs will fight you if you extract the data pointer too early.)
+
+
+2022-10-12
+[17:24:41.0208] <chunmin>
+Thanks for the check! I'll make a new version tomorrow!
+
+[01:13:45.0927] <peterv>
+sfink: I don't think we have a good API for "cloning" DOM typed arrays
+
+[01:17:06.0065] <peterv>
+but I don't think that spec with the current language is cloning the typed arrays itself, it's just setting the values in the cloned dictionary to the value of the original dictionary, and typed array values in WebIDL are just represented by their JS object
+
+[01:17:42.0501] <peterv>
+ * but I don't think that spec with the current language is cloning the typed arrays itself, it's just setting the values in the cloned dictionary to the value from the original dictionary, and typed array values in WebIDL are just represented by their JS object
+
+[01:23:25.0694] <peterv>
+so afaict this just needs to do `clone.description.SetAsArrayBuffer().Init(config.description.Obj())` and something similar for the view
+
+[01:23:35.0366] <peterv>
+chunmin: ^
+
+[01:25:05.0228] <peterv>
+it could be that the spec really wants to clone the BufferSource too, but then it needs to make that clear
+
+[01:25:13.0482] <peterv>
+so I think that needs to be cleared up first
+
+[01:38:30.0297] <peterv>
+ * so afaict this just needs to do `clone.mDescription.SetAsArrayBuffer().Init(config.mDescription.GetAsArrayBuffer().Obj())` and something similar for the view
+
+[01:49:45.0315] <jonco>
+jon4t4n: are you still working on bug 1670176?  I've got some changes I'd like to make to ModuleObject that may conflict with your patches
+
+[01:49:46.0825] <botzilla>
+https://bugzil.la/1670176 — NEW (jon4t4n) — Implement the JSON modules proposal
+
+[02:56:34.0518] <jakechampion>
+Is there a way to take ownership of the memory contained within a `JS::UniqueChars` without copying the memory? My reading of this comment about UniquePtr made me think it is not possible but I'm not 100% certain -- https://searchfox.org/mozilla-central/source/mfbt/UniquePtr.h#62-187
+
+[04:10:38.0757] <Ms2ger 💉💉💉>
+Yeah, std::move should work
+
+[04:13:16.0768] <evilpie>
+I think you actually want release() to take ownership of the pointer?
+
+[04:59:28.0402] <Redfire>
+How exactly does one return an "iterator" from a native function?
+Is it just an array? I'm specifically looking at `Headers.prototype.keys`, `Headers.prototype.values` and `Headers.prototype.entries` currently (https://developer.mozilla.org/en-US/docs/Web/API/Headers)
+
+[04:59:47.0276] <Redfire>
+* How exactly does one return an "iterator" from a native function (ie `JSNative`)?
+Is it just an array? I'm specifically looking at `Headers.prototype.keys`, `Headers.prototype.values` and `Headers.prototype.entries` currently (https://developer.mozilla.org/en-US/docs/Web/API/Headers)
+
+[05:10:56.0888] <Redfire>
+Also, if I want to make my object iterable, say `Headers` again, do I just define a property with the id `GetWellKnownSymbol(cx, SymbolCode::iterator)`?
+
+[07:04:28.0601] <@allstarschh>
+jonco: meeting ?
+
+[07:18:48.0217] <@allstarschh>
+> <@allstarschh:mozilla.org> jonco: meeting ?
+
+it just finished :P
+
+[07:19:39.0932] <mgaudet>
+> <@jonco:mozilla.org> jon4t4n: are you still working on bug 1670176?  I've got some changes I'd like to make to ModuleObject that may conflict with your patches
+
+jonco: Last I talked with jon4t4n he is continuing to work on this; most recent challenges have been the HTML integration stuff. 
+
+I would go ahead with your changes (I'm not sure how much time he's had for it recently, so probably wont land soon), we'll just have to help in the rebasing.
+
+[07:20:34.0385] <mgaudet>
+> <@jakechampion:mozilla.org> Is there a way to take ownership of the memory contained within a `JS::UniqueChars` without copying the memory? My reading of this comment about UniquePtr made me think it is not possible but I'm not 100% certain -- https://searchfox.org/mozilla-central/source/mfbt/UniquePtr.h#62-187
+
+std::move into another UniquePtr, .release() into a raw pointer where you become responsible for freeing. :)
+
+[07:27:58.0523] <Tim>
+Hello, would anybody be able to land https://phabricator.services.mozilla.com/D148062 ?
+
+[07:51:15.0312] <mgaudet>
+> <@tjc:igalia.com> Hello, would anybody be able to land https://phabricator.services.mozilla.com/D148062 ?
+
+Hey Tim: According to Lando that patch is dependent on the patch on bug https://bugzilla.mozilla.org/show_bug.cgi?id=1789315 which still needs review; having said that, you might be able to break that dependency now. I fixed the R&T `jsapi.h` build problem the gross way in one of my patches; yours does it the right way, but regardless, I think if you disconnect that patch and re-test it on central it should be good to go.
+
+[07:51:34.0037] <mgaudet>
+*The as-yet-unapproved
+
+[07:51:38.0502] <mgaudet>
+ * \*The as-yet-unapproved patch
+
+[07:54:16.0581] <Tim>
+> <@mgaudet:mozilla.org> Hey Tim: According to Lando that patch is dependent on the patch on bug https://bugzilla.mozilla.org/show_bug.cgi?id=1789315 which still needs review; having said that, you might be able to break that dependency now. I fixed the R&T `jsapi.h` build problem the gross way in one of my patches; yours does it the right way, but regardless, I think if you disconnect that patch and re-test it on central it should be good to go.
+
+ah, yes. anba , did I address all your comments on https://phabricator.services.mozilla.com/D156494 to your satisfaction?
+
+[07:54:21.0980] <Tim>
+but I think it's ok to break the dependency
+
+[07:54:52.0259] <mgaudet>
+(I don't think Anba is on here very frequently; very much a bursty contributor) 
+
+[07:55:53.0282] <Tim>
+ok. well, I removed the dependency -- it's not strictly necessary anyway since CI doesn't seem to be building with ENABLE_RECORD_TUPLE (which is a separate problem)
+
+[08:00:51.0308] <mgaudet>
+Tim: OK, I've pressed the button on D148062 
+
+[08:12:35.0901] <jonco>
+mgaudet: thanks, will do
+
+[09:36:30.0726] <sfink>
+> <@tjc:igalia.com> ok. well, I removed the dependency -- it's not strictly necessary anyway since CI doesn't seem to be building with ENABLE_RECORD_TUPLE (which is a separate problem)
+
+That surprised me, so I looked, and it seems like there *is* an SM(rt) tier 1 build with `--enable-record-tuple` set, and I see it [showing up](https://treeherder.mozilla.org/jobs?repo=autoland&searchStr=spider&selectedTaskRun=eJCQW3ruSM6xjxpMCC-StA.0) on autoland. That is the right thing, right?
+
+[09:39:54.0546] <mgaudet>
+> <@sfink:mozilla.org> That surprised me, so I looked, and it seems like there *is* an SM(rt) tier 1 build with `--enable-record-tuple` set, and I see it [showing up](https://treeherder.mozilla.org/jobs?repo=autoland&searchStr=spider&selectedTaskRun=eJCQW3ruSM6xjxpMCC-StA.0) on autoland. That is the right thing, right?
+
+I've certainly ran into the job recently as well.
+
+[09:52:29.0986] <chunmin>
+> <@pvanderbeken:mozilla.org> so afaict this just needs to do `clone.mDescription.SetAsArrayBuffer().Init(config.mDescription.GetAsArrayBuffer().Obj())` and something similar for the view
+
+Will the cloned.mDescription refer to the same buffer of the original one by doing so?
+
+[09:53:03.0080] <chunmin>
+There is a test to make sure they refer to the different ones: https://searchfox.org/mozilla-central/rev/e94c6cb9649bfe4e6a3888460f41bcd4fe30a6ca/testing/web-platform/tests/webcodecs/videoDecoder-codec-specific.https.any.js#224
+
+[10:02:33.0501] <chunmin>
+
+I just tested this with the following code. It's weird that the results are inconsistent. Some `assert_false(support.config.description === config.description)` checks are passed, but some fail. Does `ArrayBuffer` or `ArrayBufferView` make a difference?
+ 
+```cpp
+// aConfig is the original VideoDecoderConfig
+VideoDecoderConfig c; // cloned VideoDecoderConfig
+...
+// mDescription is Optional<OwningArrayBufferViewOrArrayBuffer>
+if (aConfig.mDescription.WasPassed()) {
+    auto& desc = c.mDescription.Construct();
+    if (aConfig.mDescription.Value().IsArrayBuffer()) {
+      desc.SetAsArrayBuffer().Init(
+          aConfig.mDescription.Value().GetAsArrayBuffer().Obj());
+    } else {
+      MOZ_ASSERT(aConfig.mDescription.Value().IsArrayBufferView());
+      desc.SetAsArrayBufferView().Init(
+          aConfig.mDescription.Value().GetAsArrayBufferView().Obj());
+    }
+  }
+...
+```
+
+[10:04:40.0746] <chunmin>
+> <@pvanderbeken:mozilla.org> it could be that the spec really wants to clone the BufferSource too, but then it needs to make that clear
+
+padenot: Does spec ask for a deep copy?
+
+[10:47:55.0699] <chunmin>
+ * I just tested this with the following code. It's weird that the results are inconsistent. Some `assert_false(support.config.description === config.description)` checks are passed, but some fail. Does `ArrayBuffer` or `ArrayBufferView` make a difference?
+
+```cpp
+// aConfig is the original VideoDecoderConfig
+VideoDecoderConfig cloned;
+...
+// mDescription is Optional<OwningArrayBufferViewOrArrayBuffer>
+if (aConfig.mDescription.WasPassed()) {
+    auto& desc = cloned.mDescription.Construct();
+    if (aConfig.mDescription.Value().IsArrayBuffer()) {
+      desc.SetAsArrayBuffer().Init(
+          aConfig.mDescription.Value().GetAsArrayBuffer().Obj());
+    } else {
+      MOZ_ASSERT(aConfig.mDescription.Value().IsArrayBufferView());
+      desc.SetAsArrayBufferView().Init(
+          aConfig.mDescription.Value().GetAsArrayBufferView().Obj());
+    }
+  }
+...
+```
+
+[11:15:14.0932] <chunmin>
+ * I just tested this with the following code. It's weird that the results are inconsistent. Some `assert_false(support.config.description === config.description)` checks are passed, but some fail. Does the `ArrayBuffer` case and the `ArrayBufferView` case give different results? I'll have a look.
+
+```cpp
+// aConfig is the original VideoDecoderConfig
+VideoDecoderConfig cloned;
+...
+// mDescription is Optional<OwningArrayBufferViewOrArrayBuffer>
+if (aConfig.mDescription.WasPassed()) {
+    auto& desc = cloned.mDescription.Construct();
+    if (aConfig.mDescription.Value().IsArrayBuffer()) {
+      desc.SetAsArrayBuffer().Init(
+          aConfig.mDescription.Value().GetAsArrayBuffer().Obj());
+    } else {
+      MOZ_ASSERT(aConfig.mDescription.Value().IsArrayBufferView());
+      desc.SetAsArrayBufferView().Init(
+          aConfig.mDescription.Value().GetAsArrayBufferView().Obj());
+    }
+  }
+...
+```
+
+[12:02:09.0414] <davidj361>
+For `JS_FN("foo", GenericJSNative, 0, 0)` the last 2 arguments is nargs and flags right? nargs is basically the required amount of args to call the function right else it errors right? what flags are available?
+
+[12:08:57.0060] <davidj361>
+ah whatever found https://web.archive.org/web/20201017074148/https://developer.mozilla.org/en-US/docs/Mozilla/Projects/SpiderMonkey/JSAPI_reference/JS_FS
+Is there an up to date non-archive version of this?
+
+[12:31:28.0578] <Tim>
+> <@sfink:mozilla.org> That surprised me, so I looked, and it seems like there *is* an SM(rt) tier 1 build with `--enable-record-tuple` set, and I see it [showing up](https://treeherder.mozilla.org/jobs?repo=autoland&searchStr=spider&selectedTaskRun=eJCQW3ruSM6xjxpMCC-StA.0) on autoland. That is the right thing, right?
+
+It seems like the right thing. Matthew said he pushed a fix, so i would expect the recent builds to succeed. still not sure why that previous change (a few weeks ago) broke the record/tuple build
+
+[13:32:31.0109] <chunmin>
+> <@chunmin:mozilla.org> I just tested this with the following code. It's weird that the results are inconsistent. Some `assert_false(support.config.description === config.description)` checks are passed, but some fail. Does the `ArrayBuffer` case and the `ArrayBufferView` case give different results? I'll have a look.
+> 
+> ```cpp
+> // aConfig is the original VideoDecoderConfig
+> VideoDecoderConfig cloned;
+> ...
+> // mDescription is Optional<OwningArrayBufferViewOrArrayBuffer>
+> if (aConfig.mDescription.WasPassed()) {
+>     auto& desc = cloned.mDescription.Construct();
+>     if (aConfig.mDescription.Value().IsArrayBuffer()) {
+>       desc.SetAsArrayBuffer().Init(
+>           aConfig.mDescription.Value().GetAsArrayBuffer().Obj());
+>     } else {
+>       MOZ_ASSERT(aConfig.mDescription.Value().IsArrayBufferView());
+>       desc.SetAsArrayBufferView().Init(
+>           aConfig.mDescription.Value().GetAsArrayBufferView().Obj());
+>     }
+>   }
+> ...
+> ```
+
+Aha, the results are actually consistent. Some of the description is unset so they won't be checked. All the tests are `ArrayBufferView` cases, and using `desc.SetAsArrayBufferView().Init(aConfig.mDescription.Value().GetAsArrayBufferView().Obj())` makes `support.config.description !== config.description` true, which violates the test's expectation.
+
+[13:32:44.0629] <chunmin>
+ * Aha, the results are actually consistent. Some of the `description` is unset so they won't be checked. All the tests are `ArrayBufferView` cases, and using `desc.SetAsArrayBufferView().Init(aConfig.mDescription.Value().GetAsArrayBufferView().Obj())` makes `support.config.description !== config.description` true, which violates the test's expectation.
+
+[13:32:57.0872] <chunmin>
+ * Aha, the results are actually consistent. Some of the `config.description` is unset so they won't be checked. All the tests are `ArrayBufferView` cases, and using `desc.SetAsArrayBufferView().Init(aConfig.mDescription.Value().GetAsArrayBufferView().Obj())` makes `support.config.description !== config.description` true, which violates the test's expectation.
+
+[13:33:03.0343] <chunmin>
+ * Aha, the results are actually consistent. Some of the `config.description` are unset so they won't be checked. All the tests are `ArrayBufferView` cases, and using `desc.SetAsArrayBufferView().Init(aConfig.mDescription.Value().GetAsArrayBufferView().Obj())` makes `support.config.description !== config.description` true, which violates the test's expectation.
+
+[13:34:00.0273] <chunmin>
+It seems the tests want a deep copy of the `BufferSource` instead of referring to the same one 
+
+[13:46:06.0030] <mgaudet>
+> <@tjc:igalia.com> It seems like the right thing. Matthew said he pushed a fix, so i would expect the recent builds to succeed. still not sure why that previous change (a few weeks ago) broke the record/tuple build
+
+My breakage was on a totally unrelated change; I suspect it was a unification change that caused it. 
+
+[15:00:19.0916] <kfjvj>
+Has anyone used JS::NewPromiseObject?  I'd like some details on what exactly the "executor" parameter is:
+
+```
+/**
+ * Returns a new instance of the Promise builtin class in the current
+ * compartment, with the right slot layout.
+ *
+ * The `executor` can be a `nullptr`. In that case, the only way to resolve or
+ * reject the returned promise is via the `JS::ResolvePromise` and
+ * `JS::RejectPromise` JSAPI functions.
+ *
+ * If a `proto` is passed, that gets set as the instance's [[Prototype]]
+ * instead of the original value of `Promise.prototype`.
+ */
+extern JS_PUBLIC_API JSObject* NewPromiseObject(
+    JSContext* cx, JS::HandleObject executor, JS::HandleObject proto = nullptr);
+```
+
+[15:10:51.0563] <mgaudet>
+> <@kfjvj:mozilla.org> Has anyone used JS::NewPromiseObject?  I'd like some details on what exactly the "executor" parameter is:
+> 
+> ```
+> /**
+>  * Returns a new instance of the Promise builtin class in the current
+>  * compartment, with the right slot layout.
+>  *
+>  * The `executor` can be a `nullptr`. In that case, the only way to resolve or
+>  * reject the returned promise is via the `JS::ResolvePromise` and
+>  * `JS::RejectPromise` JSAPI functions.
+>  *
+>  * If a `proto` is passed, that gets set as the instance's [[Prototype]]
+>  * instead of the original value of `Promise.prototype`.
+>  */
+> extern JS_PUBLIC_API JSObject* NewPromiseObject(
+>     JSContext* cx, JS::HandleObject executor, JS::HandleObject proto = nullptr);
+> ```
+
+Yeah, I've never used it... we don't seem to have much in the way of usage either. There's one test case: https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/testPromise.cpp#16-44 
+
+[15:11:43.0123] <Redfire>
+The executor in js terms is a function like `function(res: (any) => void, rej: (any) => void): void`
+
+[15:11:53.0883] <Redfire>
+* The executor in js terms is a function like `function(resolve: (any) => void, reject: (any) => void): void`
+
+[15:12:11.0032] <Redfire>
+It's the same as with the Promise constructor
+
+[15:13:22.0067] <Redfire>
+See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/Promise for more details 
+
+[15:15:19.0913] <kfjvj>
+Thanks.  What I'm doing here is wrapping an existing C++ Future/Promise API to interface with JS.  So I presume I can have a null executor, and then call JS::ResolvePromise or JS::RejectPromise when I need to.
+
+[15:15:35.0037] <Redfire>
+Yes you can
+
+[15:16:22.0052] <Redfire>
+Personally I use some shenanigans where I pass the functions of `resolve` and `reject` through a channel to send it to the event loop
+
+[15:17:32.0580] <peterv>
+chunmin: then the test is not testing what's in the spec
+
+[15:18:21.0236] <Redfire>
+* Personally I use some shenanigans where I pass the functions of `resolve` and `reject` through a channel to send it to the event loop
+(See <https://github.com/Redfire75369/spiderfire/blob/master/runtime/src/promise.rs#L17-L48>)
+
+[15:19:35.0699] <kfjvj>
+> <@redfire75369:mozilla.org> Personally I use some shenanigans where I pass the functions of `resolve` and `reject` through a channel to send it to the event loop
+> (See <https://github.com/Redfire75369/spiderfire/blob/master/runtime/src/promise.rs#L17-L48>)
+
+Do you know if there are thread safety concerns with JS::Resolve/RejectPromise?  It's possible that whatever we're awaiting could come from another thread
+
+[15:20:55.0852] <Redfire>
+There shouldn't be, `UnsafeAssertSend` is just there to get around rust's type system
+
+[15:21:17.0257] <Redfire>
+Each runtime corresponds to 1 thread iirc so it should be fine
+
+[15:21:34.0208] <Redfire>
+unless you're mixing your main thread with worker threads and stuff
+
+[15:23:27.0295] <kfjvj>
+What I'm trying to do is basically wrap a std::future
+
+[15:24:22.0740] <Redfire>
+My goal was to wrap Rust's `std::future::Future` so similar goals 🙃
+
+[15:24:43.0307] <Redfire>
+No idea how `std::future` works though so you can probably ask someone else
+
+[15:25:00.0823] <kfjvj>
+OK.  I'll try to read the rust.  Not very familiar with the language though.
+
+[15:26:23.0972] <Redfire>
+My codebase is a bit convoluted so you probably shouldn't anyways
+
+[15:27:03.0699] <kfjvj>
+OK.  Thanks for the help.  I'll do some more research into futures and promises, and probably come back tomorrow with more questions.
+
+
+2022-10-13
+[23:55:18.0716] <padenot>
+peterv, chunmin, I'd have preferred a non-deep copy, this is what (currently) the spec says should happen, right? We can flag this to Chromium folks
+
+[23:55:49.0105] <padenot>
+then again maybe it isn't possible, and we'll have to adjust the text, I'll have to think more
+
+[23:57:15.0696] <peterv>
+padenot: yeah, non-deep is how I read it ('assign the value of config[m] to clone[m]' isn't copying I think)
+
+[23:57:30.0769] <peterv>
+padenot: well, deep for dictionaries, but non-deep for BufferSource
+
+[23:57:59.0639] <padenot>
+right, the actual backing storage is merely referenced 
+
+[23:58:39.0079] <padenot>
+I'll open an issue on the spec and we'll chat, maybe there's a good reason they did it this way. the buffer isn't bit (a few dozen bytes maybe), but it's always nice to save a malloc/copy
+
+[23:59:29.0991] <peterv>
+padenot: note that if that BufferSource is exposed later then it might be possible to mutate those BufferSources, I don't know if that's possible but it might be weird if so
+
+[00:00:06.0295] <peterv>
+either way, opening an issue seems best, since test and spec are not in sync
+
+[00:00:23.0398] <padenot>
+yeah, it is exposed later, but really a developer shouldn't mutate it. it's one of those case where we really need non-mutable arraybuffers in js
+
+[00:01:15.0110] <peterv>
+🙂
+
+[00:01:44.0489] <peterv>
+FrozenArrayBuffer
+
+[10:02:08.0454] <chunmin>
+Is it possible to cast a BufferSource to a FrozenArray<Byte>? FrozenArray<Byte> might be a better type to be exposed later. It should be immutable: https://webidl.spec.whatwg.org/#idl-frozen-array
+
+[10:09:56.0717] <sfink>
+I don't think that exists. See bug 1236777.
+
+[10:09:58.0301] <botzilla>
+https://bugzil.la/1236777 — NEW (nobody) — Implement FrozenArray in webidl
+
+[10:15:50.0978] <peterv>
+yeah, but we have workarounds for now
+
+[10:16:14.0372] <peterv>
+but "casting" one to the other isn't possible
+
+[10:16:39.0643] <peterv>
+you can copy
+
+[10:16:57.0920] <chunmin>
+We can use [Frozen] flag, but it seems it only works for attribute, not a dictionary member: https://firefox-source-docs.mozilla.org/dom/webIdlBindings/index.html#frozen
+
+[10:17:23.0093] <peterv>
+which spec is this?
+
+[10:17:24.0661] <chunmin>
+> <@pvanderbeken:mozilla.org> you can copy
+
+Then we still have a copy 
+
+[10:17:36.0786] <chunmin>
+https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig
+
+[10:17:53.0410] <peterv>
+well, if the incoming is an ArrayBuffer and you want an immutable version of it you have to copy
+
+[10:19:15.0746] <chunmin>
+ * ```webidl
+dictionary VideoDecoderConfig {
+  ...
+  BufferSource description;
+  ...
+};
+```
+
+https://w3c.github.io/webcodecs/#dictdef-videodecoderconfig
+
+
+[11:21:48.0171] <kfjvj>
+What's the best practice when passing JS objects/values to a lambda?  IO know we use Rooted for stack local variables, and Handles for function parameters.  How should I go about capturing one in a lambda?
+
+[11:26:46.0721] <kfjvj>
+btw, This lambda will be invoked asynchronously at some later time
+
+[11:27:01.0686] <kfjvj>
+Is it even possible to get a reference to a JS object that could persist in this way?
+
+[11:49:51.0120] <iain>
+kfjvj: Like a C++ lambda? My first instinct is that it sounds like a bad idea.
+
+[11:51:14.0638] <iain>
+If you want something allocated on the heap, you should be using [Heap<T>](https://searchfox.org/mozilla-central/source/js/public/RootingAPI.h#302) instead
+
+[11:52:19.0870] <iain>
+But `Heap<T>` needs to be traced when the containing object is traced, which means that you'd need a trace method on your lambda
+
+[11:53:57.0134] <iain>
+And I'm not aware of a way to do that in C++
+
+[11:55:02.0712] <iain>
+Basically, there needs to be some path from a root to the `Heap<T>` that the GC can trace to determine that the object you're holding is still alive (and update your pointer if the GC moves it)
+
+[11:56:29.0863] <iain>
+If you have lambdas floating around with arbitrary lifetimes, that's hard to manage.
+
+[12:01:16.0336] <kfjvj>
+I suppose I'll have to find some other way to do it
+
+[12:01:52.0234] <mccr8>
+I dunno if it is a "good idea" but there's at least one place we use PersistentRooted on the heap. https://searchfox.org/mozilla-central/rev/76ccfc801e6b736c844cde3fddeab7a748fc8515/xpcom/base/JSObjectHolder.h#37
+
+[12:02:29.0392] <mccr8>
+It does look like that is used in a number of places on the heap, judging by the mFoo names. https://searchfox.org/mozilla-central/search?q=symbol:T_JS%3A%3APersistentRooted&redirect=false
+
+[12:02:55.0684] <kfjvj>
+Thanks.  I'll look into those.
+
+[12:03:39.0217] <mccr8>
+the comment does say "These roots can be used in heap-allocated data structures"
+
+[12:04:13.0432] <mccr8>
+Just be careful not to create a cycle by indirectly keeping the lambda alive from JS.
+
+[12:04:37.0870] <kfjvj>
+ok, I'll keep that in mind
+
+[12:18:56.0463] <kfjvj>
+iain: I'm looking into Heap<T>, and the documentation references tracing, but I'm not sure how tracing is supposed to work.
+
+[12:23:08.0637] <kfjvj>
+I suppose I could still use PersistentRooted, but somehow I'm scared of it
+
+[12:27:37.0733] <kfjvj>
+> <@kfjvj:mozilla.org> iain: I'm looking into Heap<T>, and the documentation references tracing, but I'm not sure how tracing is supposed to work.
+
+Never mind, I found some info about it in the rooting guide.
+
+
+2022-10-14
+[02:10:43.0166] <big-r>
+> <@jandem:mozilla.org> big-r: see `JS_GetImplementationVersion`, it returns a string
+
+JS_GetImplementationVersion is the following:
+```
+JS_PUBLIC_API const char* JS_GetImplementationVersion(void) {
+  return "JavaScript-C" MOZILLA_VERSION;
+}
+```
+Any reason why the "JavaScript-C" is prefixed, so that an example result is: "JavaScript-C91.13.0"?
+
+[02:12:58.0081] <jandem>
+I'm not sure.. It's a very old API
+
+[02:18:24.0012] <Ms2ger 💉💉💉>
+TIL about JS_GetImplementationVersion
+
+[07:48:16.0013] <mccr8>
+Looks like until bug 842889 it was just hard coded and somebody had to update it periodically.
+
+[07:48:18.0123] <botzilla>
+https://bugzil.la/842889 — RESOLVED (general) — update JS_GetImplentationVersion()
+
+[09:31:17.0637] <dbezhetskov>
+is it possible to read cmd arguments from js test with SM shell?
+
+[09:31:21.0569] <dbezhetskov>
+ * Hi, is it possible to read cmd arguments from js test with SM shell?
+
+[09:31:33.0017] <dbezhetskov>
+ * Hi, is it possible to read cmd arguments inside a js test with SM shell?
+
+[09:31:56.0971] <dbezhetskov>
+ * Hi, is it possible to read cmd arguments inside a js test with SM shell? something like os.env.cmd[0]
+
+[09:32:05.0184] <dbezhetskov>
+ * Hi, is it possible to read cmd arguments inside a js test with SM shell? maybe there is something like os.env.cmd\[0\]?
+
+[09:32:11.0612] <dbezhetskov>
+ * Hi, is it possible to read cmd arguments inside a js test with SM shell? maybe there is something like `os.env.cmd\[0\]`?
+
+[09:49:45.0788] <jonco>
+dbezhetskov: the shell sets the global variable |scriptArgs| to the trailing arguments in BindScriptArgs, if that does what you want
+
+[11:11:09.0976] <kfjvj>
+How can I get a HandleObject from a RootedFunction?
+
+[11:13:50.0297] <iain>
+kfjvj: JSFunction is a subclass of JSObject, so the implicit type conversions should just work.
+
+[11:14:07.0724] <kfjvj>
+strange... it isn't working
+
+[11:15:47.0114] <arai>
+the inheritance isn't exposed to public header
+
+[11:15:55.0754] <kfjvj>
+"No suitable user-defined conversion from JS::RootedFunction to JS::HandleObject
+
+[11:17:06.0422] <kfjvj>
+> <@arai:mozilla.org> the inheritance isn't exposed to public header
+
+How do I get access to it, then?
+
+[11:17:08.0507] <arai>
+https://searchfox.org/mozilla-central/rev/1564027eba41993868973e4a7b93bea942a16b78/js/src/jsapi.h#576
+```cpp
+extern JS_PUBLIC_API JSObject* JS_GetFunctionObject(JSFunction* fun);
+```
+
+[11:17:45.0497] <arai>
+convert `JSFunction*` to `JSObject*`, and then store it into `JS::RootedObject`, and pass it to the function that receives `JS::HandleObject`
+
+[11:18:32.0518] <iain>
+TIL
+
+[11:18:42.0143] <arai>
+`JS::RootedFunction` can be passed to `JSFunction*` parameter I think
+
+[11:19:55.0631] <kfjvj>
+I just did this:
+
+```
+JS::RootedObject executor(
+      cx, JS_GetFunctionObject(JS_NewFunction(cx, PromiseExecutor, 2, 0, "executor")));
+```
+
+[11:59:42.0861] <kfjvj>
+Is there any way to add a private and/or reserved slot to a function object?
+
+[12:08:27.0558] <ptomato>
+kfjvj: there is [js::NewFunctionWithReserved](https://searchfox.org/mozilla-central/source/js/src/jsfriendapi.h#381)
+
+[12:08:53.0889] <kfjvj>
+amazing!
+
+[13:48:42.0020] <mgaudet>
+For conditionally active proposals, we have `ShouldIgnorePropertyDefinition` which allows us to define a method in the JSFunctionSpec to ignore a definition. This doesn't seem to work for constructor methods however; do we have an established pattern for handling this? 
+
+[14:19:02.0074] <mgaudet>
+(I think I've got a workable solution :D ) 
+
+[14:32:13.0346] <iain>
+mgaudet: I'm interested in seeing what it looks like; I think I have a similar issue for Atomics.waitAsync.
+
+[14:33:11.0751] <mgaudet>
+> <@iain:mozilla.org> mgaudet: I'm interested in seeing what it looks like; I think I have a similar issue for Atomics.waitAsync.
+
+```cpp
+  // It's gently surprising that this is JSProto_Function, but the trick
+  // to realize is that this is a -constructor function-, not a function
+  // on the prototype; and the proto of the constructor is JSProto_Function.
+  if (key == JSProto_Function &&
+      !cx->realm()->creationOptions().getArrayFromAsyncEnabled() &&
+      id == NameToId(cx->names().fromAsync)) {
+    return true;
+  }
+``` 
+
+inside `js::ShouldIgnorePropertyDefinition`
+
+[14:33:38.0224] <iain>
+Sweet, thanks.
+
+
+2022-10-16
+[01:55:40.0460] <liam_g>
+The rooting guide says that it's safe to return a JSObject* from a function, so long as you root it immediately. I want to return two JSObjects* from one function Is it safe to return a 'std::pair<JSObject*, JSObject*>; and then root them individually?
+
+[01:55:49.0249] <liam_g>
+ * The rooting guide says that it's safe to return a JSObject\* from a function, so long as you root it immediately. I want to return two JSObjects\* from one function Is it safe to return a 'std::pair\<JSObject\*, JSObject\*>` and then root them individually?
+
+[01:55:57.0967] <liam_g>
+ * The rooting guide says that it's safe to return a JSObject\* from a function, so long as you root it immediately. I want to return two JSObjects\* from one function Is it safe to return a `std::pair\<JSObject\*, JSObject\*>\` and then root them individually?
+
+[01:56:20.0713] <liam_g>
+ * The rooting guide says that it's safe to return a JSObject\* from a function, so long as you root it immediately. I want to return two JSObjects\* from one function Is it safe to return a `std::pair<JSObject*, JSObject*>` and then root them individually?
+
+[03:41:37.0678] <arai>
+liam_g: yes it's safe. what you need to ensure is that you don't keep the raw pointer around during any operations (API calls) that does GC
+
+[03:43:27.0239] <arai>
+another way to return 2 objects from function is to pass them as JS::MutableHandleObject and set them inside the function
+
+[03:52:51.0018] <liam_g>
+Yes I was thinking of the Mutable option also. Normally I don't like out params, but in this case it might be better.
+
+
+2022-10-17
+[05:42:16.0226] <Redfire>
+I know this would definitely be a pain to work on, and I don't know who'd be willing, but overall, I think SpiderMonkey might benefit from a bunch more documentation about basically everything. The ones that do exist are great, but that's only a subset of everything exposed publicly.
+
+[08:40:50.0307] <davidj361>
+Is it not possible to use `static JSFunctionSpec globalFunctions[] = {JS_FN("print", &Print, 1, 0), JS_FN("sleep", &Sleep, 1, 0), JS_FS_END};` with `std::array`?
+
+[09:02:24.0036] <mgaudet>
+davidj361: You mean have `std::array<JSFunctionSpec>`
+
+[09:02:28.0374] <mgaudet>
+ * davidj361: You mean have `std::array<JSFunctionSpec>`?
+
+[09:05:58.0900] <mgaudet>
+I suspect it might be possible; consumers of it would likely have to take `array.begin()` however, and you'd still need the sentinel value `JS_FS_END` 
+
+[09:06:18.0864] <davidj361>
+ok nevermind, got it working somehow....
+
+[09:06:27.0776] <davidj361>
+ * ok nevermind, got it working somehow....when it wasn't working before...
+
+[14:59:00.0574] <mgaudet>
+confession: getting to know the async iteration protocol :D 
+
+[14:59:04.0676] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-10-18
+[01:58:58.0089] <Ms2ger 💉💉💉>
+mgaudet: hey, I was wondering about the ShadowRealms plans, since domenic was asking about implementer interest in https://github.com/whatwg/html/pull/5339
+
+[06:34:16.0694] <mgaudet>
+Ms2ger 💉💉💉: I don't have a concrete plan yet, but it was on my list to come up with over the next week or two. 
+
+Right now the implementation isn't quite complete; we don't handle `importValue` inside a worker yet. 
+
+I also wanted to get the WPT tests for the HTML working too (saw your github comment, will test out the harness fix in the next day or two) 
+
+There's also some questions I still would like to dig into (that are just outside my skillset, so would take some skill acquisition): e.g. the single fetch assumption is, afaict, un-tested. In general I'd like to re-audit all the modules integration of ShadowRealms before shipping -- I think it works, but also, it's now been months since I've looked at it. 
+
+[06:34:42.0559] <mgaudet>
+(I did mention in #whatwg:matrix.org that having a final spec would help too... because we also want that) 
+
+[06:34:56.0627] <Ms2ger 💉💉💉>
+Yeah, I saw - thanks!
+
+[06:37:01.0725] <Ms2ger 💉💉💉>
+As long as I can move the spec work forward, I'm happy for now :)
+
+[06:39:01.0072] <mgaudet>
+Ms2ger 💉💉💉: Yeah; at least from my perspective I don't see us abandoning ShadowRealms as an idea. This is all paged out of my head, as I moved onto other stuff while a number of questions got worked on by committee -- though I was on parental leave and can't recall where TC39 got to with them last meeting. 
+
+[06:39:49.0122] <Ms2ger 💉💉💉>
+That's clearly more important :)
+
+[06:40:06.0129] <Ms2ger 💉💉💉>
+I just want to avoid a situation where everyone is waiting for everyone else and nobody moves
+
+[06:51:22.0774] <mgaudet>
+Fair!
+
+[10:48:19.0077] <sfink>
+PSA: the spidermonkey SM(...) shell jobs in CI will stop disabling ASLR, at least for now. I was disabling it to make failures more reproducible, but those jobs are being moved over to GCP and allowing ASLR would require some docker configuration work that nobody wants to block on atm. (bug 1795063)
+
+[10:48:21.0644] <botzilla>
+https://bugzil.la/1795063 — ASSIGNED (ahal) — Migrate spidermonkey builds from AWS -> GCP
+
+[12:29:10.0344] <kfjvj>
+If I use JS_CallFunctionValue to call an async javascript function, could that potentially cause problems?
+
+[12:40:28.0640] <kfjvj>
+Or rather, how can I make sure that all async code completes before I call JsShutdown
+
+[12:46:12.0588] <sfink>
+iiuc, an async function is just a function that returns a Promise.
+
+[12:47:19.0872] <sfink>
+so I guess you'd need to drain whatever you're using as a job queue? Which may not resolve everything, if there are Promises waiting on external events or something. (Note: I don't really know much about promises. I'm guessing here.)
+
+[12:48:14.0961] <kfjvj>
+Yeah.  I'm not entirely clear on how job queues/event queues work in SpiderMonkey
+
+[12:50:00.0534] <sfink>
+my understanding is that the embedding has to provide some of the job queue functionality. In the browser, it's done with a microtask queue, but that's not part of spidermonkey. There's a default job queue in SM that does part of what you need. I think arai is the expert in these things.
+
+[13:02:12.0599] <iain>
+You can provide your own job queue, or use the internal one. See here: https://searchfox.org/mozilla-central/source/js/src/jsfriendapi.h#210-222
+
+[13:02:57.0646] <kfjvj>
+So you just run this one time for each context?
+
+[13:04:18.0396] <iain>
+You call it early in setup to indicate that you want to use the internal job queue, then you are responsible for calling `RunJobs` when you want to actually pull jobs out of the queue.
+
+[13:04:49.0649] <kfjvj>
+I see.  And when should run jobs be called, typically?
+
+[13:06:22.0107] <iain>
+Roughly speaking, you run some JS, it may or may not put some jobs into the queue, and then when the initial JS is done, you call RunJobs to drain the queue.
+
+[13:06:41.0275] <kfjvj>
+OK.  I will try it
+
+[13:11:13.0604] <davidj361>
+I get that the SpiderMonkey MDN is hard to keep up to date but why was it all scrapped? I can see archives of it and it's incredibly good and useful.
+
+[13:42:03.0107] <evilpie>
+Not our decision. MDN only documents web features nowadays 
+
+[14:14:38.0757] <sfink>
+we really ought to grab an archive and extract the JSAPI stuff that's still relevant
+
+[14:15:17.0181] <ptomato>
+I did a pass a couple of years ago and included a lot of what was still relevant in spidermonkey-embedders-docs
+
+[14:15:35.0222] <sfink>
+oh! that sounds like the right place, then
+
+[14:15:52.0535] <ptomato>
+(but not the API docs for individual functions, since there was very little that wasn't obsolete by that point)
+
+[15:52:12.0183] <kfjvj>
+Using RunJobs to execute the job queue, is there a way to make sure each of those jobs finishes?
+
+[16:01:45.0806] <iain>
+If you're using the internal job queue, then I believe they should all run to completion unless one of them calls [StopDrainingJobQueue](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#810)
+
+[16:01:53.0019] <iain>
+ * kfjvj: If you're using the internal job queue, then I believe they should all run to completion unless one of them calls [StopDrainingJobQueue](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#810)
+
+[16:04:47.0667] <kfjvj>
+> <@iain:mozilla.org> kfjvj: If you're using the internal job queue, then I believe they should all run to completion unless one of them calls [StopDrainingJobQueue](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#810)
+
+Does it automatically wait for all jobs to complete, even the results of nested promises?
+
+[16:05:09.0501] <kfjvj>
+For instance, if I call this function:
+
+```
+async function testFn(prom) {
+            print("Before waiting for promise.");
+            var s = await prom;
+            print(`Received promise value: ${s}`);
+        }
+```
+
+[16:05:35.0526] <iain>
+I think it should
+
+[16:05:42.0943] <iain>
+Is something not working for you?
+
+[16:06:48.0251] <kfjvj>
+Here's some test code I'm using:
+
+```
+bool TestFutures(JSContext* ctx, JS::HandleObject global) {
+
+    char testCode[] = R"js(
+        async function testFn(prom) {
+            print("Before waiting for promise.");
+            var s = await prom;
+            print(`Received promise value: ${s}`);
+        }
+        testFn;
+    )js";
+
+    JS::RootedValue testFn(ctx);
+    if (!ExecuteCode(ctx, testCode, &testFn)) {
+        return false;
+    }
+
+    JS::RootedValueVector args(ctx);
+    JS::RootedValue retVal(ctx);
+
+    JS::RootedValue jsPromise(ctx, ToJs(ctx, Demo_JS::ReturnStringInMilliseconds("Hello", 2000)));
+
+    if (!args.append(jsPromise) || !JS_CallFunctionValue(ctx, global, testFn, args, &retVal)){
+        return false;
+    }
+    js::RunJobs(ctx);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    return true;
+}
+```
+
+[16:07:22.0667] <kfjvj>
+I have to use that thread sleep statement at the end to make sure jsPromise actually completed after 2 seconds.
+
+[16:07:50.0122] <iain>
+It looks like you are running jobs before sleeping?
+
+[16:08:20.0644] <kfjvj>
+If I don't sleep, the function exits scope, shuts down JS, and there's a segfault
+
+[16:08:47.0456] <iain>
+So assuming that `ReturnStringInMilliseconds` resolves a promise after 2000 ms, there's nothing in the job queue when you call RunJobs
+
+[16:09:16.0847] <kfjvj>
+oh, I thought calling an async function implicitly added things to the job queue
+
+[16:10:21.0302] <iain>
+On line 9, is it just me, or are you not actually calling `testFn`?
+
+[16:11:14.0801] <kfjvj>
+Line 9 will ensure that testFn is the return value from ExecuteCode, which I store in the c++ testFn variable.
+
+[16:11:19.0665] <iain>
+Ah, got it
+
+[16:15:10.0525] <sfink>
+I think `retVal` would contain the Promise for testFn. I'm guessing you need to call `js::EnqueueJob(cx, testFn)` before calling `js::RunJobs`.
+
+[16:15:43.0088] <kfjvj>
+> <@sfink:mozilla.org> I think `retVal` would contain the Promise for testFn. I'm guessing you need to call `js::EnqueueJob(cx, testFn)` before calling `js::RunJobs`.
+
+OK I'll try that
+
+[16:23:10.0461] <kfjvj>
+Now something strange is happening: Runjobs causes a segfault when jobs are enqueued
+
+[16:25:00.0305] <kfjvj>
+When I run this code, the last thing that's output is "Jobs starting".  Then it waits 2 seconds and segfaults.
+
+```
+bool TestFutures(JSContext* ctx, JS::HandleObject global) {
+
+    char testCode[] = R"js(
+        async function testFn(prom) {
+            print("Before waiting for promise.");
+            var s = await prom;
+            print(`Received promise value: ${s}`);
+        }
+        testFn;
+    )js";
+
+    JS::RootedValue testFn(ctx);
+    if (!ExecuteCode(ctx, testCode, &testFn)) {
+        return false;
+    }
+
+    JS::RootedValueVector args(ctx);
+    JS::RootedValue retVal(ctx);
+
+    JS::RootedValue jsPromise(ctx, ToJs(ctx, Demo_JS::ReturnStringInMilliseconds("Hello", 2000)));
+
+    if (!args.append(jsPromise) || !JS_CallFunctionValue(ctx, global, testFn, args, &retVal)){
+        return false;
+    }
+    JS::RootedObject promiseObj(ctx, jsPromise.toObjectOrNull());
+    JS::RootedObject retValObj(ctx, retVal.toObjectOrNull());
+    js::EnqueueJob(ctx, promiseObj);
+    js::EnqueueJob(ctx, retValObj);
+    cout << "Jobs starting" << endl;
+    js::RunJobs(ctx);
+    cout << "Jobs done" << endl;
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    return true;
+}
+```
+
+[16:30:40.0763] <sfink>
+but this still seems a little odd; what does `ReturnStringInMilliseconds` do? I'm guessing it sleeps for 2sec then returns its value, blocking anything else from happening on the thread during that time. Which isn't really async. I would think the "right way" would be for `ReturnStringInMilliseconds` to remember when its deadline is, then your `RunJobs` call would see an empty queue and immediately return, and then you would have some `select/poll` loop or similar that would wait until the deadline, at which point you would call `RunJobs` again. I think?
+
+[16:32:11.0654] <kfjvj>
+> <@sfink:mozilla.org> but this still seems a little odd; what does `ReturnStringInMilliseconds` do? I'm guessing it sleeps for 2sec then returns its value, blocking anything else from happening on the thread during that time. Which isn't really async. I would think the "right way" would be for `ReturnStringInMilliseconds` to remember when its deadline is, then your `RunJobs` call would see an empty queue and immediately return, and then you would have some `select/poll` loop or similar that would wait until the deadline, at which point you would call `RunJobs` again. I think?
+
+ReturnSTringInMilliseconds operates from a different thread, but I suppose the promise object waiting for it would just block on the current thread until it's finished
+
+[16:32:48.0178] <sfink>
+yeah, all the interesting stuff pretty much has to happen on the original JS thread
+
+[16:33:16.0181] <kfjvj>
+And it does work well, but only if I add in that extra sleep statement
+
+[16:36:23.0120] <sfink>
+it seems like it does "work", I'm not sure about the "well" part given that it sounds pretty synchronous. ;-) I'm actually not sure why it would seg fault; I would assume that shutting down JS without clearing the job queue would be ok. Even though you'd prefer it to wait somehow. (But you're responsible for the waiitng.)
+
+[16:36:31.0672] <sfink>
+ * it seems like it does "work", I'm not sure about the "well" part given that it sounds pretty synchronous. ;-) I'm actually not sure why it would seg fault; I would assume that shutting down JS without clearing the job queue would be ok. Even though you'd prefer it to wait somehow. (But you're responsible for the waiting.)
+
+[16:36:48.0803] <kfjvj>
+but that's the thing... it doesn't even get to the sleep statement if there's anything in the queue
+
+[16:37:25.0866] <sfink>
+which sleep statement? The one in `ReturnStringInMilliseconds`?
+
+[16:37:41.0002] <kfjvj>
+the one at the end of the function I sent above
+
+[16:38:47.0234] <sfink>
+I'm not understanding something. You're saying that if you delete `RunJobs` and leave everything else as you pasted above, that it seg faults... when?
+
+[16:39:22.0184] <kfjvj>
+it segfaults only if I enqueue jobs 
+
+[16:39:39.0391] <kfjvj>
+actually, wait a minute
+
+[16:40:18.0112] <kfjvj>
+ok there are a few other issues here.  I'll have to look into them before I come back.
+
+But thatnks everyone for the help.  I actually made some progress on this thing.
+
+[16:40:30.0278] <sfink>
+ok, good luck!
+
+[16:45:48.0481] <sfink>
+upon rereading my sketch above, I don't think the end part is right. You wouldn't just call `RunJobs`, since nothing was ever enqueued. You would either resolve the promise (associated with the deadline) directly, or you would (after the `select` returns) call `EnqueueJob` with it. Then at the end of your event loop, which would be "immediately" from the standpoint of JS stuff, you'd call `RunJobs` to drain the queue that now contains the promise.
+
+[16:46:25.0468] <kfjvj>
+> <@sfink:mozilla.org> upon rereading my sketch above, I don't think the end part is right. You wouldn't just call `RunJobs`, since nothing was ever enqueued. You would either resolve the promise (associated with the deadline) directly, or you would (after the `select` returns) call `EnqueueJob` with it. Then at the end of your event loop, which would be "immediately" from the standpoint of JS stuff, you'd call `RunJobs` to drain the queue that now contains the promise.
+
+what's the 'select'?
+
+[16:46:38.0972] <sfink>
+your embedding's event loop
+
+[16:47:09.0143] <kfjvj>
+> <@sfink:mozilla.org> your embedding's event loop
+
+I'm not clear on what you mean
+
+[16:47:22.0728] <sfink>
+what OS are you on? I'm talking *nix terminology.
+
+[16:47:55.0040] <kfjvj>
+yeah, I'm on Linux
+
+[16:48:40.0691] <sfink>
+ok, then if you're doing anything involving async stuff, then you need some event loop that does whatever is pending to do, and if there's nothing pending, it waits some amount of time. Forever, if there's nothing to wait for. Otherwise, until the next soonest deadline.
+
+[16:48:53.0539] <kfjvj>
+OK
+
+[16:49:09.0294] <sfink>
+it might also be waiting for messages on sockets or whatever
+
+[16:49:43.0691] <kfjvj>
+OK I'll have to find a way to deal with that.  The specific implementation of GetStringAfteMillis doesn't really matter.  This is just a dummy test case, and the system I'm writing should be able to work on arbitrary future objects passed to it
+
+[16:50:04.0286] <sfink>
+I guess `select` is kind of old school. [`poll`](https://www.man7.org/linux/man-pages/man2/poll.2.html) is probably a better example.
+
+[16:50:16.0165] <kfjvj>
+OK, thanks. 
+
+[16:51:38.0589] <sfink>
+so you have an event loop which is roughly `while (true) { todo = poll(fds that matter, timeout=min(deadlines)); if (timed out) { resolve the promise associated with that deadline; } else { handle the fd that became active; }; }`
+
+[16:52:11.0498] <sfink>
+or perhaps `while (true) { todo = poll(fds that matter, timeout=min(deadlines)); if (timed out) { enqueue the promise associated with that deadline; } else { handle the fd that became active; }; RunJobs(); }`
+
+[16:52:46.0571] <kfjvj>
+I won't have access to deadlines
+
+[16:53:26.0723] <sfink>
+it would be some global-ish mapping that you would create and manage. You'd insert into it in eg `ReturnStringInMilliseconds`.
+
+[16:54:27.0747] <kfjvj>
+Like I said, that string function is just a dummy. This is to be integrated into a much larger API that already has its own Future objects that I have to handle, and I won't have any influence on how those are implemented.
+
+[16:54:53.0860] <ptomato>
+if that's the case, does that other API already have an event loop?
+
+[16:55:32.0747] <kfjvj>
+I honestly am not sure.  I'm really just working from the Future interface they've given me.  It's not much more than a wrapper around std::future
+
+[16:56:07.0445] <kfjvj>
+you can think of what I'm doing as close to trying to convert an arbitrary std::future object to a JS promise object and have it work
+
+[16:56:50.0812] <kfjvj>
+I don't think I have any influence on how exactly those futures are completed.  It could be from an IO event, from another thread, who knows...
+
+[16:57:45.0702] <ptomato>
+sounds like it'd be worth finding out, how do users of the Future interface in C++ programs 
+
+[16:58:03.0582] <ptomato>
+ * sounds like it'd be worth finding out, how do users of that Future interface in C++ programs wait for the futures to be completed
+
+[16:58:39.0500] <sfink>
+yeah, you'll need to understand whatever is calling `std::future<T>::wait_for` or `std::future<T>::wait_until`.
+
+[16:59:06.0065] <sfink>
+I'm not sure how you typically handle multiple futures, unless you somehow wrap them up together or something?
+
+[16:59:15.0863] <sfink>
+I've never used `std::future`
+
+[16:59:22.0973] <kfjvj>
+I haven't used it much either.
+
+[16:59:43.0455] <kfjvj>
+OK, this has certainly given me a lot to think about.  I'll have to follow up with my team.
+
+
+2022-10-19
+[17:00:16.0602] <iain>
+Looks like there's work on standardizing `wait_for_any`: https://www.boost.org/doc/libs/1_64_0/doc/html/thread/synchronization.html#thread.synchronization.futures.reference.wait_for_any
+
+[17:00:20.0000] <ptomato>
+if the interface designed to be used with a particular event loop, I'd say use that event loop. but if it's generic, i.e. you still have to bring your own event loop in C++, then you might have to expose a JS binding for a function(s) that lets you supply that event loop
+
+[17:01:25.0718] <iain>
+[when_any](https://en.cppreference.com/w/cpp/experimental/when_any) also looks relevant
+
+[17:01:53.0001] <kfjvj>
+unfortunately, I'm limited to c++ 14 -_-
+
+[17:02:32.0139] <sfink>
+well, this will all be doable somehow. Whatever you're integrating with will necessarily have figured out the hard parts of doing this, since it's necessary even if you're only using C++.
+
+[17:03:00.0510] <sfink>
+but it's definitely not as straightforward as running some synchronous code!
+
+[17:04:39.0278] <sfink>
+you may want to decide whether you really need the capability of waiting for some amount of time from within JS. If you drop that, you might be able to say that any JS stuff will run to completion, which could *include draining the job queue*. Then from C++'s perspective, all JS stuff is synchronous.
+
+[17:05:51.0946] <sfink>
+(and then your current implementation of `ReturnStringInMilliseconds` is fine, it just means the JS thread won't do anything while it's waiting.)
+
+[17:06:22.0575] <kfjvj>
+it's a lot to conisder.  Thanks again
+
+[17:06:48.0283] <kfjvj>
+I'm going to log off for now.  Bye
+
+[19:33:43.0194] <Redfire>
+> <@pchimento:igalia.com> if the interface designed to be used with a particular event loop, I'd say use that event loop. but if it's generic, i.e. you still have to bring your own event loop in C++, then you might have to expose a JS binding for a function(s) that lets you supply that event loop
+
+For me, I'm using the tokio runtime for futures, but basically the way it works is:
+1. Run futures that are ready, then yield
+2. Run microtask (promise) queue to completion
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[19:33:50.0526] <Redfire>
+* For me, I'm using the tokio runtime for futures, but basically the way it works is
+1. Run futures that are ready, then yield
+2. Run microtask (promise) queue to completion
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[19:33:56.0895] <Redfire>
+* For me, I'm using the tokio runtime for futures, but basically the way it works is
+1. Run futures that are ready, then yield
+
+2. Run microtask (promise) queue to completion
+
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[19:34:07.0126] <Redfire>
+* For me, I'm using the tokio runtime for futures, but basically the way it works is:
+1. Run futures that are ready, then yield
+2. Run microtask (promise) queue to completion
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[19:34:14.0247] <Redfire>
+* For me, I'm using the tokio runtime for rust futures, but basically the way it works is:
+1. Run futures that are ready, then yield
+2. Run microtask (promise) queue to completion
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[20:02:37.0682] <Redfire>
+> <@pchimento:igalia.com> if the interface designed to be used with a particular event loop, I'd say use that event loop. but if it's generic, i.e. you still have to bring your own event loop in C++, then you might have to expose a JS binding for a function(s) that lets you supply that event loop
+
+ * For me, I'm using the tokio runtime for rust futures (it's agnostic, but that's not relevant), but basically the way it works is:
+
+1. Run futures that are ready, then yield
+2. Run microtask (promise) queue to completion
+3. Run macrotasks that are complete (yes, I know that's different from the whatwg spec)
+
+[07:11:14.0305] <smaug>
+what does .sys stands for in *.sys.mjs files?
+
+[07:20:59.0051] <arai>
+"system", to clarify it's not for web content
+
+[07:21:52.0046] <arai>
+ * "system", to clarify it's not for web content but browser internal
+
+[07:27:10.0715] <smaug>
+but we don't have such naming convention for random .js files
+
+[07:32:40.0304] <arai>
+one reasons to use special extension is that, ".jsm" extension has been helping clarifying it's not regular JS but special thing (purpose, environment, etc), both for developers and linter. and we wanted the same for system ESMs.  `.mjs` has been used also for non-system ones and just `.mjs` wasn't sufficient
+
+[08:03:22.0002] <yulia>
+I think this was also related to special lint rules we need for esms run on the system, for example dynamic import is currently disallowed
+
+[08:03:26.0208] <arai>
+discussion happened in https://docs.google.com/document/d/1U4-38pElj7FTbm5Rj098XdFCzTixBmUiESlEVO1toRo/edit#heading=h.j95o5dbw9adv
+
+[09:55:02.0487] <kfjvj>
+arai: Your name came up in a discussion about the job queue yesterday.  I'm currently having an issue where I get a segmentation fault if I add Promise objects to the queue and call RunJobs.  Do you know why this might be?
+
+[09:57:39.0907] <kfjvj>
+Specifically, I'm wondering if there's anything beyond calling UseInternalJobQueues that I have to do to properly set up the job queue
+
+[09:58:12.0065] <arai>
+kfjvj: do you have backtrace of the crash?
+
+[09:58:39.0660] <arai>
+also, if you're not using debug build of the library, I'd suggest using debug build.  that will add many runtime assertions and some of them might catch the issue
+
+[09:58:44.0683] <kfjvj>
+> <@arai:mozilla.org> kfjvj: do you have backtrace of the crash?
+
+Not at the moment, and that might be complicated to get.  Mostly, I'm just looking to make sure that I used the API correctly.
+
+[09:59:35.0470] <arai>
+what API and how do you use them?
+
+[10:00:19.0385] <kfjvj>
+If I call UseInternalJobQueues, and it succeeds, is that enough to ensure that the job queue is properly set up for use?
+
+[10:00:47.0996] <arai>
+yes, the queue is ready
+
+[10:01:01.0352] <arai>
+then, what do you mean by "add Promise objects to the queue" ?
+
+[10:01:23.0644] <arai>
+the queue is for job, not Promise object
+
+[10:02:32.0842] <kfjvj>
+When I call EnqueueJob, the JS::HandleObject I pass in is something I created with JS::NewPromiseObject
+
+[10:02:39.0132] <kfjvj>
+OK, what is a "job" in this context?
+
+[10:02:58.0866] <arai>
+a function that corresponds to a promise reaction
+
+[10:03:27.0837] <arai>
+usually, you don't have to enqueue job manually
+
+[10:03:47.0610] <arai>
+the job is internally created for each Promise handling, and queued there
+
+[10:04:12.0352] <arai>
+so, if you use internal queue, what you need to do is just call `js::RunJobs`
+
+[10:04:58.0714] <kfjvj>
+Is it possible that calling runJobs will result in other jobs being enqueued, and then I'd have to run again?
+
+[10:05:58.0918] <arai>
+`RunJobs` runs all jobs until the queue gets empty
+
+[10:06:38.0860] <kfjvj>
+OK, tgood to know
+
+[10:06:46.0944] <arai>
+so, calling it once after running the target code should be sufficient
+
+[10:06:55.0392] <kfjvj>
+I'll try it.  THanks
+
+[10:08:47.0826] <arai>
+`js::EnqueueJob` is only for testing the engine internal
+
+[10:09:01.0078] <kfjvj>
+Well that's very good to know
+
+[10:20:40.0825] <iain>
+kfjvj: I got distracted yesterday, but I suspect that part of your problem is that `RunJobs` runs promise tasks that have resolved, but you want to wait for an unresolved promise
+
+[10:20:52.0934] <kfjvj>
+> <@iain:mozilla.org> kfjvj: I got distracted yesterday, but I suspect that part of your problem is that `RunJobs` runs promise tasks that have resolved, but you want to wait for an unresolved promise
+
+That is correct
+
+[10:22:10.0593] <iain>
+In general, it's totally valid to create promises that will never resolve, so the engine can't block waiting for unresolved promises
+
+[10:22:53.0415] <iain>
+So if you need to wait for a particular promise, you need to do something special with it
+
+[10:23:16.0841] <iain>
+It sounds like `EnqueueJob` is not that special thing
+
+[10:23:38.0063] <sfink>
+yeah, sorry for the misinformation
+
+[10:23:52.0307] <iain>
+It seemed very plausible to me too!
+
+[10:24:18.0666] <kfjvj>
+Oh, OK, yes.  If I delay enough time for the promise to complete, I can confirm that RunJobs *does* in fact work properly
+
+[10:24:36.0242] <kfjvj>
+OK, the picture is becoming much more clear now.
+
+[10:26:05.0035] <iain>
+I haven't looked at the code enough to verify, but I suspect that your segfaults were because RunJobs expects the enqueued promises to already be resolved, and you were enqueueing pending promises
+
+[10:26:54.0959] <kfjvj>
+OK, so I need to implement my own system to keep track of unresolved promises and call RunJobs when they're ready
+
+[10:27:40.0230] <iain>
+Yeah, something like that sounds right
+
+[10:27:47.0081] <arai>
+it expects the enqueue things to be a function, not a promise object
+
+[10:28:01.0454] <arai>
+ * it expects the enqueued things to be a function, not a promise object
+
+[10:28:03.0035] <kfjvj>
+and it only gets enqueued when the promise is resolved
+
+[10:28:15.0525] <arai>
+yes
+
+[10:28:48.0723] <kfjvj>
+OK, that really helps.  Thanks so much.  I think I can solve this problem now.
+
+[10:30:28.0301] <arai>
+I guess, you don't have to track unresolved promises.  you need to call `RunJobs` after 1. run JS code, or 2. you resolve promise from C++ code
+
+[10:30:48.0882] <iain>
+Oh, I hadn't actually noticed until now that the InternalJobQueue implementation of `enqueuePromiseJob` completely ignores the `promise` argument
+
+[10:31:11.0228] <kfjvj>
+> <@arai:mozilla.org> I guess, you don't have to track unresolved promises.  you need to call `RunJobs` after 1. run JS code, or 2. you resolve promise from C++ code
+
+Yes, I was referring to tracking the unresolved promises from the C++ side.
+
+[10:31:47.0127] <arai>
+so, if your promise is resolved by JS code, always calling `RunJobs` after running any JS code should be sufficient
+
+[10:32:15.0025] <arai>
+if your promise is resolved by C++ code, you need to call `RunJobs` at some point after that
+
+[10:32:25.0603] <kfjvj>
+> <@arai:mozilla.org> if your promise is resolved by C++ code, you need to call `RunJobs` at some point after that
+
+That is exactly what I'm doing.
+
+[10:33:12.0203] <iain>
+arai: While you're here: do you know anything about top-level await in the shell?
+
+[10:33:25.0698] <iain>
+I have this testcase:
+```
+let p = new Promise((resolve, reject) => { /* This promise is never resolved. */});
+
+async function foo() {
+  let a = await p;
+  print("continued");
+}
+
+await foo();
+```
+
+[10:34:23.0483] <Redfire>
+devtools transforms it into a async IIFE
+
+[10:34:24.0313] <iain>
+In theory it seems like it should hang. In d8 (v8's shell) it prints "Error: Top-level await promise never resolved"
+
+[10:35:03.0242] <iain>
+But if I run it in the shell, we just create the promise, shrug, and terminate
+
+[10:39:17.0380] <arai>
+let me check
+
+[10:41:02.0580] <iain>
+This is a problem for some waitAsync tests that do an await in a worker thread. I had them working at a point where the existence of a live waitAsync promise prevented the runtime from shutting down, but when I added code to make those OffthreadPromiseTasks cancellable, the tests started failing because the worker terminated before we had a chance to notify it and resolve the promise.
+
+[10:41:32.0342] <iain>
+It seems like at least top-level await should block worker shutdown?
+
+[10:41:53.0497] <arai>
+how do you evaluate the code?
+
+[10:42:13.0948] <arai>
+in `-m` option, I guess, we just throw away the root module's promise capability?
+
+[10:42:32.0339] <iain>
+Yeah, I'm using `./mach run -m module1.js`
+
+[10:43:01.0937] <arai>
+there seems to be no code that blocks on the module's promise
+
+[10:43:18.0504] <iain>
+Yeah, I couldn't find any either
+
+[10:43:47.0009] <iain>
+Do you think it would be reasonable to add code to do that?
+
+[10:44:36.0894] <arai>
+maybe I'm missing something.  are you going to add it for `-m` option?
+
+[10:44:55.0102] <arai>
+or something related to worker thread?
+
+[10:45:29.0524] <arai>
+is the `waitAsync` test available somewhere?
+
+[10:45:54.0001] <iain>
+https://searchfox.org/mozilla-central/source/js/src/tests/test262/built-ins/Atomics/waitAsync/nan-for-timeout-agent.js
+
+[10:46:17.0319] <iain>
+Specifically line 31
+
+[10:46:53.0656] <iain>
+I think we need it for workers, and I'm not sure if it would be good for modules or not
+
+[10:47:24.0218] <arai>
+so, for worker case, it's not about module, right?
+
+[10:47:39.0585] <arai>
+it's just async function?
+
+[10:48:13.0077] <iain>
+I think so
+
+[10:49:19.0985] <iain>
+I believe under the covers it's using `evalInWorker`
+
+[10:49:40.0690] <arai>
+hmm, I got confused
+
+[10:49:43.0220] <iain>
+So maybe this isn't TLA-specific
+
+[10:50:26.0830] <arai>
+it sounds like there's already some code that blocks on pending promise?
+
+[10:51:14.0890] <iain>
+Where?
+
+[10:51:33.0821] <arai>
+"the existence of a live waitAsync promise prevented the runtime from shutting down"
+
+[10:51:51.0341] <iain>
+Oh, sorry, poorly worded
+
+[10:51:58.0301] <iain>
+It's the existence of an OffThreadPromiseTask
+
+[10:52:31.0105] <iain>
+https://searchfox.org/mozilla-central/source/js/src/vm/OffThreadPromiseRuntimeState.cpp#211-215
+
+[10:53:25.0849] <arai>
+I haven't touched `OffThreadPromiseTask`
+
+[10:54:08.0840] <arai>
+err, maybe wrong. the blame says I reviewed :P
+
+[10:54:13.0534] <iain>
+:P
+
+[10:54:35.0640] <iain>
+I don't think it's important here
+
+[10:55:11.0949] <iain>
+I changed it so that we can create OffThreadPromiseTasks that will be deleted when we start shutting down the runtime, instead of waiting for them to be resolved
+
+[10:55:29.0847] <iain>
+And that exposed the problem with not blocking on the module's promise
+
+[10:55:38.0538] <iain>
+ * And that exposed the problem with not blocking on the worker's promise
+
+[10:59:03.0942] <iain>
+I think what we want is for `evalInWorker` to block if it actually awaits something
+
+[10:59:12.0661] <iain>
+But I don't know where/how to do that
+
+[11:03:13.0979] <iain>
+Maybe here? https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#4148-4149
+
+[11:03:30.0259] <arai>
+I need to figure out how the OffThreadPromiseTask and this code is related, before thinking about whether "block on awaiting" is reasonable or not
+
+[11:04:05.0242] <arai>
+at least, just "block the worker if there's pending promise" doesn't sound right
+
+[11:06:45.0948] <iain>
+OffThreadPromiseTask is currently only used for some wasm stuff that we can be confident will eventually resolve
+
+[11:08:19.0769] <iain>
+So in the internal job queue, we just always wait
+
+[11:09:12.0150] <arai>
+and that's unrelated to worker, right?
+
+[11:09:54.0046] <arai>
+and also to `waitAsync` testcase
+
+[11:15:18.0560] <arai>
+oh, maybe I misunderstood
+
+[11:15:46.0610] <arai>
+you're using `OffThreadPromiseTask` in your patch?
+
+[11:17:22.0242] <iain>
+Yes
+
+[11:17:24.0982] <arai>
+/me looks into bug 1467846 patches
+
+[11:17:50.0287] <iain>
+Oh, the patches currently up are Caroline's old WIP patches
+
+[11:17:54.0256] <iain>
+I've rewritten almost all of them
+
+[11:18:00.0598] <arai>
+okay
+
+[11:18:31.0440] <iain>
+Give me a minute to push a WIP to phabricator
+
+[11:21:00.0550] <arai>
+I think, "whether you're awaiting or not on the `waitAsync` promise" cannot be used as the condition whether to block the worker.  `await` just adds promise reaction, and that's not something worker itself is aware of
+
+[11:22:11.0784] <iain>
+https://phabricator.services.mozilla.com/D159745
+
+[11:22:27.0066] <arai>
+"whether there's a `OffThreadPromiseTask` created by `waitAsync` or not" could be used, but that doesn't mean you're awaiting on it, and also it won't work if the promise never resolves (if that can happen)
+
+[11:22:33.0489] <iain>
+I think patches 3, 4, 6, and 13 may be the most relevant
+
+[11:23:14.0664] <iain>
+I don't want this blocking to be something specific to waitAsync
+
+[11:23:35.0336] <iain>
+Right now `evalInWorker` doesn't actually support `await` in workers at all
+
+[11:23:55.0741] <iain>
+Even if you await something that's already resolved, the worker doesn't drain the job queue
+
+[11:23:57.0665] <iain>
+That's patch 13
+
+[11:25:12.0474] <iain>
+I was thinking that we should block the worker if the top-level script returns an unresolved promise
+
+[11:27:01.0833] <arai>
+so, if the worker script is `new Promise(() => {});`, the worker hangs?
+
+[11:27:57.0162] <iain>
+Er, maybe "returns an unresolved promise" is wrong
+
+[11:28:25.0564] <iain>
+I would expect the worker to hang on `var p = new Promise(() => {}); await p`
+
+[11:28:51.0070] <iain>
+I don't know what that looks like after being desugared
+
+[11:29:04.0886] <arai>
+is it module ?
+
+[11:29:32.0202] <arai>
+iiuc worker is regular script and it cannot have `await` there
+
+[11:30:40.0513] <iain>
+Huh. Somehow it works for me?
+
+[11:31:10.0527] <arai>
+can you provide testcase?
+
+[11:31:34.0463] <iain>
+Oh wait, it doesn't work
+
+[11:32:01.0546] <iain>
+Maybe the test262 code is swallowing the error somewhere?
+
+[11:35:42.0143] <iain>
+Oh, I guess in the test262 case, the await is inside an async arrow function: https://searchfox.org/mozilla-central/source/js/src/tests/test262/built-ins/Atomics/waitAsync/nan-for-timeout-agent.js#27,31
+
+[11:35:53.0016] <arai>
+anyway, I think, the requirement here is that, the worker needs to be alive until the other thread (can be main thread) resolves a promise, and then the worker needs to call `RunJobs` after that.  but the worker shouldn't block shutdown if the promise isn't resolved by any thread
+
+[11:36:10.0581] <arai>
+yes, it's inside async function and worker doesn't know anything about `await` inside it
+
+[11:36:28.0111] <arai>
+then, possible solution I can think of is to keep all workers alive until shutdown, and call `RunJobs` on all threads every time any thread finishes evaluating code
+
+[11:36:58.0524] <iain>
+Oh, I think I'm starting to understand the problem here
+
+[11:36:59.0908] <arai>
+or something along that line
+
+[11:38:13.0396] <iain>
+If you have an async IIFE, then it will run until it reaches the first await, and then suspend, so you don't need to have an explicit await on it at the top level
+
+[11:39:01.0093] <arai>
+or maybe add special type of worker that waits until shutdown
+
+[11:39:01.0616] <iain>
+So there's no connection between the worker and the await
+
+[11:39:09.0292] <arai>
+yes
+
+[11:39:42.0713] <iain>
+Blech
+
+[11:41:09.0609] <arai>
+or, maybe we don't support the test262 functions properly?
+
+[11:41:40.0126] <arai>
+"agent.leaving" says "a function that signals that the agent is done and may be terminated" in https://github.com/tc39/test262/blob/main/INTERPRETING.md
+
+[11:42:40.0412] <arai>
+that sounds like, otherwise it shouldn't be terminated?
+
+[11:42:56.0954] <iain>
+Oh, interesting
+
+[11:43:09.0695] <iain>
+So maybe we should be rewriting this code? https://searchfox.org/mozilla-central/source/js/src/tests/test262-host.js#181-188
+
+[11:46:28.0362] <arai>
+yeah, if test262 requires the agent to keep alive until the function is called, `start` needs to wrap the passed code that explicitly blocks until `leaving` is called, and promise handling would be somewhere there
+
+[11:46:49.0898] <arai>
+ * yeah, if test262 requires the agent to keep alive until the function is called, `start` needs to wrap the passed code with a code that explicitly blocks until `leaving` is called, and promise handling would be somewhere there
+
+[11:53:53.0367] <iain>
+Okay, this seems doable
+
+[11:54:03.0111] <iain>
+Thanks! This has been very helpful
+
+[11:54:16.0556] <arai>
+:)
+
+[12:00:29.0049] <davidj361>
+are you not able to std::move stuff like JS::RootedObject?
+
+[12:02:28.0815] <arai>
+when you need to move `JS::Rooted` ?
+
+[12:02:33.0128] <arai>
+ * when do you need to move `JS::Rooted` ?
+
+[12:02:53.0626] <davidj361>
+it's more of the fact that i was trying to use a struct to share a bunch of global vars between tests
+
+[12:03:10.0082] <davidj361>
+JS::RootedObject being one of them as you cannot declare that ahead of time
+
+[12:03:17.0322] <davidj361>
+but I think i'll just use a c-pointer for now...
+
+[12:03:19.0389] <kfjvj>
+> <@davidj361:matrix.org> it's more of the fact that i was trying to use a struct to share a bunch of global vars between tests
+
+I have used PersistentRooted
+
+[12:03:43.0558] <kfjvj>
+> <@davidj361:matrix.org> it's more of the fact that i was trying to use a struct to share a bunch of global vars between tests
+
+ * I have used PersistentRooted.  I think that's the only one that is valid if stored on the heap.
+
+[12:04:57.0952] <arai>
+`JS::Rooted` should be allocated on stack
+
+[13:48:48.0164] <davidj361>
+am I not able to hand off to `PersistentRootedObject` another `JSObject*`?
+
+[14:41:36.0628] <sfink>
+you can change which object it's rooting, yes
+
+[14:44:06.0227] <sfink>
+`root.se(newObj)`
+
+[14:44:10.0577] <sfink>
+ * `root.set(newObj)`
+
+[14:57:24.0534] <kfjvj>
+For any who are wondering, I believe I found a solution to my problem of converting C++ futures to JS promises, and it's surprisingly simple.
+
+We just use a global queue of void futures
+```
+class FutureWaitList {
+ public:
+    static void Enqueue(Future<void> &&f){
+       if (!s_waitQueue) {
+          s_waitQueue = make_unique<deque<Future<void>>>();
+        }
+       s_waitQueue->emplace_back(std::move(f));
+    }
+    static void WaitForAll() {
+        if (!s_waitQueue) {
+            return;
+        }
+
+        while (!s_waitQueue->empty()) {
+            s_waitQueue->front().wait();
+            s_waitQueue->pop_front();
+        }
+}
+ private:
+    static thread_local std::unique_ptr<std::deque<Future<void>>> s_waitQueue;
+};
+```
+
+Then, whenever we convert a future to JS, we enqueue a void future created with Future::then:
+
+```
+template<typename T>
+struct JsPartialConverter<Future<T>> {
+    static JS::Value ToJsImpl(JSContext * ctx, Future<T>&& orig) {
+        
+        auto prom = std::make_shared<JS::PersistentRootedObject>(ctx, JS::NewPromiseObject(ctx,nullptr));
+
+        FutureWaitList::Enqueue(
+            orig.then([ctx, prom] (auto &&f) {
+                JS::RootedValue retVal(ctx, ToJs<T>(ctx, f.GetResult().Value()));
+                JS::ResolvePromise(ctx, *prom, retVal);
+            }));
+
+        return JS::ObjectOrNullValue(*prom);
+    }
+};
+```
+
+And we just wait for them to complete before running jobs:
+
+```
+bool TestFutures(JSContext* ctx, JS::HandleObject global) {
+
+    char testCode[] = R"js(
+        print("Before defining function");
+        async function testFn(prom) {
+            print("Before waiting for promise.");
+            var s = await prom;
+            print(`Received promise value: ${s}`);
+        }
+        testFn;
+    )js";
+
+    JS::RootedValue testFn(ctx);
+    if (!ExecuteCode(ctx, testCode, &testFn)) {
+        return false;
+    }
+
+    JS::RootedValueVector args(ctx);
+    JS::RootedValue retVal(ctx);
+
+    JS::RootedValue jsPromise(ctx, ToJs(ctx, Demo_JS::ReturnStringInMilliseconds("Hello", 10000)));
+
+    if (!args.append(jsPromise) || !JS_CallFunctionValue(ctx, global, testFn, args, &retVal)){
+        return false;
+    }
+
+    conversions::FutureWaitList::WaitForAll();
+    js::RunJobs(ctx);
+
+    return true;
+}
+```
+
+
+2022-10-20
+[17:40:35.0252] <mgaudet>
+Maybe this would be worth converting to an embedding example!
+
+[17:50:08.0178] <Redfire>
+I get why it might be good to include in embedding examples, but I think its better to let each project do a custom implementation of the job queue (or use the internal one)
+
+It's also probably not the most ideal for all futures to reach completion before running the jobs
+
+[19:38:20.0813] <kfjvj>
+I think it's worth putting up there to at least demonstrate how the job queue works.  I was operating for a while under some mistaken assumptions:
+1. You should push promise objects into the job queue
+2. The job queue blocked until unresolved promises completed.
+
+It took until today, with the help of arai that I even realized that functions got put in the job queue *after* a promise resolves.  I think even some other people in this chat were mistaken about it.
+
+It's true that each project will likely have a custom implementation, but it's worth having a rough understanding of what they're implementing.
+
+[19:40:00.0987] <kfjvj>
+It's worth having something that says "by the way, you have to wait until the promises resolve before they're put in the queue."
+
+[02:18:13.0888] <nbp>
+TIL: polkit embeddeds SpiderMonkey.
+
+[02:26:39.0136] <Ms2ger 💉💉💉>
+🤯
+
+[02:29:50.0095] <nbp>
+strange, I do not see it being explicitly mentioned in the package …
+
+[02:31:01.0013] <nbp>
+probaly comes from gobject-introspection.
+
+[02:35:58.0784] <nbp>
+Ok 0.120 used to depend on SpiderMonkey, but this is no longer the case in 0.121: https://github.com/NixOS/nixpkgs/commit/15cdfd5e31f13e621fd8fa54a41a06ff3e984090 It has been replaced by duktape.
+
+[02:36:07.0248] <nbp>
+https://duktape.org/
+
+[11:28:51.0707] <slavaz>
+Folks. I am bit confused if it is safe to have a thread per JSContext and execute code in each JSContext independently, eventually having garbage collection, etc. Documentations seems very clear that it is NOT allowed, e.g. "Note: Starting in Gecko 12.0, JSRuntime is single-threaded. You must only use it from one thread." A single SpiderMonkey runtime (that is, instance of JSRuntime) — and all the objects, strings and contexts associated with it — may only be accessed by a single thread at any given time. However, a SpiderMonkey embedding may create multiple runtimes in the same process (each of which may be accessed by a different thread).". However, a contemporary embedding example https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/examples/worker.cpp appears to indicate that it is safe as soon as there are no shared objects. Where is the truth?
+
+[11:45:38.0634] <iain>
+slavaz: Each worker in that example has its own runtime, context, and thread.
+
+[11:45:54.0835] <iain>
+Note the `pthread_create` [here](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/examples/worker.cpp#L122)
+
+
+2022-10-22
+[20:52:59.0254] <Redfire>
+How strict exactly is the LIFO requirement for rooting?
+I'm thinking about something like this
+There shouldn't be any possibility of  a handle outliving a root or anything due to rust's lifetime system, so my question is just the LIFO.
+
+```rs
+#[derive(Default)]
+struct RootedArena {
+	values: Arena<Rooted<JSVal>>,
+	objects: Arena<Rooted<*mut JSObject>>,
+	functions: Arena<Rooted<*mut JSFunction>>,
+	order: RefCell<Vec<GCType>>,
+}
+
+impl RootedArena {
+	fn push_order(&self, ty: GCType) {
+		self.order.borrow_mut().push(ty)
+	}
+}
+
+impl Drop for RootedArena {
+	fn drop(&mut self) {
+		let mut values = std::mem::take(&mut self.values);
+		let mut objects = std::mem::take(&mut self.objects);
+		let mut functions = std::mem::take(&mut self.functions);
+
+		let mut values = values.into_vec().into_iter().rev();
+		let mut objects = objects.into_vec().into_iter().rev();
+		let mut functions = functions.into_vec().into_iter().rev();
+
+		for ty in self.order.take().into_iter().rev() {
+			match ty {
+				GCType::Value => {
+					let _ = values.next();
+				},
+				GCType::Object => {
+					let _ = objects.next();
+				}
+				GCType::Function => {
+					let _ = functions.next();
+				}
+			}
+		}
+	}
+}
+```
+(Arena is basically a vec but things can't be removed from it, until its destructor runs)
+
+[22:30:41.0648] <arai>
+`JSRuntime` is per-thread, and `JS_NewContext` creates `JSRuntime` and `JSContext`, using the given `JSRuntime` as parent
+
+[22:31:17.0791] <arai>
+oh, my scroll position wasn't up to date :P
+
+[22:34:56.0804] <arai>
+Redfire: `Rooted` manages a linked list](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/RootingAPI.h#1137-1139), and thus it must be destroyed in the reverse order, to [restore the state](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/RootingAPI.h#1194)
+
+[22:35:05.0916] <arai>
+ * Redfire: `Rooted` [manages a linked list](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/RootingAPI.h#1137-1139), and thus it must be destroyed in the reverse order, to [restore the state](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/RootingAPI.h#1194)
+
+[22:36:19.0948] <arai>
+If you have a struct with multiple GC pointers, I think what you need to do is to root the struct, and implement `trace` method on it, which traces all GC pointers
+
+[22:38:47.0227] <arai>
+example: https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/src/vm/SavedStacks.cpp#55-64
+```cpp
+void LiveSavedFrameCache::trace(JSTracer* trc) {
+  if (!initialized()) {
+    return;
+  }
+
+  for (auto* entry = frames->begin(); entry < frames->end(); entry++) {
+    TraceEdge(trc, &entry->savedFrame,
+              "LiveSavedFrameCache::frames SavedFrame");
+  }
+}
+```e
+
+[22:40:26.0461] <arai>
+when `trace` method is called, iterate over all pointers, and call [js::TraceEdge](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/src/gc/Tracer.h#129-142) or variants on them
+
+[22:41:02.0411] <arai>
+oh, the linked one is private function
+
+[22:41:51.0493] <arai>
+[JS::TraceEdge](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/TracingAPI.h#329-345)
+
+[22:42:09.0851] <arai>
+ * [JS::TraceEdge](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/TracingAPI.h#329-345) are public functions
+
+[23:57:18.0498] <Redfire>
+TraceEdge won't work though, that's storing pointers on the heap and tracing them
+I'm trying to store roots on the heap and ensure they get yeeted in LIFO
+
+[00:15:27.0269] <arai>
+oh, maybe `JS::TraceRoot` is what you want?
+
+[00:16:23.0106] <arai>
+it takes raw pointer
+
+[00:17:00.0512] <arai>
+[TracingAPI.h](https://searchfox.org/mozilla-central/rev/890c1a2f4939037aebd9002ef6b6bf72307e8c2a/js/public/TracingAPI.h#362-382)
+
+[06:30:59.0554] <Redfire>
+So I've mostly dealt with the LIFO problem, I'm just a bit confused now
+I'm running a native function which at the end just sets `args.rval` to Int32Value(3)
+the `rval` of `CallFunction` is the function itself though
+
+[06:31:10.0833] <Redfire>
+ * So I've mostly dealt with the LIFO problem, I'm just a bit confused now
+I'm running a native function which at the end just sets `args.rval` to `Int32Value(3)`
+the `rval` of `CallFunction` is the function itself though
+
+[09:29:03.0845] <Redfire>
+Oh oops, I was accidentally rooting the rval
+
+
+2022-10-23
+[09:10:48.0348] <Redfire>
+What endianness does the output of `JS_GetTwoByteStringCharsAndLength` follow?
+I feel like it should probably be native endian but I'm not sure
+
+
+2022-10-24
+[22:56:09.0613] <arai>
+it should be native
+
+[23:58:52.0041] <arai>
+non-native endian is used in very limited places inside SpiderMonkey
+
+[06:44:02.0665] <davidj361>
+Is it possible to create a string value without the use of context? Mainly making conversions into JS types.
+`    return JS::StringValue(JS_NewStringCopyN(ctx, origStr.c_str(), origStr.length()));`
+
+[06:45:56.0236] <Ms2ger 💉💉💉>
+no
+
+[06:46:15.0166] <davidj361>
+I don't see why not when you can do things with types like `JS::BoleanValue(origBool)`
+
+[06:46:42.0955] <davidj361>
+ * I don't see why not when you can do things with types like `JS::BoleanValue(origBool)` or `JS::NumberValue(origInt)`
+
+[06:46:53.0085] <davidj361>
+ * I don't see why not when you can do things with types like `return JS::BoleanValue(origBool)` or `return JS::NumberValue(origInt)`
+
+[06:50:03.0687] <jandem>
+davidj361: you *can* do `return JS::StringValue(string)`, but to allocate a new string you need a context
+
+[06:50:36.0667] <jandem>
+boolean and number values are encoded directly in the Value without using the GC heap
+
+[06:50:41.0800] <nbp>
+davidj361: Because strings are copied and allocated within the JS engine and they might be atomized, in which case we have to compare them against the previously registered strings.
+
+[06:53:13.0143] <nbp>
+yulia: is there any hidden agenda behind [`JS::loader::LoadedScript`](https://searchfox.org/mozilla-central/source/js/loader/LoadedScript.h#26) ? I am thinking about potentially using these as a value for the navigation cache.
+
+[06:54:54.0629] <nbp>
+It sounds like what is currently held by the `ScriptLoadRequest` might also be better stored in this `LoadedScript`.
+
+[06:56:29.0140] <yulia>
+> <@nbp:mozilla.org> yulia: is there any hidden agenda behind [`JS::loader::LoadedScript`](https://searchfox.org/mozilla-central/source/js/loader/LoadedScript.h#26) ? I am thinking about potentially using these as a value for the navigation cache.
+
+No hidden agenda. There is a plan to simplify it a bit, as this is used in a couple of weird places like devtools
+
+[06:56:49.0623] <yulia>
+so we were trying to keep it light weight. what were you thinking of moving in there?
+
+[06:58:18.0841] <nbp>
+a way to link back to the loader. and moving the source / bytecode related fields into this class.
+
+[07:19:32.0066] <yulia>
+i think source and bytecode might make sense there... for the link back to the loader it may be complicated
+
+[07:20:24.0068] <yulia>
+I need to refresh my memory but I think that the loader may not live as long as loadedScript in all cases
+
+[07:21:08.0743] <yulia>
+it would be nice to finish the cleanup work there and have loadedscript be the representation of the loaded script
+
+[09:04:55.0148] <dbezhetskov>
+yulia: hi, I've seen you in the tc39 meeting notes about realms things, so maybe you know if SpiderMonkey supports shadow realm proposal (https://github.com/tc39/proposal-shadowrealm/blob/main/explainer.md#Introduction) or not?
+
+[09:19:57.0194] <yulia>
+> <@dbezhetskov:igalia.com> yulia: hi, I've seen you in the tc39 meeting notes about realms things, so maybe you know if SpiderMonkey supports shadow realm proposal (https://github.com/tc39/proposal-shadowrealm/blob/main/explainer.md#Introduction) or not?
+
+We don't have a strong opinion on shadow realms, but we didn't object to it going to stage 3. We are prototyping it (@mgaudet has done this).
+
+[09:20:16.0120] <yulia>
+do you have specific concerns related to the recent implementation feedback from google? happy to discuss
+
+[09:21:19.0672] <mgaudet>
+> <@yulia:mozilla.org> do you have specific concerns related to the recent implementation feedback from google? happy to discuss
+
+(is there a link to this?) 
+
+[09:31:16.0556] <yulia>
+Sorry i should have been clearer, I know other implementations are currently working on their versions. There have been some questions about if anyone has started on the HTML integrations
+
+[09:31:28.0558] <yulia>
+Which i think might be a useful cross implementer discussion
+
+[09:32:21.0234] <mgaudet>
+yulia: Ah. Yeah, we have our HTML implementation in pretty good shape. (I'm uploading a patch to enable the tests as we speak) 
+
+[09:41:18.0962] <mgaudet>
+(lies; forgot to check something -- :P ) 
+
+[10:10:37.0658] <mgaudet>
+evilpie: Review ping on https://phabricator.services.mozilla.com/D158861 :) 
+
+[10:17:37.0685] <chaircrusher>
+I have a question about converting input strings in JSNative functions.
+In JS 1.8.5 I was calling JS_EncodeString.
+Using JS78 I changed the code to use JS::ToString
+
+But those produce very different strings.
+
+[10:18:12.0991] <chaircrusher>
+Because JS_EncodeString would convert some UTF-8 codepoints to plain ASCII
+
+[10:27:19.0024] <nbp>
+SpiderMonkey uses 2 different string format internally. It uses Latin1 and UTF-16. UTF-8 will always be converted to one or the other. 
+
+[10:30:10.0066] <nbp>
+If there is a problem where one codepoint is not replicated correctly, check whether there is one function which specifies the encoding in the name of the function, such as: `JS_EncodeStringToUTF8`, `JS_EncodeStringToASCII`, `JS_EncodeStringToLatin1`
+
+[10:31:28.0994] <nbp>
+/me wonders why there is no `JS_EncodeStringToUTF16`?
+
+[10:51:23.0025] <chaircrusher>
+This is converting a JS::String to a string.
+
+[11:14:37.0428] <evilpie>
+> <@mgaudet:mozilla.org> evilpie: Review ping on https://phabricator.services.mozilla.com/D158861 :)
+
+Sorry, missed that
+
+[11:15:07.0338] <mgaudet>
+> <@evilpie:mozilla.org> Sorry, missed that
+
+No worries!
+
+[14:33:26.0112] <chaircrusher>
+@nbp I don't know what JS_EncodeString does compared to JS::ToString when it encounters some UTF8 code sequences.
+
+But I fixed it by adding code to recognize valid UTF-8 code sequences and not escape them as arbitary XML characters, eg. &#00NN
+
+
+2022-10-25
+[18:46:11.0291] <Redfire>
+It seems a bunch of the Latin1 functions are deprecated, are those just there for legacy reasons?
+
+[08:11:40.0791] <tcampbell>
+Anyone have thoughts on where `js/examples/jorendb.js` should live? The `examples` directory never caught on and that is the only file in it.
+
+[08:12:42.0177] <tcampbell>
+Related to that, `js/src/devtools` seems like a confusing name. I wonder if we should move to be `js/util`, `js/misc` or something like that
+
+[08:13:07.0904] <yulia>
+we have another weird file, y.js
+
+[08:13:55.0698] <yulia>
+do we have others? maybe they can all be put in one place...
+
+[08:14:48.0736] <yulia>
+oh thats used in a jit test
+
+[08:18:02.0802] <Ms2ger 💉💉💉>
+good old y combinator
+
+[08:22:12.0867] <tcampbell>
+if we ever finish the js/src/jit-test vs js/src/tests cleanup, then I think just moving y.js into smtests (or whatever our new name was going to be) makes sense
+
+[08:23:48.0537] <tcampbell>
+/me mutters about ctypes.. Can we finally just delete it..
+
+[08:24:02.0244] <Ms2ger 💉💉💉>
+We need rusttypes 🧠
+
+[08:31:39.0490] <tcampbell>
+surely we shouldn't need ctypes to call something like `FormatMessage` https://searchfox.org/mozilla-central/source/toolkit/components/osfile/modules/osfile_win_allthreads.jsm#59-72 ...
+
+[08:33:24.0794] <davidj361>
+Are there any embedding hash table examples?
+
+[08:36:14.0755] <tcampbell>
+I don't think anyone wrote any basic examples. For the basics, it is similar enough to GCVector. In-tree, the `UniqueIdMap` is a pretty simple case https://searchfox.org/mozilla-central/rev/12a18f7e112a4dcf88d8441d439b84144bfbe9a3/js/src/gc/Zone.h#57-58
+
+[08:38:39.0070] <evilpie>
+OSFile is going away, but not sure about the timeline
+
+[08:54:52.0502] <davidj361>
+right, I'm just trying to figure out what's the equivalent of `JS::RootedValueVector` for hashtable and such. Ideally I want to convert unordered_map to JS map
+
+[08:55:16.0822] <davidj361>
+I don't think I'm supposed to use GCHashMap directly?
+
+[08:55:49.0328] <davidj361>
+ * I don't think I'm supposed to use GCHashMap directly and instead it's some `using` alias instead?
+
+[08:57:44.0340] <davidj361>
+ * right, I'm just trying to figure out what's the equivalent of `JS::RootedValueVector` for hashtable and such. Ideally I want to convert `std::unordered_map` to JS map
+
+[08:58:19.0638] <davidj361>
+Based on how I'm using `JS::RootedValueVector` instead of `GCVector`
+
+[08:58:26.0118] <tcampbell>
+`JS::Rooted<GCHashMap<....>>` We are phasing out the use of things like JS::RootedValueVector in favour of the more explicit JS::RootedVector<JS::Value> anyways. In practice, it was just confusing to have multiple ways to write things, and the typedefs were just hiding things.
+
+[08:58:49.0051] <tcampbell>
+ * `JS::Rooted<GCHashMap<....>>` We are phasing out the use of things like JS::RootedValueVector in favour of the more explicit `JS::RootedVector<JS::Value>` anyways. In practice, it was just confusing to have multiple ways to write things, and the typedefs were just hiding things.
+
+[08:59:48.0587] <tcampbell>
+oh good, sfink is here with probably a better answer
+
+[09:00:03.0392] <sfink>
+I think that would be `Rooted<GCVector<Value>>` though.
+
+[09:00:13.0386] <sfink>
+/me is going into a meeting right now, though. :-(
+
+[09:15:39.0389] <davidj361>
+What does tracing even mean? I only know tracing could possibly mean tracing the stack of function calls when a runtime error occurs.
+
+[09:18:02.0228] <tcampbell>
+The GC needs to 1) know what things you are still pointing too so it doesn't grabage colelct them, 2) let you know when it has moved things in memory in order to update existing pointers
+
+[09:19:01.0691] <tcampbell>
+Tracing is various bits of code in both spidermonkey and your application that allow the GC to find all the pointers that are still in use.
+
+[09:20:24.0089] <tcampbell>
+When you use `Rooted<T>`, there is a C++ constructor that notifies the GC that you have a new pointer on the stack to some GC-able things. This lets the GC trace from that root into any pointers it might contain
+
+[09:34:50.0232] <davidj361>
+Thank you tcampbell
+
+[09:57:04.0408] <sfink>
+Nice description. The main things the GC needs to able to do is: (1) trace through everything reachable from some set of roots, and (2) update some bookkeeping when GC pointers are written or, in some cases, read. The keywords we use to talk about those are "roots" or "rooting" for identifying the starting points, "tracing" for traversing through the reachable graph, and "barriers" for actions you take when writing/reading GC pointers.
+
+[10:01:37.0362] <davidj361>
+is your 1 & 2 the same meaning as tcampbell's 1 & 2?
+
+[10:01:57.0149] <sfink>
+no, sorry
+
+[10:02:09.0174] <sfink>
+his are both part of tracing, my (1)
+
+[10:04:01.0321] <sfink>
+rooting happens mainly through scanning the values on the JS stack, and scanning all currently live `Rooted` objects. Though there are additional ways to root things as well.
+
+[10:30:21.0423] <davidj361>
+I can't see the difference between `put()` and `putNew()` in `GCHashTable`.
+
+[10:38:13.0672] <iain>
+davidj361: https://searchfox.org/mozilla-central/source/mfbt/HashTable.h#267-268
+
+[10:38:33.0856] <iain>
+`put()` can be used to replace an existing key.
+
+[10:38:48.0198] <iain>
+ * `put()` can be used to replace the value for an existing key.
+
+[12:52:38.0580] <davidj361>
+can you convert a `JS::Rooted<JS::GCHashMap>` to a `JS::Value`?
+
+[12:54:30.0020] <sfink>
+no, not usefully. I mean, you could get a pointer to it and store it in a `PrivateValue`, but you would have to know what it was and unpack it any time you wanted to use it, plus you'd need to arrange for tracing. What would you be using that for?
+
+[12:55:12.0806] <davidj361>
+I was hoping to convert a bunch of C++ types into a generalized return type
+
+[13:20:26.0890] <davidj361>
+I think I might be able to achieve what I want via `JS::NewMapObject` and `JS::MapSet`, how do I go about converting JSObject* to HandleObject? It's complaining about passing the return of `JS::NewMapObject` as the 2nd argument to `JS::MapSet`. C casting to a `(JS::Handle<JSObject*>)` doesn't seem to do it either
+
+[13:24:16.0495] <davidj361>
+ * I think I might be able to achieve what I want via `JS::NewMapObject` and `JS::MapSet`, how do I go about converting JSObject\* to HandleObject? It's complaining about passing the return of `JS::NewMapObject` as the 2nd argument to `JS::MapSet`. C casting to a `(JS::Handle<JSObject*>)` doesn't seem to do it either
+I.e. could not convert ‘map’ from ‘JSObject*’ to ‘JS::HandleObject’ {aka ‘JS::Handle<JSObject*>’}
+
+[13:46:08.0455] <mgaudet>
+> <@davidj361:matrix.org> I think I might be able to achieve what I want via `JS::NewMapObject` and `JS::MapSet`, how do I go about converting JSObject\* to HandleObject? It's complaining about passing the return of `JS::NewMapObject` as the 2nd argument to `JS::MapSet`. C casting to a `(JS::Handle<JSObject*>)` doesn't seem to do it either
+> I.e. could not convert ‘map’ from ‘JSObject*’ to ‘JS::HandleObject’ {aka ‘JS::Handle<JSObject*>’}
+
+The general answer for "I need a `Handle<T*>`, and I have a `T*` is to put `T*` in a `Rooted<T*>` and use that as an argument to the function which wants `Handle<T*>`; `Rooted<T*>` will decay into a Handle properly
+
+
+2022-10-26
+[08:47:58.0656] <jonco>
+sfink: ping
+
+[08:49:26.0468] <sfink>
+Oh! Sorry, I'm going to have to miss the meeting. Last minute passport problems for a trip half my family is taking. Very soon. 
+
+[08:49:39.0157] <jonco>
+sfink: no problem
+
+[11:38:10.0714] <davidj361>
+Is this wrong? looks wrong with how I'm utilizing the same `JSContext*` twice
+`JS::RootedObject map(ctx, JS::NewMapObject(ctx));`
+
+[11:40:33.0355] <iain>
+davidj361: Looks right to me
+
+[11:57:46.0946] <davidj361>
+right, i'm worried about allocating too much memory, double allocating, etc, i gotta write some test cases on SpiderMonkey GC sometime
+
+[11:58:05.0253] <davidj361>
+ * right, i'm worried about memory leaks, double allocating, etc, i gotta write some test cases on SpiderMonkey GC sometime
+
+[15:34:49.0499] <Tim>
+is there a way to get SpiderMonkey to print out a more useful stack trace than this on an assertion failure? I'm already building with `--enable-debug`
+
+```
+#01: ???[/home/tjc/gecko-fork/obj-x64-debug-rt-no-jit-browser/dist/bin/libxul.so +0x5a11e9c]
+#02: ???[/home/tjc/gecko-fork/obj-x64-debug-rt-no-jit-browser/dist/bin/libxul.so +0xb0c7526]
+#03: ???[/home/tjc/gecko-fork/obj-x64-debug-rt-no-jit-browser/dist/bin/libxul.so +0xb0e9828]
+```
+
+(etc.)
+
+[15:35:16.0459] <Tim>
+I know I can do `bt` in the debugger, or at least I'd be able to if I knew which function to set a breakpoint on to get a break on an assertion failure, so for now it would be useful to get a usable stack trace without the debugger
+
+
+2022-10-27
+[23:59:29.0055] <l11d>
+@Tim not precisely what you asked but you could get that information via `addr2line --exe=/home/tjc/gecko-fork/obj-x64-debug-rt-no-jit-browser/dist/bin/libxul.so`
+
+[00:12:01.0658] <hsivonen>
+What's the right mach invocation to run js/src/tests/non262/Intl/Collator/compare.js ? jstestbrowser is the only subcommand that I can find that doesn't refuse to run, but even that one doesn't actually run the test based on injecting an obvious failure into the test.
+
+[00:52:26.0773] <evilpie>
+> <@hsivonen:mozilla.org> What's the right mach invocation to run js/src/tests/non262/Intl/Collator/compare.js ? jstestbrowser is the only subcommand that I can find that doesn't refuse to run, but even that one doesn't actually run the test based on injecting an obvious failure into the test.
+
+mach jstests js/src/tests/non262/Intl/Collator/compare.js
+
+[00:54:01.0059] <evilpie>
+> <@hsivonen:mozilla.org> What's the right mach invocation to run js/src/tests/non262/Intl/Collator/compare.js ? jstestbrowser is the only subcommand that I can find that doesn't refuse to run, but even that one doesn't actually run the test based on injecting an obvious failure into the test.
+
+ * mach jstests non262/Intl/Collator/compare.js
+
+[01:55:35.0532] <hsivonen>
+> <@evilpie:mozilla.org> mach jstests non262/Intl/Collator/compare.js
+
+Thanks. I thought I already tried that a couple of times, but it's indeed what works.
+
+[02:16:40.0643] <hsivonen>
+> <@hsivonen:mozilla.org> Thanks. I thought I already tried that a couple of times, but it's indeed what works.
+
+Ooh, It takes a substring of the path as the path!
+
+[08:49:09.0749] <Redfire>
+What's the difference between `JSAtom` and `PropertyKey`?
+
+[08:59:43.0550] <iain>
+Redfire: An atom is an interned string. PropertyKey represents anything that can be used in `obj[propertyKey]`: in addition to strings, this could be an integer or a symbol
+
+[09:11:29.0085] <Redfire>
+Oh, that makes more sense. Thanks
+
+[09:13:22.0743] <Redfire>
+Does `JS_GetPropertyKeys` work to get only the indexes in an array where a value has been initialised? I think it'd be better than just iterating from 0 to the length of the array especially.
+
+[09:13:37.0352] <iain>
+Note that the in-memory representation of an atom and a PropertyKey representing that atom are the same; we distinguish based on low-bit tagging, and atoms use the 0 tag: https://searchfox.org/mozilla-central/source/js/public/Id.h#52
+
+[09:16:20.0995] <iain>
+Yeah, if you have something like `var arr = []; arr[512] = 1;` then the only PropertyKey you get back will be 512
+
+[09:17:23.0173] <Redfire>
+well, and `length` right? 
+
+[09:18:49.0963] <iain>
+Oh, right, I forgot that it also returned non-enumerable properties
+
+[09:19:49.0479] <iain>
+(`for (var s in []) { console.log(s);}` won't print anything)
+
+[09:22:51.0657] <Redfire>
+Would I still get `length` if I passed `JSITER_OWNONLY`? I believe so right?
+
+[09:24:58.0628] <iain>
+Looking at the code I think you should only get `length` if you pass JSITER_HIDDEN, and JSITER_OWNONLY shouldn't affect it
+
+[09:25:59.0010] <Redfire>
+Right... `JSITER_HIDDEN` controls non-enumerable properties.
+The name is kind of misleading
+
+[09:27:45.0298] <Redfire>
+What does the Void type for a `PropertyKey` even represent?
+
+[09:30:25.0577] <iain>
+https://searchfox.org/mozilla-central/source/js/public/Id.h#15-21
+
+[09:31:35.0226] <Redfire>
+Ohhh, so it's basically like null
+
+[09:33:15.0596] <iain>
+Yep
+
+[10:35:53.0128] <iain>
+Is there an easy way to run a specific jetstream test locally in the shell?
+
+[11:05:47.0234] <mgaudet>
+iain: I have this repo locally (no idea where I got it 😬) `perf-automation/benchmarks/JetStream2` which has a `cli.js` that looks promising
+
+[11:05:56.0678] <mgaudet>
+ah https://github.com/mozilla/perf-automation/ 
+
+[11:07:06.0426] <mgaudet>
+also: https://bugzilla.mozilla.org/show_bug.cgi?id=1539848#c4 
+
+[11:13:23.0581] <iain>
+Aha, perfect
+
+[12:18:40.0588] <kfjvj>
+Is there an easy way in spidermonkey to add multiple nested properites?
+
+For example, if I have an object a, and I want to create a hierarchy of objects a.b.c.d, is there a straightforward way of doing that?
+
+[12:19:58.0401] <kfjvj>
+> <@kfjvj:mozilla.org> Is there an easy way in spidermonkey to add multiple nested properites?
+> 
+> For example, if I have an object a, and I want to create a hierarchy of objects a.b.c.d, is there a straightforward way of doing that?
+
+I should note that what I'm trying to do is define a number of classes in a namespace hiearchy
+
+[12:26:15.0475] <iain>
+I don't believe we have any helpers to do that, but it seems like it should be pretty straightforward to write your own function that loops over a list of names 
+
+[12:37:43.0325] <kfjvj>
+> <@iain:mozilla.org> I don't believe we have any helpers to do that, but it seems like it should be pretty straightforward to write your own function that loops over a list of names
+
+I figured.  I'm just lazy, like all good programmers should be.
+
+
+2022-10-28
+[09:00:33.0486] <nbp>
+Is the Debugger api available within webextensions?
+
+[09:01:38.0295] <nbp>
+I know it used to be within xpi, IIRC
+
+[11:43:43.0672] <kfjvj>
+What is the best way to construct a module object with SpiderMonkey?  At present, I'm adding a hierarchy of properties to the global object (i.e. type Foo in namespace a.b.c.d becomes global.a.b.c.d).  I've just been using plain objects.  Should I be using a particular function to generate module objects specifically?
+
+[11:44:03.0114] <kfjvj>
+ * What is the best way to construct a module object with SpiderMonkey?  At present, I'm adding a hierarchy of properties to the global object (i.e. type Foo in namespace a.b.c.d becomes global.a.b.c.d.Foo).  I've just been using plain objects.  Should I be using a particular function to generate module objects specifically?
+
+[11:47:37.0200] <kfjvj>
+I want these to look and act just like objects loaded from a JS source file, even though they're generated from C++ code.
+
+[11:47:47.0543] <kfjvj>
+ * I want these to look and act just like modules loaded from a JS source file, even though they're generated from C++ code.
+
+[11:55:52.0932] <Redfire>
+Bug 1722802 was supposed to add functions for this, but it hasn't had any progress for a while.
+
+[11:55:54.0474] <botzilla>
+https://bugzil.la/1722802 — UNCONFIRMED (nobody) — Add JSAPI functions to create JS modules w/ custom exports
+
+[11:56:36.0570] <kfjvj>
+> <@redfire75369:mozilla.org> Bug 1722802 was supposed to add functions for this, but it hasn't had any progress for a while.
+
+Thanks for letting me know.  I'm stuck using version 68 as it is, so I don't think I'll have access to that.
+
+[12:06:31.0281] <kfjvj>
+I'm seeing some functions in jsapi.h: ModuleInstantiate, ModuleEvaluate, and others.  Some of them accept a JS::HandleObject parameter named moduleRecord, but there's no indication as to what properties that object should have.
+
+[12:22:06.0058] <iain>
+kfjvj: I think you get the module records from here: https://searchfox.org/mozilla-esr68/source/js/src/jsapi.h#1960-1967
+
+[12:24:32.0498] <iain>
+Note that the steps for initializing modules in JS are somewhat complicated, and the spec has been rewritten pretty heavily in the last few years for stuff like async imports and top-level await, so if you want to use modules in 68 you're probably going to have to do some code spelunking
+
+[12:28:11.0852] <kfjvj>
+> <@iain:mozilla.org> Note that the steps for initializing modules in JS are somewhat complicated, and the spec has been rewritten pretty heavily in the last few years for stuff like async imports and top-level await, so if you want to use modules in 68 you're probably going to have to do some code spelunking
+
+OK.  I'll stick with plain objects until I can figure something out.
+
+
+2022-10-29
+[15:15:23.0854] <mgaudet>
+Do we have a good documentation comment describing NUNBOXING/PUNBOXING value formats? 
+
+[16:16:06.0824] <iain>
+This comment isn't great: https://searchfox.org/mozilla-central/source/js/src/gdb/mozilla/jsval.py#16-74
+
+[16:16:30.0426] <iain>
+This one is pretty out of date, but covers some of the high-level ideas better: https://searchfox.org/mozilla-central/source/js/src/gdb/mozilla/jsval.py#16-74
+
+[16:18:16.0706] <iain>
+ * mgaudet: This comment isn't great: https://searchfox.org/mozilla-central/source/js/src/gdb/mozilla/jsval.py#16-74
+
+
+2022-10-30
+[20:18:18.0393] <Redfire>
+How exactly does `JSExternalString` work? Is it a fixed length or is it not, it's not really clear to me?
+
+[20:32:30.0356] <iain>
+Redfire: It's fixed length. The main distinction between external strings and other strings is that SM doesn't own the backing storage.
+
+[20:33:20.0352] <Redfire>
+I assume its not possible to use these from JS then? 
+
+[20:44:16.0110] <iain>
+There's no API to create them from JS, but if you make one available then from the point of view of JS it's just like any other string
+
+[20:47:16.0072] <Redfire>
+So how does it allocate more space if necessary? it just doesn't? 
+
+[20:48:12.0689] <Redfire>
+Does it assume the length of the string is the max length of the string
+
+[21:17:53.0802] <iain>
+Strings are immutable. If you mutate a string, we make a new one.
+
+[21:18:28.0757] <iain>
+If you concatenate two strings, we often create a JSRope, which is a string representation with two child strings
+
+[21:20:00.0211] <iain>
+And then if we need to linearize it for some reason, we'll copy the data, the same as we would do with any other string
+
+[22:16:03.0966] <Redfire>
+So in essence, all this does is prevent a single copy
+
+[22:18:58.0899] <iain>
+Yeah
+
+[22:19:08.0842] <iain>
+It's most useful if you have a very large string
+
+[22:20:08.0428] <Redfire>
+*Time to make a trap so that I can use this from Rust*
+
+[22:20:31.0347] <Redfire>
+because I can't extend classes (obviously)
+
+
+2022-10-31
+[12:09:46.0927] <iain>
+mgaudet: Did you get what you needed out of those nan-boxing comments?
+
+[12:12:15.0376] <mgaudet>
+iain: Sort of; I know where to look for sure. It's too bad that [this comment](https://hg.mozilla.org/integration/autoland/rev/b82660f5a787#l1.84) from the Object Biased NaN boxing patches doesn't have a kin today
+
+[12:17:21.0784] <iain>
+At the very least it would be nice to move the non-outdated parts of the jsval.py comment somewhere more obvious
+
+[12:20:21.0436] <mgaudet>
+Agreed. I'll open a bug
+

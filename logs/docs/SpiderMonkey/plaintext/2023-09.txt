@@ -1,0 +1,3057 @@
+2023-09-01
+[02:55:40.0268] <smaug>
+jandem: apparently ORB might ship in 118, so I think removing spectre mitigations could ride the train on 119
+
+[03:30:36.0084] <jandem>
+smaug: that's good news. Do you know if there's a bug tracking ORB shipping on release?
+
+[03:31:58.0827] <smaug>
+let me ask
+
+[03:40:13.0731] <smaug>
+jandem: you were just CCed to that
+
+[03:43:29.0879] <jandem>
+I'll file a bug for the spectre change after lunch
+
+[04:49:59.0543] <nbp>
+smaug: ORB and spectre mitigations are related? Or just stating the release dates of unrelated changes?
+
+[04:50:53.0923] <smaug>
+we need to have orb enabled before removing the mitigations 
+
+[05:18:40.0175] <jandem>
+/me filed bug 1851162
+
+[06:32:31.0934] <nbp>
+jandem: do you recall if Wasm SEGV handler introduced a disassembler to extract the base encoded registers?
+
+[06:41:50.0363] <jandem>
+nbp: I don't think so but I'm not sure
+
+[06:42:40.0210] <Ryan Hunt>
+nbp: the wasm signal handlers do not disassemble the trapping instruction. it'd be interesting to do that so we could report better trap errors for out of bounds, but we don't do that right now
+
+[06:43:12.0729] <nbp>
+So how, I recall that it was doing so in the past.
+
+[06:45:18.0238] <Ryan Hunt>
+It's possible there was something before I was around? I know luke rewrote it at least once
+
+[06:46:18.0293] <nbp>
+oh … that might explain why I cannot find it.
+
+[06:50:08.0472] <nbp>
+jseward: https://bugzilla.mozilla.org/show_bug.cgi?id=986981 lots of mention of disassembler in this very old bug.
+
+[06:56:58.0324] <jseward>
+Well spotted!  The disassembler itself is https://bugzilla.mozilla.org/show_bug.cgi?id=1125236.
+
+[07:23:30.0845] <jandem>
+oh right for asm.js. It was removed in https://hg.mozilla.org/integration/mozilla-inbound/rev/d1094983384c
+
+[13:21:58.0083] <jrmuizel>
+iain: is this the code that you'd expect for `IsNullOrLikeUndefinedAndBranchV`?
+```
+   68e  mov r11, rbx
+   691  shr r11, 0x2f
+   695  cmp r11d, 0x1fff4
+   69c  jz $+0x4f
+   6a2  cmp r11d, 0x1fff3
+   6a9  jz $+0x42
+   6af  cmp r11d, 0x1fffc
+   6b6  jnz $+0x51
+   6bc  mov rsi, -0x2000000000000
+   6c6  xor rsi, rbx
+   6c9  mov rdi, qword [rsi]
+   6cc  mov rdi, qword [rdi]
+   6cf  mov rdi, qword [rdi]
+   6d2  test dword [rdi + 0x8], 0x80000
+   6d9  jnz $+0x3ab2
+   6df  test dword [rdi + 0x8], 0x40
+   6e6  jnz $+0x5
+   6ec  jmp $+0x1c
+```
+
+[13:22:39.0199] <jrmuizel>
+and if so what's the the big deref chain for starting at 6c9?
+
+[13:23:20.0133] <iain>
+If it's an object, we have to check if it is document.all, which is falsy.
+
+[13:24:54.0267] <iain>
+See [here](https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot)
+
+[13:25:25.0831] <iain>
+The flag is stored on the class, so we deref object->shape->baseShape->class
+
+[13:28:57.0659] <iain>
+jrmuizel: See also this bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1820627
+
+
+2023-09-02
+[08:39:43.0401] <l11d>
+I found a couple of asserts during fuzzing, the respective test-cases are rather convoluted though (and seem to require the reprl/fuzzing interface instead of a plain input file). would you like to wait for a more amenable testcase or do the asserts look interesting enough to justify the effort?
+```
+Assertion failure: baselineScript_, at js/src/jit/JitScript.h:479
+Assertion failure: ok (Incremental marking verification failed), at js/src/gc/Verifier.cpp:759
+Assertion failure: !tc->isMarkedGray(), at js/src/gc/GC.cpp:5080
+```
+
+
+
+2023-09-03
+[07:51:23.0431] <l11d>
+after reading the Rooting smdoc I'm still unclear how the `this` pointer is rooted. e.g., a GC managed object has a member function and from within this function I GC-allocate. assuming this triggers a compaction, how does the `this` pointer remain valid?
+
+[07:59:30.0320] <jandem>
+l11d: the assertions look interesting enough to report, especially if you have a stack trace
+
+[08:00:57.0702] <jandem>
+l11d: you're right, the `this` doesn't remain valid in that case :) we use static functions in that case and pass the object as rooted argument
+
+[08:01:43.0657] <jandem>
+ * l11d: you're right, the `this` doesn't remain valid :) we use static functions in that case and pass the object as rooted argument
+
+
+2023-09-04
+[22:49:57.0373] <aadhi0319>
+Would anyone happen to know if the `BaseAllocator::malloc` function is used to allocated space for Javascript heap objects or if it is another function? Thanks!
+
+[22:50:08.0951] <aadhi0319>
+ * Would anyone happen to know if the `BaseAllocator::malloc` function is used to allocate space for Javascript heap objects or if it is another function? Thanks!
+
+[00:35:35.0361] <freddy>
+does https://searchfox.org/mozilla-central/source/js/src/vm/MallocProvider.h help? :-)
+
+[02:52:17.0017] <evilpie>
+jandem: Use a RefPtr for the locale seems to work, but now we basically get two heap allocation. One for the ref counted object and one for the string. Maybe I should make the ref counted object dynamically sized and have the chars inline?
+
+[04:05:04.0677] <aadhi0319>
+freddy: That does help thanks!
+
+[05:04:45.0329] <jandem>
+evilpie: if the strings are usually very short it might make sense. Or a Variant that's either a short char array or the refptr, not sure if that works
+
+[08:26:42.0336] <nbp>
+jrmuizel: Stupid question, would it be possible to have a single `document.all` object for all documents across the web? For example using a getter/proxy like to do the computation, while having a single object which identity can be compared using a single pointer instead of the pointer chain as mentioned by @iain ?
+
+[08:27:15.0666] <nbp>
+ * jrmuizel: Stupid question, would it be possible to have a single `document.all` object for all documents across the web? For example using a getter/proxy-like to do the computation, while having a single object which identity can be compared using a single pointer instead of the pointer chain as mentioned by @iain ?
+
+[08:29:12.0434] <Ms2ger>
+👀
+
+[10:19:41.0312] <ptomato>
+anybody have some spare glances to cast at [this example](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/75) for embedders on how to properly enable WeakRef and FinalizationRegistry? this works for me but I'm not sure whether I'm using the API as intended
+
+
+2023-09-05
+[00:57:00.0543] <luyahan>
+Hi all ， I don't konow why ci failed on this patch? https://phabricator.services.mozilla.com/D187164 
+
+[00:57:11.0586] <luyahan>
+Who can help me?
+
+[01:13:49.0214] <luyahan>
+ * Hi all ， I don't know why ci failed on this patch? https://phabricator.services.mozilla.com/D187164 
+
+[01:14:01.0050] <luyahan>
+ * Hi all I don't know why ci failed on this patch? https://phabricator.services.mozilla.com/D187164 
+
+[01:14:07.0296] <luyahan>
+ * Hi all~ I don't know why ci failed on this patch? https://phabricator.services.mozilla.com/D187164 
+
+[01:32:57.0352] <jandem>
+luyahan: where do you see it failed?
+
+[01:34:34.0908] <jandem>
+once D187165 has been reviewed, y.ury or j.seward can land these 3 patches for you
+
+[01:35:38.0739] <jandem>
+also don't worry about changing the reviewer in the commit message, lando will change that automatically when landing the patch
+
+[04:28:03.0787] <Redfire>
+Should `BigInt*` be added to the GC Rooting Guide?
+
+[05:06:33.0058] <jandem>
+yeah if there's a list of all GC types somewhere we should add it
+
+[05:10:21.0513] <Redfire>
+This is a list. https://searchfox.org/mozilla-central/source/js/public/TraceKind.h#91
+Not sure about which are public and alll
+
+[08:31:26.0879] <mstange>
+iain: What's the bug for the property hook work?
+
+[08:32:29.0301] <iain>
+mstange: https://bugzilla.mozilla.org/show_bug.cgi?id=1844878
+
+[08:33:12.0671] <mstange>
+thanks!
+
+[09:35:47.0602] <nbp>
+sfink: if I understand correctly the stack, we create a JS object, some of which might be using a malloc-based allocation to hold the slots of the object.
+What happens in case of a nursery allocated objects needs an allocated buffer to hold its slots?
+
+As we never iterate over the dead objects, don't we accidentally leak memory?
+(related to Bug 1832153)
+
+[09:35:52.0255] <botzilla>
+https://bugzil.la/1832153 — NEW (nobody) — Perma Linux valgrind-test | 16 bytes in 1 blocks are definitely lost at malloc / js_arena_malloc / js_pod_arena_malloc / maybe_pod_arena_malloc
+
+[09:40:54.0091] <nbp>
+Also we do not have a meta bug for xpconnect stuff :/
+
+[13:02:29.0379] <iain>
+While investigating sp3, we noticed a case where JS code calls into the DOM repeatedly with a particular string as an argument. On the DOM side, the string has to be converted to their own representation. It would be faster if it were an external string, but the string originates in JS code. Perf people were wondering whether it would be possible for us to expose the ability to take an arbitrary JSString and convert it into an external string in-place, so that subsequent calls with the same string would not require the conversion. 
+
+[13:03:41.0873] <iain>
+My first reaction was "that seems terrifying". My second reaction was "maybe it's no more terrifying than the extensible->dependent conversion we do [here](https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#102-109)". My third reaction was "wait, how would that ever work for an atom?"
+
+[13:04:01.0662] <iain>
+Does anybody have any more informed thoughts? sfink, you know things about string representation, right?
+
+[13:07:21.0532] <mccr8>
+Don't we have some kind of string cache for something like that already? I worked on it like 8 years ago so maybe it is gone or I'm confused.
+
+[13:07:48.0937] <mccr8>
+I guess something like you are suggesting has the advantage that it doesn't need to worry about cache entries getting displaced.
+
+[13:13:41.0740] <iain>
+We do have a [cache](https://searchfox.org/mozilla-central/source/js/src/gc/Zone.h#77), but IIUC  it's for the case where we have a string on the gecko side and we want to efficiently convert it into a JSString. The case where we're looking at starts with a JSString and wants to convert it efficiently to a gecko-side string.
+
+[13:20:20.0733] <mccr8>
+Ah, right.
+
+[14:35:42.0763] <sfink>
+> <@nbp:mozilla.org> sfink: if I understand correctly the stack, we create a JS object, some of which might be using a malloc-based allocation to hold the slots of the object.
+> What happens in case of a nursery allocated objects needs an allocated buffer to hold its slots?
+> 
+> As we never iterate over the dead objects, don't we accidentally leak memory?
+> (related to Bug 1832153)
+
+We cheat. Any malloc allocation owned by a nursery object is registered in a separate list. If the object gets tenured, we remove the pointer from the list. After collecting the nursery, we iterate over the list and free everything left over.
+
+[14:36:07.0393] <sfink>
+so we're actually iterating over dead stuff in that case, for the purpose of freeing it all.
+
+[14:54:45.0119] <sfink>
+> <@iain:mozilla.org> Does anybody have any more informed thoughts? sfink, you know things about string representation, right?
+
+I'm looking at it. My concerns arise from the fact that external strings have their own `AllocKind`, and `AllocKinds` are common to all strings in an arena.
+
+[14:56:17.0308] <sfink>
+on a related note, external strings are not nursery-allocatable because they have finalizers, though that could be finessed.
+
+[14:56:38.0886] <sfink>
+question: would this be useful if it worked for only nursery strings? Only tenured strings?
+
+[15:48:52.0706] <iain>
+sfink: IIUC, the pattern is something like `callADOMFunction("enter", ...)`, so I suspect that the string in question here is likely to be an atom. Which is probably the worst case for us being able to do anything?
+
+
+2023-09-06
+[17:32:39.0568] <sfink>
+iain: yeah, that's messy. I believe that example would end up as a `JSFatInlineAtom`. The best I can come up with: since there is no such thing as a `JSThinInlineAtom`, we probably have plenty of excess space in almost all atoms. We could trade 8 bytes for a private pointer, and Gecko could use that to store an external string or the actual DOMString or whatever it is.
+
+[17:33:21.0819] <sfink>
+we actually have 32 unused bits in all atoms (because there's a 64-bit aligned 32-bit hash value), so we have plenty of flag bits if things need to be conditional or whatever.
+
+[17:59:44.0479] <iain>
+sfink: Cool, thanks for the feedback. My takeaway is that the answer to the perf people is "it looks pretty hard". I did not get the impression that it was a big enough bottleneck to justify major heroics, so we will probably shelve the idea.
+
+[07:29:33.0220] <Bryan Thrall [:bthrall]>
+iain: Arai's work on [extensible permanent atoms](https://bugzilla.mozilla.org/show_bug.cgi?id=1848278 ) might be helpful, though it relies on the embedder knowing the string to be atomized, IIUC. 
+
+[07:41:54.0307] <arai>
+maybe we can put the embedding's index (e.g. [mozilla::detail::GkAtoms::Atoms](https://searchfox.org/mozilla-central/rev/a4cb813cd4026cc24b45e843222e6a08204bae47/xpcom/ds/nsGkAtoms.h#96) or something that WebIDL binding codegen generates) into `JSAtom`'s field via the extended permanent atoms' initialization?
+
+[08:00:11.0674] <arai>
+actually, we don't need any field to store the index.  the index is just an offset of given `JSAtom` pointer within `JSAtomState` in the above patch stack
+
+[08:02:10.0910] <arai>
+so, if gecko has an equivalent list of `nsAtom`s, the conversion is simple pointer calculation
+
+[08:03:05.0292] <arai>
+iain: is there a bug or metabug for it?
+
+[08:13:24.0784] <arai>
+err, I was wrong.  `JSAtomState` is a struct with pointers, not struct with `JSAtom` instances, so the pointer itself is not convertible to the index
+
+[08:14:11.0595] <arai>
+so, we need an index field (14bit or so) inside `JSAtom`, in order to directly convert it to `nsAtom`
+
+[08:28:00.0908] <iain>
+This particular case is about strings that come from JS source code being passed to the embedding, not strings from the embedding being passed to JS. They aren't permanent atoms.
+
+[08:33:42.0172] <iain>
+arai: There's no bug. Markus brought it up in a meeting. He had seen that V8 had the ability to convert strings to external strings in-place, and was wondering how hard it would be for us to implement the same thing. It looks like it's fairly tricky, and it would not have been a huge win.
+
+[08:36:07.0214] <arai>
+the idea in the bug is to extend the permanent atom with the set of strings provided by gecko.  so, if gecko passes `"enter"` in the example and some others that they want to quickly convert in the list, they become permanent atoms, and if those strings appears in JS source, they're converted into permanent atoms during instantiation
+
+[08:39:48.0864] <arai>
+so, if we store the index within the list into the permanent `JSAtom` instance, we can convert it to the index and then convert it into `nsAtom`
+
+[08:43:33.0760] <arai>
+the background of the above bug is to move the atomization from runtime (mainly [mozilla::dom::CreateInterfaceObjects](https://searchfox.org/mozilla-central/rev/a4cb813cd4026cc24b45e843222e6a08204bae47/dom/bindings/BindingUtils.cpp#1047)) to compile-time+startup.  the current candidate of the string list is mostly WebIDL propreties, but we could use it also for the parameters if that helps
+
+[08:51:52.0617] <iain>
+arai: Ah, I see! That's an interesting idea. I guess it depends on what the distribution of strings is, and how many new permanent atoms we would need to add to get good coverage. I'll ask.
+
+[09:42:22.0010] <jandem>
+if we stored all the permanent atoms in an array, we could subtract the address from the base address to get the index
+
+[09:43:46.0415] <jandem>
+ * if we stored all the permanent atoms in an array, we could subtract the base address to get the index
+
+
+2023-09-07
+[09:15:02.0244] <aadhi0319>
+I'm trying to profile some inline functions defined in header files (`js/public/Utility.h:js_arena_malloc`) and gdb is too slow. I tried to build firefox with additional logging. However, I can't import `Logging.h` because LogLevel conflicts with another object's name in another cpp file. I can't include it in a namespace because then the MOZ_LOG macro doesn't work properly. Any ideas?
+
+[09:19:16.0142] <jandem>
+we don't use `Logging.h` in SpiderMonkey today so you might run into some issues there
+
+[09:20:51.0932] <jandem>
+if it's just for local instrumentation, you could use good old `printf`
+
+[09:22:54.0256] <aadhi0319>
+Yeah that's the approach I was leaning towards. I want to write the logs to a file, but I'm new to firefox so I'm not really sure where to initialize the file. Is there a particular function that runs before any js_arena_malloc?
+
+[09:23:59.0137] <jandem>
+`InitWithFailureDiagnostic` is called pretty early in startup
+
+[09:24:37.0500] <jandem>
+when writing to a file you probably have to disable the sandbox, I don't know what the current situation there is
+
+[09:24:50.0954] <nbp>
+gdb has a dprintf function which is basically addinga printf on a breakpoint
+
+[09:24:54.0629] <nbp>
+ * gdb has a dprintf function which is basically adding a printf on a breakpoint
+
+[09:25:15.0579] <nbp>
+if this can help at avoiding rebuilds ;)
+
+[09:25:26.0219] <aadhi0319>
+I see thanks for the tip! The sandbox can be disabled this is just a test.
+
+[09:26:36.0055] <aadhi0319>
+@nbp thanks I'll take a look at that. More than happy to try anything that avoids my 50 minute firefox builds :)
+
+[09:26:49.0626] <aadhi0319>
+ * nbp: thanks I'll take a look at that. More than happy to try anything that avoids my 50 minute firefox builds :)
+
+[09:29:36.0603] <mgaudet>
+confession: Public Service Announcement: If you haven't rebuilt or updated your `rr` install in a while, maybe consider doing it... I just realized y copy was almost a year old (after capturing an unreplayable trace unfortunately) 
+
+[09:29:40.0458] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[10:02:57.0591] <jandem>
+mayankleoboy1 : that zpng perf bug you filed exposed a pretty bad perf cliff. Great find, thanks!
+
+[10:36:47.0567] <kfjvj>
+Is it possible to share single module objects between different contexts?  For instance, to cache modules when loaded and then not have to re-load them when another context runs?
+
+[10:41:54.0919] <jandem>
+you mean to share them with/across DOM worker threads?
+
+[10:42:03.0764] <kfjvj>
+yes
+
+[10:43:12.0278] <iain>
+Inside the GC, does gray marking mean that something's on the mark stack? Is there another case where something would be marked gray?
+
+[10:43:54.0843] <jandem>
+kfjvj: not easily. Maybe you could share the stencil somehow if parsing the module a second time is the bottleneck
+
+[10:45:37.0411] <jandem>
+things reachable only from gray roots are marked gray I think
+
+[10:46:24.0439] <jandem>
+sfink can probably say more about this
+
+[10:49:19.0061] <iain>
+How do you get a gray root?
+
+[10:51:01.0374] <jandem>
+the embedding can add gray roots for things that might be kept alive by CC things or something
+
+[10:52:58.0304] <iain>
+More broadly: if we get to the end of the mark phase, and something is still marked gray, have we already gone wrong?
+
+[10:53:51.0115] <iain>
+I'm looking at a weak pointer, if that's relevant.
+
+[10:54:22.0021] <mccr8>
+> <@iain:mozilla.org> More broadly: if we get to the end of the mark phase, and something is still marked gray, have we already gone wrong?
+
+No, JS things kept alive from C++ but not JS roots are going to be grey at the end of the GC.
+
+[10:54:40.0987] <mccr8>
+The whole idea of these gray objects it to tell the CC what objects might be part of garbage cycles.
+
+[10:55:39.0569] <mccr8>
+This is different from the internal notions of an object being in the set of things to consider before the GC is done.
+
+[10:56:20.0679] <mccr8>
+Generally any object that is actively being manipulated should be black and not grey, because we don't want to create black-grey edges. That's what this unmark grey stuff is about.
+
+[10:57:12.0378] <iain>
+Just to make sure I'm clear: the GC has gray-with-an-a, and the CC has grey-with-an-e, and we're still talking about GC-gray here, right?
+
+[10:58:41.0211] <mccr8>
+Yes. Sorry, I'm not very consistent with that. gray is actually used by both GC and CC. NodeColor::grey is an internal thing for the CC.
+
+[10:59:26.0996] <mccr8>
+Probably nobody thinks about NodeColor::grey for years at a time, as it is deep inside the CC and we don't change that very much.
+
+[11:00:20.0601] <iain>
+Ah, got it.
+
+[11:00:28.0025] <mccr8>
+(I'd say there's been no substantial changes to NodeColor::grey stuff since 2014, for incremental CC and weak map CC support.)
+
+[11:01:27.0093] <ptomato>
+> <@jandem:mozilla.org> the embedding can add gray roots for things that might be kept alive by CC things or something
+
+curious about this, is there more info?
+
+[11:02:24.0700] <iain>
+> <@mccr8:mozilla.org> No, JS things kept alive from C++ but not JS roots are going to be grey at the end of the GC.
+
+In this context, what is the distinction between a C++ and a JS root?
+
+[11:04:29.0988] <mccr8>
+> <@iain:mozilla.org> In this context, what is the distinction between a C++ and a JS root?
+
+A C++ root is a C++ thing (usually DOM related) like CallbackObject. A JS root would be something like a reference on a JS stack frame thing.
+
+[11:04:58.0971] <mccr8>
+The basic distinguishing feature is that a C++ root could potentially be part of a garbage cycle going through refcounted DOM objects, but a JS root can't.
+
+[11:06:20.0473] <jandem>
+ptomato: see `JS_SetGrayGCRootsTracer` for example. This is all very complicated machinery to support Gecko's cycle collector though
+
+[11:06:24.0741] <iain>
+Okay, got it.
+
+[11:07:32.0161] <mccr8>
+The underlying issue is that the cycle collector's tracer is extremely slow so we want the GC to eliminate as much as possible from consideration for the CC.
+
+[11:08:01.0287] <mccr8>
+So, the CC hits a black object and it knows the object can't be part of a garbage cycle through a refcounted C++ object, so it stops tracing.
+
+[11:11:02.0233] <sfink>
+(sorry, I'm awake now) 
+
+[11:12:27.0198] <sfink>
+"C++ root" is a little ambiguous, because there are black C++ roots that keep things alive and work pretty much the same as JS roots (like the stack), and gray C+ roots that are almost the opposite: they root things that might be dead because they could potentially be part of a cycle.
+
+[11:12:41.0883] <sfink>
+I think mccr8 is using "C++ root" to refer to the latter, the gray roots.
+
+[11:13:16.0264] <mccr8>
+Yeah, sorry.
+
+[11:13:50.0547] <mccr8>
+I mostly don't care about non-gray objects so I don't have a great taxonomy in mind. 
+
+[11:14:30.0511] <iain>
+One thing that I think I've been confused about: we track gray bits while marking, and I was thinking that those indicated the gray state of marking (alive but we haven't marked its children), but that would be silly because that's precisely what the mark stack is for, right? 
+
+[11:14:50.0819] <sfink>
+yes, that's the confusing overload of "gray"/"grey"
+
+[11:15:40.0661] <iain>
+I think it's a third overload that is present in descriptions of the algorithm, but not in the actual code?
+
+[11:15:52.0435] <iain>
+ * I think it's a third overload that is present in external descriptions of the algorithm, but not in the actual code?
+
+[11:15:52.0455] <sfink>
+traditional GC algorithms refer to gray objects, which means they'll be marked eventually but have not yet been (which usually means they're on the mark stack)
+
+[11:15:54.0696] <kfjvj>
+> <@jandem:mozilla.org> things reachable only from gray roots are marked gray I think
+
+In that case, I'll try to avoid it.
+
+[11:16:33.0689] <mccr8>
+Yeah, the "gray bits" that the GC maintains for the CC should really be named something else.
+
+[11:16:37.0548] <jandem>
+we could rename gray to beige
+
+[11:16:58.0962] <sfink>
+that's one of the few colors not already used by some form of collection, as far as I know!
+
+[11:17:15.0768] <mccr8>
+It will mess up my mental imagery of the heap but that's probably okay.
+
+[11:17:22.0933] <iain>
+So to be clear: if TenuredCell::isMarkedGray returns true, then the object in question is reachable from a special gecko root, but not from a normal JS root, and could hypothetically be CC garbage?
+
+[11:17:33.0707] <mccr8>
+ecru bits
+
+[11:17:40.0945] <sfink>
+alpha=0.5 would work, since their existence is a little more tenuous, but...
+
+[11:17:44.0582] <mccr8>
+> <@iain:mozilla.org> So to be clear: if TenuredCell::isMarkedGray returns true, then the object in question is reachable from a special gecko root, but not from a normal JS root, and could hypothetically be CC garbage?
+
+yes
+
+[11:18:17.0611] <mccr8>
+Hmm are there any colors with the same number of letters as "Grey" to avoid messing up indentation.
+
+[11:18:18.0674] <iain>
+In that case: why the heck do I have something marked gray in a shell-only testcase?
+
+[11:18:35.0695] <iain>
+Pink, blue
+
+[11:18:37.0249] <mccr8>
+Oh wait ecru and grey both have 4 letters.
+
+[11:18:47.0525] <sfink>
+I would probably term it as: if TenuredCell::isMarkedGray returns true, then the object in question is reachable from an embedding grey root and NOT from any black root.
+
+[11:19:41.0834] <sfink>
+we do have test facilities for providing grey roots
+
+[11:19:59.0438] <jandem>
+relevant for JS is also the expose-to-js / gray-unmarking step where gray things exposed to JS are first marked black I think?
+
+[11:21:03.0111] <iain>
+Aqua, bone, buff, noir, rose, cyan, lime, ...
+
+[11:22:01.0545] <mccr8>
+cyan does start with the same letters as cycle...
+
+[11:22:24.0365] <jandem>
+rose could be confused with gecko's purple buffer
+
+[11:22:26.0391] <sfink>
+yeah, if you can get access to something and do anything with it, then we want to be sure that it doesn't die anytime soon. So if it's gray, we make it black instead. Recursively. JS code should never get its hands on a gray object, and we enforce that with a read barrier that says "you're not gray anymore".
+
+[11:23:01.0883] <iain>
+Okay. I am going to go poke at this pernosco recording for a bit, and then maybe come back with more questions.
+
+[11:23:09.0715] <iain>
+This has been very enlightening, thanks
+
+[11:23:23.0071] <mccr8>
+We should really write it up somewhere.
+
+[11:24:24.0058] <sfink>
+I am curious how you're getting something gray in a shell test. Unless it's via one of the test functions specifically for making stuff gray.
+
+[11:27:27.0782] <mccr8>
+Yeah that does seem odd.
+
+[11:30:38.0474] <jandem>
+I filed https://bugzilla.mozilla.org/show_bug.cgi?id=1852125 for documenting this
+
+[11:52:02.0147] <iain>
+Ah! It's because the testcase uses the `grayRoot` [testing function](https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#9540-9543).
+
+[11:53:01.0677] <iain>
+I didn't notice because this particular failure is currently only reproducible using six input files and a bespoke testing harness
+
+[11:53:40.0104] <mccr8>
+ah yes that bug
+
+[12:08:17.0227] <iain>
+With the added context of this conversation, I've tentatively convinced myself that it's just an overzealous assertion. sfink, I've cc'd you on the bug as a second pair of eyes.
+
+
+2023-09-09
+[09:42:51.0080] <l11d>
+if someone finds the time to look into bug 1850744 that would be quite nice; the fuzzers find corresponding crashes all the time and they don't de-duplicate well
+
+[09:42:53.0648] <botzilla>
+https://bugzil.la/1850744 — NEW (dthayer) — Near-null deref at js/src/gc/Cell.h:135
+
+
+2023-09-11
+[01:24:57.0675] <l11d>
+is checking whether a pointer is within the nursery a rather common operation? I was wondering if performance could be improved by allocating all nursery chunks within a specific memory range such that nursery membership becomes obvious just from the pointer instead of checking for the store buffer
+
+[02:26:58.0029] <jandem>
+l11d: it's pretty common. It used to be that all nursery chunks were contiguous but that changed at some point. See bug 1740752 for reverting this
+
+[02:27:01.0355] <botzilla>
+https://bugzil.la/1740752 — ASSIGNED (sfink) — Experiment with allocating the nursery in a contiguous region of address space
+
+[02:29:54.0409] <l11d>
+@jandem interesting, thanks for pointing out
+
+[12:42:47.0129] <yury>
+GC question: how to break (lldb?) at the moment when particular object is collected/moved?
+
+[13:05:25.0437] <jrmuizel>
+does the js shell support Workers?
+
+[13:06:02.0468] <iain>
+jrmuizel: For a given value of support, yes.
+
+[13:07:46.0873] <iain>
+yury: In rr/gdb, you can set a watchpoint on a memory location (`watch -l <address>`) that will break when it is modified. I think if you watch the header word of an object, you will either see it turn into a forwarding pointer (if moved) or poisoned (collected, in a debug build). Not sure if that approach will work in lldb.
+
+[13:07:55.0940] <iain>
+jrmuizel: What do you need workers to do?
+
+[13:08:42.0709] <iain>
+I think the main way to interact with workers is the `evalInWorker` shell function
+
+[13:12:16.0661] <jrmuizel>
+iain: JetStream uses workers for at least one of the tests
+
+[13:12:24.0145] <jrmuizel>
+and I'd like to run it in the shell
+
+[13:26:41.0630] <iain>
+jrmuizel: Hmm, you may have to write a bunch of glue code yourself. There's a pile of hacked together code [here](https://searchfox.org/mozilla-central/source/js/src/tests/test262-host.js) that is just sufficient to run the test262 Atomics stuff in the shell, using a shared array buffer to implement a mailbox. That may be the least bad starting point? 
+
+
+2023-09-12
+[23:22:37.0376] <nchevobbe>
+one of DevTools browser toolbox test failed with this assertion https://searchfox.org/mozilla-central/rev/64eef6b342bca86930caf3ba403c0f8ce621b474/js/src/builtin/JSON.cpp#1692
+```cpp
+MOZ_CRASH("JSON.stringify mismatch between fast and slow paths");
+```
+(https://treeherder.mozilla.org/logviewer?job_id=428704089&repo=autoland&lineNumber=22375 , https://bugzilla.mozilla.org/show_bug.cgi?id=1852595)
+Not sure what to do about it (cc jandem sfink )
+
+[02:38:29.0766] <jandem>
+nchevobbe: thanks, I moved it and added a needinfo
+
+[08:13:38.0583] <jrmuizel>
+What's the fastest way for me to get a count of the total number of js allocations that happen when running something in the shell?
+
+[08:29:13.0181] <mccr8>
+> <@jrmuizel:mozilla.org> What's the fastest way for me to get a count of the total number of js allocations that happen when running something in the shell?
+
+There's some kind of allocation count used for OOM testing in debug builds. I'm not sure if that's useful for what you want. https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#12079
+
+[08:29:40.0238] <iain>
+The OOM testing code counts mallocs, not GC allocations.
+
+[08:32:15.0013] <iain>
+It's tricky because we jit allocations.
+
+[08:34:49.0828] <iain>
+AllocationMetadataBuilder is heavyweight, but might work.
+
+[08:34:54.0790] <mccr8>
+Ahh right.
+
+[08:35:37.0134] <iain>
+Or maybe you can gather the information at GC time instead of allocation time
+
+[08:36:21.0850] <jrmuizel>
+iain: I'm pursuing the AllocationMetadataBuilder for now. It basically matches what I'm doing on the v8 side
+
+[08:49:35.0013] <jrmuizel>
+iain: when can I call SetAllocationMetadataBuilder? I tried in SetContextGCOptions but it seems like cx->realm() is null
+
+[08:53:39.0881] <iain>
+jrmuizel: Maybe just call "enableShellAllocationMetadataBuilder" at the top of the file, and then hack [this code](https://searchfox.org/mozilla-central/source/js/src/builtin/TestingFunctions.cpp#4521-4559) to do what you want?
+
+[08:53:55.0580] <iain>
+ * jrmuizel: Maybe just call `enableShellAllocationMetadataBuilder()` at the top of the file, and then hack [this code](https://searchfox.org/mozilla-central/source/js/src/builtin/TestingFunctions.cpp#4521-4559) to do what you want?
+
+[08:54:03.0282] <jrmuizel>
+I'd rather not edit the JS
+
+[08:54:34.0575] <jrmuizel>
+but I guess `-e enableShellAllocationMetadataBuilder()` would probably do it
+
+
+2023-09-13
+[06:46:35.0472] <liam_g>
+I'm using JS_Stringify() to create a JSON string in native code. It has an argument for a replacer function, which in my case is a native function passed through the HandleObject parameter. Is there any way of sneaking a closure value into this replacer function? Like in a reserved slot or something?
+
+[07:03:26.0530] <jandem>
+liam_g: you could use the `NewFunctionWithReserved` / `SetFunctionNativeReserved` friend apis for this
+
+[07:14:28.0109] <liam_g>
+Oh great, I didn't know about that. Thank you.
+
+[07:45:46.0180] <liam_g>
+How do I get the reserved slot inside the native function?
+
+[07:46:38.0497] <liam_g>
+I can see js::GetFunctionNativeReserved, but how do I find the function object needed for this? 
+
+[07:47:07.0848] <liam_g>
+I tried doing args.computeThis(), but it doesn't seem to work 
+
+[07:48:21.0620] <jandem>
+liam_g: `args.callee()`
+
+[08:48:37.0406] <@allstarschh>
+sfink: ping, meeting
+
+[08:48:39.0858] <@allstarschh>
+ * sfink: ping, meeting?
+
+[09:53:14.0173] <sfink>
+I recently encountered the idiom `for (const i in [...Array(100).keys()]) { ... }` to fake iterating over a range of numbers. (Well, it ends up giving them back as strings.) We don't seem to be able to optimize it much, based on looking at generated Ion code. Is there any way to know how frequently this shows up in practice?
+
+[10:05:36.0983] <iain>
+Pretty confident it's not in Speedometer. I've never seen it in the wild anywhere, but that proves nothing.
+
+[10:13:12.0947] <nbp>
+Human creativity at generating slow code is amazing!
+
+[10:16:57.0932] <iain>
+It does look like it was designed in a lab to be a bad idea.
+
+[10:18:25.0899] <mgaudet>
+It feels like someone was reaching for https://github.com/tc39/proposal-iterator.range and made something happen
+
+[10:41:16.0060] <denispal>
+sfink: Does the pretenuring information for an AllocSite get thrown away whenever we collect jitcode?
+
+[10:44:55.0136] <denispal>
+Our [promotion rates in sp3](https://docs.google.com/spreadsheets/d/1kykmNwm6Oecp8P3D1-2y6OpDOSCkL5vhieEJZso5Ofc) are pretty high, I wonder if we can cache some of these sites longer so we can potentially skip the nursery in future iterations
+
+[10:45:04.0601] <denispal>
+maybe that will help improve our gc minor times
+
+
+2023-09-14
+[21:01:47.0508] <arai>
+would it be possible to statically allocate `JSAtom` ? I'm wondering if [JSAtomState](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/JSAtomState.h#20) can be allocated statically instead of [allocating it while startup](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/JSAtomUtils.cpp#252) from [js::wellKnownAtomInfos](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/WellKnownAtom.cpp#9).   the context is that I'm trying to [extend the JSAtomState with embedding-provided strings](https://bugzilla.mozilla.org/show_bug.cgi?id=1848278) (WebIDL properties), and it looks like [it's better putting all WebIDL properties into the table](https://bugzilla.mozilla.org/show_bug.cgi?id=1850344#c2) (instead of limited set, such like frequently used). that means we need to atomize many strings either at compile-time or startup.  then, given the string itself is stored into binary, if `JSAtom` can also be stored into binary, that can reduce the cost during startup and also reduce the memory consumption (avoid the duplicate)
+
+[21:02:30.0528] <arai>
+ * would it be possible to statically allocate `JSAtom` ? I'm wondering if entries in [JSAtomState](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/JSAtomState.h#20) can be allocated statically instead of [allocating it while startup](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/JSAtomUtils.cpp#252) from [js::wellKnownAtomInfos](https://searchfox.org/mozilla-central/rev/1cae9ca7cc7d17cfc92088dfc68e5ff391128caa/js/src/vm/WellKnownAtom.cpp#9).   the context is that I'm trying to [extend the JSAtomState with embedding-provided strings](https://bugzilla.mozilla.org/show_bug.cgi?id=1848278) (WebIDL properties), and it looks like [it's better putting all WebIDL properties into the table](https://bugzilla.mozilla.org/show_bug.cgi?id=1850344#c2) (instead of limited set, such like frequently used). that means we need to atomize many strings either at compile-time or startup.  then, given the string itself is stored into binary, if `JSAtom` can also be stored into binary, that can reduce the cost during startup and also reduce the memory consumption (avoid the duplicate)
+
+[21:04:10.0692] <arai>
+so, the actual question would be:  1. is there a restriction about the address of `JSAtom` ?  2. can `JSAtom` be external ?
+
+[02:03:53.0642] <jonco>
+arai: one problem is that all GC things live in chunks allocated by the GC, and these chunks have headers containing mark bits and other data that are found based on the address of the GC thing. 
+
+[02:05:08.0533] <jonco>
+also thing kind is found relative to the arena in the chunk
+
+[02:07:40.0546] <jonco>
+It might be possible to arrange similar data structures for statically allocated atoms.  Alternatively we might need to have a flag stored in the atom and then make sure we check it everywhere before accessing such data.  The latter is harder and I'm not sure it's possible because of all the places where we can have a pointer to a generic GC thing without knowing what kind it is.
+
+[02:19:05.0674] <arai>
+does the chunk need to be alignment to certain size?
+
+[02:19:11.0391] <arai>
+ * does the chunk need to be aligned to certain size?
+
+[02:29:03.0161] <arai>
+hm, looks like we can just use `alignas` if necessary?  I'm not sure if there's any limit on `alignas` tho
+
+[02:32:33.0447] <arai>
+I'll check if it's possible to create the chunk statically
+
+[03:24:48.0077] <jonco>
+arai: yes chunks are aligned to 1MB
+
+[03:25:46.0421] <jonco>
+alignas doesn't currently work for dynamic allocations greater than a certain alignment, but I don't know whether it works for static data
+
+[03:26:48.0477] <jonco>
+you may need to fake a bunch of suff in chunks and arenas, but that doesn't matter because these data structures will never be traversed by the GC
+
+[03:38:20.0059] <arai>
+okay, I've tested locally and 1MB align seems to work for statically allocated struct, at least on clang
+
+[06:42:00.0751] <l11d>
+is it reasonable that this assert is caused by some kind of oom condition? https://searchfox.org/mozilla-central/source/js/src/jit/ProcessExecutableMemory.cpp#584
+
+[06:44:49.0724] <nbp>
+From : mmap man page:
+```
+       On success, mmap() returns a pointer to the mapped area.  On
+       error, the value MAP_FAILED (that is, (void *) -1) is returned,
+       and errno is set to indicate the error.
+```
+
+[06:46:04.0949] <nbp>
+so it is possible that this assert would be triggered if: 1/ we run out of memory, or 2/ someone managed to jump in the middle of the function to call mmap without setting up properly the registers for the assertion to pass.
+
+[06:47:17.0931] <nbp>
+however, I would expect the decommit to always work, unless the TLB overflows while remapping.
+
+[06:53:40.0501] <l11d>
+I guess decommit could fail if the OS has to split a memory mapping due to the decommit but there are no mappings left. so probably some OOM issue
+
+[06:54:51.0940] <nbp>
+I experienced it in the past with mprotect, Linux was properly reporting an OOM, Windows claimed wrong argument, and Mac crashed in the mprotect function.
+
+[07:45:28.0563] <jrmuizel>
+Do we know why we're worse than Chrome on the "WebAssembly Godot" benchmark?
+
+[07:47:07.0477] <Ryan Hunt>
+> <@jrmuizel:mozilla.org> Do we know why we're worse than Chrome on the "WebAssembly Godot" benchmark?
+
+Not really. Do you know how much worse we are?
+
+[07:48:48.0914] <jrmuizel>
+Ryan Hunt: is it possible the axis is in the wrong direction on https://arewefastyet.com/win10/benchmarks/overview?numDays=60?
+
+[07:49:29.0130] <jrmuizel>
+Chrome gets 362, Firefox baseline 700, Firefox optimizing 1467
+
+[07:50:27.0861] <jrmuizel>
+or maybe it's a startup test?
+
+[07:52:51.0910] <Ryan Hunt>
+jrmuizel: it could definitely be a startup test, we've seen that before with some wasm tests in jetstream2
+
+[07:53:23.0656] <Ryan Hunt>
+V8 does lazy compilation of wasm functions, so if that test doesn't do much meaningful work we'd be penalized quite a bit compared to v8
+
+[07:55:01.0938] <Ryan Hunt>
+I think the axis is correct, the unit looks like milliseconds
+
+[07:58:08.0886] <nbp>
+Stupid spec question, when it reads `Let ownKeys be ? O.[[OwnPropertyKeys]]().`, can `OwnPropertyKeys` be redefined by the user, or is the double bracket a symbol-like? 
+
+[07:59:37.0442] <jrmuizel>
+> <@rhunt:mozilla.org> I think the axis is correct, the unit looks like milliseconds
+
+yeah, running it locally I do see better times in Chrome
+
+[07:59:49.0282] <jrmuizel>
+> <@rhunt:mozilla.org> V8 does lazy compilation of wasm functions, so if that test doesn't do much meaningful work we'd be penalized quite a bit compared to v8
+
+Do we plan to do this?
+
+[08:01:04.0194] <jrmuizel>
+wasm-godot times "from download finish to interactive" which seems like a reasonable metric that likely requires meaningful work
+
+[08:01:53.0291] <Ryan Hunt>
+> <@jrmuizel:mozilla.org> Do we plan to do this?
+
+It's something I want to experiment with, but we likely don't have resources to do it until H1 24
+
+[08:03:08.0530] <jandem>
+> <@nbp:mozilla.org> Stupid spec question, when it reads `Let ownKeys be ? O.[[OwnPropertyKeys]]().`, can `OwnPropertyKeys` be redefined by the user, or is the double bracket a symbol-like?
+
+proxies have an implementation that forward to the `ownKeys` handler [here](https://tc39.es/ecma262/#sec-proxy-object-internal-methods-and-internal-slots-ownpropertykeys)
+
+[08:03:18.0186] <jandem>
+> <@nbp:mozilla.org> Stupid spec question, when it reads `Let ownKeys be ? O.[[OwnPropertyKeys]]().`, can `OwnPropertyKeys` be redefined by the user, or is the double bracket a symbol-like?
+
+ * proxies have an implementation that forwards to the `ownKeys` handler [here](https://tc39.es/ecma262/#sec-proxy-object-internal-methods-and-internal-slots-ownpropertykeys)
+
+[08:03:29.0577] <iain>
+nbp: It's the [[OwnPropertyKeys]] internal method: https://tc39.es/ecma262/#table-essential-internal-methods. 
+
+[08:04:06.0740] <Ryan Hunt>
+jrmuizel: Lazy compilation is a big change to the tiering architecture, and we would need to be careful to not break caching optimized code and peak performance
+
+[08:04:14.0651] <nbp>
+Thanks! Thus less worry of user-defined cases, but we have to guard against proxies.
+
+[08:04:41.0159] <jrmuizel>
+Ryan Hunt: right. Do we have any benchmarks that measure peak performance?
+
+[08:25:19.0955] <mgaudet>
+> <@nbp:mozilla.org> Thanks! Thus less worry of user-defined cases, but we have to guard against proxies.
+
+(if you've not seen it, on the spec page you can hit 'u' on the keyboard to add user-code annotations that (I don't think are perfect) which are intended to highlight possible user code dispatch
+
+[08:29:29.0461] <nbp>
+I did not knew that!
+
+[08:31:41.0827] <nbp>
+there is not a lot of different mode when pressing the '?' key.
+
+[08:32:14.0002] <mgaudet>
+It's been added in the last... year let's say; not sure why it's no on by default
+
+[08:48:39.0463] <sfink>
+> <@denispal:mozilla.org> sfink: Does the pretenuring information for an AllocSite get thrown away whenever we collect jitcode?
+
+denispal: I'm fuzzy on the details. jonco  knows better how AllocSites work with the JIT. There are several types of AllocSites. The ones attached to a bytecode will not be thrown away, but I expect the ones attached to an IC would be. (Or at least, I don't *think* there's any mechanism where discarded AllocSites donate their data to a "parent" or anything?)
+
+[09:00:41.0464] <denispal>
+sfink: Ok thanks!  I can put together a rough prototype for a longer cache to see if it helps sp3 at all.
+
+[09:04:55.0111] <jonco>
+denispal: yeah the AllocSites for JIT code are owned by the JitScript so if we throw that away we lose the alloc site data 
+
+[09:13:25.0369] <denispal>
+jonco: How do the AllocSites work in the Interpreter and Ion code?  Do we still create them and associate them with some pc offset?
+
+[09:16:32.0158] <denispal>
+ * jonco: How do the AllocSites work in the Interpreter and Ion code?  Do we still create them and associate them with some bytecode pc?
+
+[09:18:32.0839] <jonco>
+We only use AllocSites for baseline JIT code (except for a few 'catch-all' sites).  We don't bother collecting this data for code that only runs in the interpreter and we hope that we've figured out the correct heap to use by the time code gets to Ion.
+
+[09:21:01.0624] <denispal>
+Oh I see, so it seems like we'll still consume the AllocSite in Ion [here](https://searchfox.org/mozilla-central/source/js/src/jit/WarpOracle.cpp#1248-1255) but we won't bother updating the alloc counts in Ion?
+
+[09:37:54.0635] <jonco>
+yes we just take the heap we've decided on at that point
+
+[10:05:24.0679] <Ryan Hunt>
+jrmuizel: sorry, had to step away for a bit. Good question, I think that's covered okay in our current CI benchmarks (like embenchen and some of the tests in JS2). But we haven't really looked closely at those benchmarks in several years now, so I don't remember all the details
+
+[10:38:47.0513] <mgaudet>
+ * It's been added in the last... year let's say; not sure why it's not on by default
+
+
+2023-09-15
+[10:31:04.0158] <sfink>
+joncoor maybe mccr8: I remember with WeakMap stuff I ran into the case where a CCW could get nuked but then un-nuked. I'm not sure what it corresponds to in Firefox terms—something like changing the domain to something inaccessible and then changing it back? Does that even nuke in the first place? Anyway, I'm wondering (1) is that actually a thing or am I making it up, and (2) do we have a way to trigger it in a JS shell test?
+
+[10:31:35.0025] <sfink>
+I was thinking about it in relation to bug 1852729. Do we need to do something for the un-nuking case?
+
+[10:31:36.0228] <botzilla>
+https://bugzil.la/1852729
+
+[10:32:16.0790] <sfink>
+and is there a more colorful term than "un-nuking"? "Nuclear zombies"? "Radioactive revivified wrappers"?
+
+[10:37:20.0159] <mccr8>
+> <@sfink:mozilla.org> and is there a more colorful term than "un-nuking"? "Nuclear zombies"? "Radioactive revivified wrappers"?
+
+I'm not sure what you mean. A CCW to an outer window proxy can be turned into a remote window proxy (in the current compartment) via transplanting, if an iframe navigates to a non-same-site page, and then we do the reverse if it navigates back to a same site page.
+
+[10:38:42.0956] <sfink>
+Yeah, I may be mixing up transplanting and nuking. I'm really thinking of the nuking and un-nuking cases, which may have nothing to do with domains or navigation.
+
+[10:39:14.0478] <mccr8>
+I'm not sure what un-nuking is.
+
+[10:40:04.0914] <sfink>
+ok, I'd better go crawl through to code to find what it is I'm talking about.
+
+[10:41:08.0535] <mccr8>
+> <@sfink:mozilla.org> ok, I'd better go crawl through to code to find what it is I'm talking about.
+
+In the browser, I think the only nuking we do is turning CCWs from chrome into content into dead wrappers, when the window is closed. At least that's all I can think of. We wouldn't undo that.
+
+[10:41:21.0439] <sfink>
+hm, https://searchfox.org/mozilla-central/source/js/src/proxy/CrossCompartmentWrapper.cpp#528 seems relevant
+
+[10:43:49.0631] <mccr8>
+ugh looks like this is related to xray waivers. Uhh let's see if I can remember any of this. https://bugzilla.mozilla.org/show_bug.cgi?id=1582568
+
+[10:45:30.0656] <sfink>
+Ah, I ran into it [here](https://searchfox.org/mozilla-central/rev/b741ddde6c678ca7025858952202d20664491555/js/src/gc/Marking.cpp#817-821) for bug 1667913
+
+[10:45:31.0833] <botzilla>
+https://bugzil.la/1667913 — RESOLVED (sfink) — Enable incremental weakmap marking in the browser
+
+[10:47:08.0201] <mccr8>
+Well, that's the only occurrence of "un-nuke" in the entire codebase. 😉
+
+[10:47:28.0851] <mccr8>
+So I think you are the expert here.
+
+[10:47:39.0532] <mccr8>
+Module owner for un-nuking
+
+[10:48:29.0711] <sfink>
+it seems like it's `js::RemapDeadWrapper` that I'm thinking of.
+
+[10:51:22.0032] <sfink>
+the most relevant caller seems to be [nsGlobalWindowOuter::SetNewDocument, here][https://searchfox.org/mozilla-central/rev/b741ddde6c678ca7025858952202d20664491555/dom/base/nsGlobalWindowOuter.cpp#2207)
+
+[10:51:39.0001] <sfink>
+ * the most relevant caller seems to be [nsGlobalWindowOuter::SetNewDocument, here](https://searchfox.org/mozilla-central/rev/b741ddde6c678ca7025858952202d20664491555/dom/base/nsGlobalWindowOuter.cpp#2207)
+
+[11:00:03.0844] <mccr8>
+I still don't understand what this has to do with unnuking.
+
+[11:00:20.0423] <sfink>
+ouch. I read through bug 1582568. If anyone is melting their brain, it's great reading. Comment 55 kind of lays it out.
+
+[11:00:21.0762] <botzilla>
+https://bugzil.la/1582568 — RESOLVED (mccr8) — Intermittent GECKO(1150) | Assertion failure: !JS_IsDeadWrapper(js::UncheckedUnwrap(&obj.toObject())), at /builds/worker/workspace/build/src/js/xpconnect/src/XPCComponents.cpp:1911
+
+[11:00:39.0930] <sfink>
+ * ouch. I read through bug 1582568. If anyone is wanting to melt their brain, it's great reading. Comment 55 kind of lays it out.
+
+[11:01:54.0522] <sfink>
+it seems like there's a case where we have a CCW that turns into a DeadObjectProxy and then turns back into a CCW?
+
+[11:03:24.0789] <mccr8>
+> <@sfink:mozilla.org> it seems like there's a case where we have a CCW that turns into a DeadObjectProxy and then turns back into a CCW?
+
+Ah, it sounds like maybe that happens if the target of the CCW is an Xray waiver.
+
+[11:03:42.0686] <mccr8>
+I'm not sure about the "turn back" part of that
+
+[11:06:49.0743] <sfink>
+I do see `MOZ_ASSERT(!newTarget->is<FinalizationRecordObject>());` with the comment `These are not exposed`, which maybe addresses my concern in this case? As in, this would only be a problem if this CCW were the target of a `WeakRef`, and it sounds like that may be impossible.
+
+[11:08:05.0748] <mccr8>
+I don't know enough about WeakRefs to know if that is allowed or not.
+
+[11:08:25.0306] <sfink>
+anyway, I'm getting some hits when I add a `MOZ_CRASH` to `js::RemapDeadWrapper`, so maybe I have a way to look into this.
+
+[11:29:08.0252] <jrmuizel>
+In https://bugzilla.mozilla.org/show_bug.cgi?id=1853398 I see an GetElem IonIC when running stanford-crypto-pbkdf2 but not when running stanford-crypto-sha256. What's the easiest way to find out why I'm getting an IonIC?
+
+[11:29:27.0263] <jrmuizel>
+the IR for the IonIC is:
+```
+GuardToObject
+GuardShape
+GuardToInt32
+Int32ToIntPtr
+LoadTypedArrayElementResult
+ReturnFromIC
+```
+
+[11:34:06.0287] <iain>
+jrmuizel: Are you running in the shell? You can set CACHEIR_LOGS=1 as an environment variable, which should dump a cacheir<pid>.json file into /tmp, and then open it up here: http://tomschuster.name/cacheir-tools/
+
+[11:34:17.0591] <jrmuizel>
+iain: perfect
+
+[11:34:59.0203] <iain>
+The most likely reason is that we had more than one active IC, so you should be able to see the CacheIR for all the ICs we attached at that point
+
+[11:36:09.0580] <iain>
+If I had to guess, I would guess that we occasionally see a regular array (instead of a typed array) at that location
+
+[11:40:39.0163] <iain>
+jrmuizel: While we're vaguely on the topic: do we have any reason to think stanford-crypto-pbkdf2 is a particularly relevant sub-benchmark, or is just easy to analyze? That kind of number-crunchy array access code is one of the things that we knowingly took a hit on when we moved from IonBuilder to WarpBuilder, and we didn't put a lot of effort into improving it because we didn't think it mattered much for web usage.
+
+[11:42:34.0394] <jrmuizel>
+iain: I don't think it's a good benchmark (in fact, I think it is bad), but it's easy to analyze and it's possible it's low hanging fruit
+
+[11:43:14.0828] <jrmuizel>
+It looks like part of the performance problem is that it runs the same code on a typed array and a regular array
+
+[11:43:23.0750] <jrmuizel>
+(that's the likely cause of the IonIC)
+
+[11:44:10.0038] <jrmuizel>
+normally this is unwise but @mstange says the same thing is happening in the segmentation sp3 test
+
+[11:44:16.0167] <jrmuizel>
+ * normally this is unwise but mstange  says the same thing is happening in the segmentation sp3 test
+
+[11:45:36.0183] <iain>
+When I looked at segmentation I apparently found that we got 10-15% faster if we didn't mix types: https://bugzilla.mozilla.org/show_bug.cgi?id=1844857#c4
+
+[11:45:51.0164] <iain>
+Is the same sort of thing true here? Does it close the gap with V8 at all?
+
+[11:46:51.0132] <jrmuizel>
+I'm going to try to adjust the test case to always use a TypeArray
+
+[13:45:39.0609] <jrmuizel>
+iain: can someone explain where the proxy in this case comes from: https://share.firefox.dev/3RqeAlW
+
+[13:46:23.0618] <mstange>
+https://browserbench.org/JetStream2.0/SunSpider/3d-cube.js
+
+[13:46:54.0348] <jrmuizel>
+https://github.com/WebKit/WebKit/blob/68ac9887adc95fe820ffa87d93ee4fef7c485bf8/PerformanceTests/JetStream2/SunSpider/3d-cube.js#L100
+
+[13:47:23.0031] <mstange>
+In the browser this has something with `nsOuterWindowProxy` in it in the stack
+
+[13:49:02.0366] <jrmuizel>
+> <@iain:mozilla.org> Is the same sort of thing true here? Does it close the gap with V8 at all?
+
+It does
+
+[13:50:45.0973] <iain>
+jrmuizel: Specifically, it looks like [here](https://github.com/WebKit/WebKit/blob/68ac9887adc95fe820ffa87d93ee4fef7c485bf8/PerformanceTests/JetStream2/SunSpider/3d-cube.js#L320) we are calling `CreateP` without `new`, in which case `this` is the global.
+
+[13:51:02.0003] <jrmuizel>
+ah
+
+[13:51:04.0904] <iain>
+jrmuizel: Intriguing. How much of the gap is closed?
+
+[13:54:19.0007] <jrmuizel>
+iain: on that function it goes from 58% to 12%
+
+[14:40:27.0384] <iain>
+Huh. I would not have expected that. Digging into this a bit, I think this is what's going on: https://source.chromium.org/chromium/chromium/src/+/main:v8/src/compiler/js-native-context-specialization.cc;l=2287-2372;drc=31fb07c05718d671d96c227855bfe97af9e3fb20;bpv=0;bpt=1
+
+[14:41:27.0109] <iain>
+Roughly speaking: if a property access has multiple IC stubs (but not so many that it goes megamorphic), we generate an Ion IC, whereas in V8 it looks like they generate polymorphic code covering all the cases they've seen.
+
+[14:46:20.0432] <iain>
+In general, our expectation is that it's not all that useful to do so, because the code you generate/execute if you inline all the stubs isn't going to be very different than the code you generate/execute for the Ion IC.
+
+[14:49:53.0556] <iain>
+The more I think about it, the more I think that the CFG you end up generating would be gross and maybe hard to optimize. I wonder if it is less ugly in sea-of-nodes? Presumably not so much less ugly that V8 is willing to stick with sea-of-nodes.
+
+[15:02:06.0578] <mstange>
+There's another reason why the gap shrinks, and that's because using typed arrays for all calls makes Chrome slower. It caused Chrome to do some allocation whose purpose Jeff didn't understand.
+
+[15:04:20.0193] <iain>
+Huh. So maybe the gap closing is less that they're doing something smart in the polymorphic case, and more that they're doing something dumb in the monomorphic case? 
+
+[15:08:33.0203] <mstange>
+It's possible... though actually I may have misspoken - the allocation happened during a call to subarray, but that call is in a different function, so it wouldn't have affected the gap "on this function"
+
+[15:09:09.0323] <mstange>
+I'll let Jeff fill in the details at his convenience
+
+[15:27:59.0480] <iain>
+I find it difficult to understand Turbolizer, but from what I can tell by squinting at a much simpler testcase, V8 isn't unlocking a huge pile of optimization opportunities by generating polymorphic code here. Specifically: for a function `foo(arr) { arr[0] = arr[1] + arr[2]; }`, V8 generates code that is roughly:
+```
+tmp1 = isTypedArray(arr) ? typedLoad(arr,1) : regularLoad(arr,1);
+tmp2 = isTypedArray(arr) ? typedLoad(arr,2) : regularLoad(arr,2);
+sum = tmp1 + tmp2
+if (isTypedArray(arr)) { typedStore(arr, 0, sum) } else { regularStore(arr, 0, sum); }
+```
+You can imagine an optimization that would notice the structure there and turn it into something like:
+```
+if (isTypedArray(arr) { 
+  /* do the typed version */ 
+} else { 
+  /* do the normal version */ 
+}
+
+[15:28:27.0773] <iain>
+But it does not look like V8 has such an optimization.
+
+[16:20:41.0565] <jrmuizel>
+> <@mstange:mozilla.org> There's another reason why the gap shrinks, and that's because using typed arrays for all calls makes Chrome slower. It caused Chrome to do some allocation whose purpose Jeff didn't understand.
+
+This was overall gap on the test. Chrome still does better with the only typed array case on the _block function
+
+[16:21:02.0523] <jrmuizel>
+before: sm 6146, v8 2179 
+
+[16:21:17.0207] <jrmuizel>
+after: sm 2669, v8: 1894
+
+[16:21:20.0953] <jrmuizel>
+ * after: sm 2669, v8 1894
+
+[16:21:37.0399] <jrmuizel>
+the weird allocation mystery is happening in the caller
+
+[16:21:51.0881] <jrmuizel>
+ * _block before: sm 6146, v8 2179 
+
+[16:21:58.0968] <jrmuizel>
+ * _block after: sm 2669, v8 1894
+
+[16:51:09.0208] <iain>
+Okay, so we benefit much more from a single array type here than V8 does. Interesting.
+
+
+2023-09-18
+[02:50:44.0163] <liam_g>
+Is there any way in Spidermonkey of getting a callback when *any* property on the entire tree changes? Like:
+
+/*JS*/ any.old.property = 5
+
+
+/*C++*/ void callback(JSObject* ob, JSValue v)
+{
+  // ob == any.old
+  // value == 5
+}
+
+[02:51:23.0142] <liam_g>
+ * Is there any way in Spidermonkey of getting a callback when _any_ property on the entire tree changes? Like:
+`````
+/*JS*/ any.old.property = 5
+
+/*C++*/ void callback(JSObject\* ob, JSValue v)
+{
+// ob == any.old
+// value == 5
+}
+`````
+
+[02:51:36.0171] <liam_g>
+ * Is there any way in Spidermonkey of getting a callback when _any_ property on the entire tree changes? Like:
+
+```
+/*JS*/ any.old.property = 5
+
+/*C++*/ void callback(JSObject* ob, JSValue v)
+{
+// ob == any.old
+// value == 5
+}
+```
+
+[02:54:54.0037] <liam_g>
+ * Is there any way in Spidermonkey of getting a callback when _any_ property on the entire tree changes? Like:
+
+```
+/*JS*/ any.old.property = 5
+
+/*C++*/ void callback(JSObject* ob, PropertyKey k, JSValue v)
+{
+// ob == any.old
+// value == 5
+}
+```
+
+[02:55:23.0357] <liam_g>
+ * Is there any way in Spidermonkey of getting a callback when _any_ property on the entire tree changes? Like:
+
+```
+/*JS*/ any.old.property = 5
+
+/*C++*/ void callback(JSObject* ob, PropertyKey k, JSValue v)
+{
+// ob == any.old
+// k == "property"
+// value == 5
+}
+```
+
+[03:20:00.0974] <arai>
+what I can think of is to use Proxy for `any` and `any.old`
+
+[03:20:20.0093] <arai>
+is there any restriction about `any` and `any.old` ?
+
+[03:20:27.0338] <arai>
+what are they supposed to be?
+
+[05:30:33.0733] <liam_g>
+Yeah I'm using Proxies already in some places, but I was wondering if there were any other options. My idea here is that any.old is user code which is just a regular object, but I'd like to be able to "listen" to it for changes.
+
+[05:32:00.0036] <liam_g>
+It would make things much easier for me if there were some sort of universal property change listener. But I'm guessing that there is no such thing.
+
+[05:37:38.0434] <arai>
+If both object and the assignment are from user-side (so, same global), I think there's no way to listen to the modification.  if they come from different global, there might be some chance with CCW or similar thing to intercept the operation
+
+[05:38:00.0448] <arai>
+example: [xpc::XrayWrapper](https://searchfox.org/mozilla-central/rev/431bcb0e88e49b92c6913c0916c7ad15e8a4875c/js/xpconnect/wrappers/XrayWrapper.h#379)
+
+[05:46:17.0071] <liam_g>
+Both the object and the assignment are from the user side, and I currently have only one global. I could look at having two globals for this purpose, but it looks like it would get complicated 
+
+[05:51:06.0914] <liam_g>
+Some context here: the user types in some code which is interpreted in the "scope" of my custom JS::Proxy class. The Proxy class keeps track of property changes to itself. This works fine, but if there are sub-property changes, the Proxy doesn't pick them up.
+
+[05:52:15.0840] <liam_g>
+So it's not actually global property changes that I want to track, but sub-property changes, like myProxy.userObject.property = 6
+
+[05:52:41.0934] <liam_g>
+* So it's not actually global property changes that I want to track, but sub-property changes, like `myProxy.userObject.property = 6`
+
+[06:13:56.0043] <arai>
+you can achieve it by returning a new proxy for property access
+
+[06:15:03.0415] <liam_g>
+I'm not sure I understand...
+
+[06:15:29.0807] <liam_g>
+Do you mean that I replace normal objects with Proxies?
+
+[06:15:39.0805] <arai>
+let me create an example
+
+[06:20:22.0086] <arai>
+```js
+function wrap(obj) {
+  return new Proxy(obj, {
+    get(that, key) {
+      console.log("get", key);
+      const value = that[key];
+      if (value !== null && typeof value === "object") {
+        return wrap(value);
+      }
+      return value;
+    },
+
+    set(that, key, value) {
+      console.log("set", key, value);
+      that[key] = value;
+    }
+  });
+}
+
+var any = { old: {} };
+
+any = wrap(any);
+
+any.old.property = 5;
+```
+
+[06:22:36.0699] <arai>
+so, the Proxy returns yet another proxy when "get" operation is performed and the value is an object.  so that any operation on the object can also be tracked
+
+[06:30:05.0928] <liam_g>
+Interesting, so this essentially converts the whole thing into Proxies, without the user knowing it. 
+
+[06:31:17.0831] <liam_g>
+Is this a standard-ish thing to do in Javascript? It strikes me that there might be unintended consequences or complications down the line.
+
+[06:31:43.0351] <liam_g>
+* Is this a normal thing to do in Javascript? It strikes me that there might be unintended consequences or complications down the line.
+
+[06:39:04.0779] <arai>
+some operation might not work well with Proxy, such as when the proxy is used as base class of other class `class C extends proxied_object {...}`
+
+[06:42:26.0000] <arai>
+so, in simple cases, it's almost transparent, but it's still observable from user code in some edge case
+
+[06:44:00.0989] <liam_g>
+Ok, worth trying out then. I'm not worried about extends.
+
+[06:44:21.0472] <liam_g>
+Thanks for the novel suggestion, I'll see how it goes.
+
+[06:44:22.0905] <arai>
+I'm not sure if this is something usually done in JS tho, we've considered it when refactoring internal module system's laziness.  and the `extends` was problematic in that case and we decided not to do it
+
+[08:23:57.0890] <sfink>
+I've done it for a side project, though I was wrapping in `set` rather than `get`. It worked well enough for the very limited thing I was using it for (a state object), though even there I ended up wanting it to work for `Map` and `Set` as well. (Mine maintained a `dirty` bit that was set on all ancestors in the DAG whenever a property was modified.)
+
+[08:53:16.0358] <l11d>
+if I'd do a `loadtypedarrayelementhole` two times on the same bigint64 array, would I get two times the very same value? no other instruction is in between and the index ist the same. in particular, would the `valueReg()` be the same at runtime?
+
+[09:15:08.0168] <iain>
+l11d: If the nodes are the same, I would normally expect GVN to common them up into a single copy. If you've turned GVN off, though, it looks like we allocate a fresh bigint every time: https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#15952-15993
+
+[09:34:35.0995] <l11d>
+iain:  that makes sense, thanks. I'm cloning a MIR instruction like this `clone = ins->clone()`. can I somehow determine whether their `valueReg()` will be the same? I guess at least `congruentTo()` should be true but that might not be sufficient
+
+[09:45:20.0412] <iain>
+Yeah, `congruentTo` would be true in the case you've described.
+
+[09:48:19.0976] <iain>
+I don't think there's an easy way to make that determination. Strings and bigints are heap-allocated but compare by-value, so whether two copies of the same string are pointing to the same memory is an optimization choice, not a correctness issue.
+
+[09:48:37.0200] <iain>
+ * I don't think there's an easy way to make that determination. Strings and bigints are heap-allocated but compare by-value, so whether two copies of the same string/bigint are pointing to the same memory is an optimization choice, not a correctness issue.
+
+[09:49:09.0099] <iain>
+I suspect that it will probably be true in practice for anything that doesn't allocate memory
+
+[09:49:38.0610] <iain>
+But I don't think we expose whether an op could allocate memory in any easy-to-access way either
+
+[09:53:45.0802] <nbp>
+Well, MNewObject can be cloned but it would not be congruent to it-self.
+
+[09:55:07.0544] <nbp>
+ * MNewObject can be cloned but it would not be congruent to it-self.
+
+[10:01:47.0398] <l11d>
+so if an instruction is congruent to itself there is a chance that the `valueReg()` is the same, but it might differ for string/bigint (and maybe other).
+thanks for the support :)
+
+
+2023-09-21
+[21:11:35.0009] <liam_g>
+Sometimes I use `JS_CallFunction()` and I don't care about the return value, but the function requires me to pass in a mutable rooted value. Is there anywhere some sort of global rooted value that I can use to essentially discard the return value? A bit like `JS::HandleValueArray::empty()`.
+
+[22:34:49.0918] <arai>
+there isn't. you can create temporary value `JS::Rooted<JS::Value> ignored(cx);` and pass `&ignored`
+
+[22:35:12.0988] <arai>
+similar thing is done in codebase https://searchfox.org/mozilla-central/search?q=ignored%28cx&path=&case=true&regexp=false and https://searchfox.org/mozilla-central/search?q=ignored%28cx&path=&case=true&regexp=false
+
+
+2023-09-22
+[21:14:59.0260] <samson>
+`JS_DeletePropertyById` declaration does not match definition.
+https://github.com/servo/mozjs/issues/320#issuecomment-1730773420
+
+[22:29:43.0578] <jandem>
+samson: that's a good find. Want to file a bug? Else I can do it later
+
+[22:32:51.0015] <samson>
+> <@jandem:mozilla.org> samson: that's a good find. Want to file a bug? Else I can do it later
+
+You can file it.
+
+[08:16:30.0350] <nbp>
+sfink: What is the StringBufferArena, is it restricted to JSString, or it can be used for anything which might be a JSString later? I am asking the question in order to reduce the number of allocation when using Sprinter class. I get failures when I reuse the allocation made by Sprinter, instead of making a copy of the generated content.
+
+[09:54:25.0143] <nbp>
+Ok, I found a way, which implies splitting Sprinter in 2, depending on whether we expect a malloc-ed string or a JSString as a result.
+
+[11:10:33.0712] <l11d>
+if the engine winds down and a final gc happens, will this collect everything (like shell built-in functions)?
+
+[11:18:25.0249] <iain>
+l11d: I believe the answer is yes. Note that the GC knows when a GC is happening because we're shutting down: https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#55-64
+
+[11:20:50.0962] <iain>
+See also here: https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#2399-2404
+
+[11:21:07.0811] <iain>
+We try to collect everything for the purposes of leak detection.
+
+[11:25:37.0608] <l11d>
+that is good to know, thanks. btw I did see a single `hadResourceExhaustion()` assertion violation after 200 mio. fuzz executions but the sample doesn't reproduce
+
+[11:28:34.0694] <iain>
+We are using a 32-bit hash to detect bailout loops, so with that many executions it's possible you saw a hash collision
+
+[11:29:33.0371] <l11d>
+that is good to know, too
+
+[14:15:11.0734] <sfink>
+> <@nbp:mozilla.org> sfink: What is the StringBufferArena, is it restricted to JSString, or it can be used for anything which might be a JSString later? I am asking the question in order to reduce the number of allocation when using Sprinter class. I get failures when I reuse the allocation made by Sprinter, instead of making a copy of the generated content.
+
+I'm not sure. Regular string data has to be in `StringBufferArena` and that is asserted. Things like external strings do not require it. But I don't know about the converse: is it legal to use `StringBufferArena` for non-JSString data? I don't see any other asserts using jemalloc's arenaId, but I'm not confident that there isn't another way of depending on it.
+
+[14:16:07.0831] <sfink>
+Are you trying to reuse the `StringBufferAllocPolicy` aggressive growth logic?
+
+
+2023-09-24
+[18:29:00.0326] <Kelsey (jgilbert)>
+Is JS minification still a perf advantage these days?
+
+
+2023-09-25
+[02:24:17.0910] <jandem>
+Kelsey (jgilbert): it doesn't affect runtime performance a lot when we looked into this last time. It might reduce memory usage but we do compress source code in memory.. Fewer bytes to parse, fewer unique atoms will also affect things somewhat
+
+[02:25:37.0656] <jandem>
+ * Kelsey (jgilbert): it doesn't affect runtime performance a lot when we looked into this last time. It might reduce memory usage but we do compress source code in memory.. Fewer bytes to parse, fewer unique atoms will also affect parse time somewhat
+
+[03:04:13.0569] <nbp>
+sfink: I was trying to land changes to Sprinter to remove extra reallocation, which in some use case creates a JSString. Thus hitting the assertion about having the wrong arena.
+I will make a JSSprinter dedidcated to creating JSString then.
+
+[07:47:57.0975] <jandem>
+ * Kelsey (jgilbert): it doesn't really affect runtime performance when we looked into this last time. It might reduce memory usage but we do compress source code in memory.. Fewer bytes to parse, fewer unique atoms will also affect parse time somewhat
+
+[08:51:20.0328] <mgaudet>
+A heads up: I've requeued [this change to `getBuildConfiguration()` and `getRealmConfiguration()` for landing. This adds, and prefers, a different syntax for these function: `getBuildConfiguration(key)`. Providing the key to the call should be preferred to getting the object out and then digging out the key. The reason being, the former will throw if you typo a key, the latter will only return undefined. 
+
+[08:51:32.0064] <mgaudet>
+ * A heads up: I've requeued [this change to `getBuildConfiguration()` and `getRealmConfiguration()` for landing](https://phabricator.services.mozilla.com/D188788#6257267). This adds, and prefers, a different syntax for these function: `getBuildConfiguration(key)`. Providing the key to the call should be preferred to getting the object out and then digging out the key. The reason being, the former will throw if you typo a key, the latter will only return undefined.
+
+[09:24:15.0422] <sfink>
+Huh. I've been thinking I should have made that be a `vm.config` object with either constant values or getters, but that would have the same typo problem unless it's some a proxy that throws on unknown keys.
+
+[09:24:23.0569] <sfink>
+which would be moar komplikated.
+
+[09:37:34.0332] <mgaudet>
+Yeah -- I just wanted to get rid of the typo issue. Hopefully this time it will be acceptable to other consumers 
+
+[09:39:50.0294] <Redfire>
+Is there any list of all the supported platforms for mozjs?
+
+[09:40:44.0663] <Redfire>
+I know the architecture support is x86-64, arm64, riscv64, loong64 (with jit) and mips64, ppc64le (without jit), but overall platform
+
+[09:43:57.0409] <iain>
+Redfire: This is the list of officially supported Firefox platforms: https://firefox-source-docs.mozilla.org/contributing/build/supported.html
+
+[09:46:47.0843] <Redfire>
+Well yes, but spidermonkey seems to support more than just that? 
+
+[09:47:50.0124] <iain>
+We have code in-tree for some architectures (riscv64, loong64, mips64) that are not on that list, but we don't support it in the sense that we sometimes break it and don't make any stability guarantees 
+
+[09:49:19.0053] <iain>
+All those platforms have an external maintainer of some sort who will land patches to fix eg build breaks
+
+
+2023-09-26
+[10:38:37.0522] <jandem>
+exciting to see the Intent to Ship for WebAssembly GC 🎉
+
+[15:05:09.0306] <mgaudet>
+confession: Automatically generated copy constructors are a pain in the but.
+
+[15:05:11.0594] <mgaudet>
+ * confession: Automatically generated copy constructors are a pain in the butt
+
+[15:05:12.0481] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[15:05:39.0909] <mgaudet>
+(Now that I lost an hour to them, I depart)
+
+
+2023-09-27
+[02:55:08.0773] <arai>
+iain: posted some comments for [bug 1467846](https://bugzilla.mozilla.org/show_bug.cgi?id=1467846) patches (in case draft revs don't send notifications)
+
+[02:55:10.0350] <botzilla>
+https://bugzil.la/1467846 — ASSIGNED (iain) — Implement the Atomics.waitAsync proposal
+
+
+2023-09-28
+[03:34:04.0385] <krosylight>
+mgaudet: Have you figured out anything after https://bugzilla.mozilla.org/show_bug.cgi?id=1849860#c29 ?
+
+DOM people argued that `const stream` inside the function is not guaranteed to be alive as the JS engine doesn't know the script will ever get back to the scope, is it true?
+
+Per the attached GC log it's indeed marked as gray
+
+[03:39:28.0761] <krosylight>
+The question tl;dr:
+
+```js
+async function foo() {
+  const bar = new Bar(); // Is this guaranteed to be alive until run() finishes?
+  await bar.run(); // Say this takes A LOT OF time
+  console.log("finished"); // Is this guaranteed to run?
+}
+foo();
+```
+
+[03:50:51.0115] <krosylight>
+ * The question tl;dr:
+
+```js
+async function foo() {
+  const bar = new Bar(); // Is this guaranteed to be alive until run() finishes?
+  await bar.run(); // (Say this takes enough time to get some GC runs before it finishes)
+  console.log("finished"); // Is this guaranteed to run?
+}
+foo();
+```
+
+[03:52:28.0397] <krosylight>
+ * mgaudet: Have you figured out anything more after https://bugzilla.mozilla.org/show\_bug.cgi?id=1849860#c29 ?
+
+DOM people argued that `const stream` inside the function is not guaranteed to be alive as the JS engine doesn't know the script will ever get back to the scope, is it true?
+
+Per the attached GC log it's indeed marked as gray
+
+[05:43:44.0801] <Ms2ger>
+I sure would hope so
+
+[07:43:50.0797] <asuth>
+krosylight: Does something in `Bar::run` internally add a strong reference that will not be traversed/traced by cycle collection?
+
+[08:19:25.0987] <mgaudet>
+Semantically I don't see any way it couldn't run unless the promise returned by `bar.run()` never resolves -- which is currently the case in that test case. Right now that promise is never being run because the GC/CC is collecting an object cycle that I don't think should be collected. 
+
+If we're concerned about grey marking, one option would be to run the test case under the environment variable [`JS_GC_ZEAL=18`](https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#596) -- it may be that we could get something else out of other zeal commands.
+
+My understanding of liveness of that snippet is that bar should be stored either in the frame, or in the captured environment object; either way, it should be captured at suspend and restored on resume, and must be traced by the GC. 
+
+
+[08:20:00.0836] <mgaudet>
+Ugh... but then actually, are we talking grey or gray -- two different things
+
+[08:20:21.0468] <krosylight>
+GC says just G
+
+[08:29:11.0564] <mgaudet>
+Unfortunately, I'm not a good person to really dig this one down because I don't understand well enough how the GC and CC interact; it would be good if someone else could comment on 1) whether I'm right that bar should 100% be kept alive across the await, 2) if there's a good reason that `bar` would be grey during a CC that happens while that frame is suspended, and if that means that bar can be collected. 
+
+[08:29:20.0246] <mgaudet>
+(shit. Grey or gray. One or the other :S ) 
+
+[08:30:15.0105] <mgaudet>
+sfink would be my preferred victim here; this is https://bugzilla.mozilla.org/show_bug.cgi?id=1849860 which is a streams regression where it seems like internal data structures ofa stream are getting collected causing it to fail
+
+[08:37:24.0343] <sfink>
+I'll dig into it. I guess my naive understanding is unsure: it seems like `await bar.run()` would immediately invoke `bar.run()`, which returns a Promise with a `then` callback that runs the `console.log` in a scope that contains `bar` but does not use or capture `bar`. So my conclusion would be: ?
+
+[08:40:29.0351] <sfink>
+but I guess I'm only talking about whether `bar` could be collected. I would definitely assume that `console.log` would run iff `bar.run()` resolves.
+
+[08:40:48.0775] <mgaudet>
+that would be true if we did a promisification compilation of an async method; but we don't convert async code to promises 
+
+[08:41:23.0250] <sfink>
+oh, uh oh, I don't actually know how any of this works
+
+[08:41:35.0853] <mgaudet>
+We save and restore our stack frame... unless arai we don't have some sort of optimization where we don't save/restore frame slots that aren't referenced later?
+
+[08:42:47.0875] <mgaudet>
+best to think of an async function as a special form of a generator; we recycle a lot of the machinery for generators (which I described a few years ago [here](https://www.mgaudet.ca/technical/2020/9/1/how-do-generators-generate-in-spidermonkey)) 
+
+[08:44:59.0976] <sfink>
+I will read that again, I remember liking that. And thinking of it as generators makes sense. I should read the bug to answer this, but why *should* `bar` be kept alive while `console.run()` happens? What is it breaking.
+
+[08:45:03.0132] <sfink>
+/me reads the bug
+
+[08:51:27.0794] <mgaudet>
+Hmm. Maybe you're right; maybe the problem here is that the streams code is relying on the reflector keep the stream alive, but that's actually a bad assumption. Something else should be guaranteeing the stream stays alive while there's a pending promise waiting stream resolution. krosylight perhaps a `ReadRequest` needs to hold a strong reference to the stream? 
+
+[08:51:31.0960] <sfink>
+ok, skimmed the bug. Definitely getting the impression that some internal stream machinery should be keeping a reference and keeping enough alive to complete the operation. In the simplified example above, that would mean that perhaps the whole of `bar` would not survive, but any internals necessary for the read to complete should.
+
+[08:51:58.0641] <sfink>
+I think I'm saying the same thing with dumber words. :-)
+
+[08:52:33.0430] <mgaudet>
+Just looking at the [class diagram](https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27%20depth%3A4), it seems like it's easy enough to have a promise which depends on a collected cycle...
+
+[08:53:23.0019] <mgaudet>
+since a ReadRequest only holds the promise alive, but not the 'thing-which-will-resolve-the-promise'
+
+[09:00:34.0380] <mgaudet>
+(Now, why the refactor broke this... I've no idea; perhaps we used to get lucky?)
+
+[09:05:06.0187] <asuth>
+It looks like BodyStreamHolder only cycle collector traversed its mReadableStreamBody which left a ton of strong references in BodyStream that weren't cycle collected?
+
+[09:14:40.0388] <arai>
+(haven't yet read whole backlog) at least this link should exist, but I haven't yet checked who makes the promise alive: `bar.run()`'s promise -> `PromiseReactionRecord` -> `AsyncFunctionGeneratorObject` -> environment chain -> `foo`'s top-level lexical environment -> `bar` -> `new Bar()`
+
+[09:18:13.0638] <krosylight>
+> <@mgaudet:mozilla.org> Hmm. Maybe you're right; maybe the problem here is that the streams code is relying on the reflector keep the stream alive, but that's actually a bad assumption. Something else should be guaranteeing the stream stays alive while there's a pending promise waiting stream resolution. krosylight perhaps a `ReadRequest` needs to hold a strong reference to the stream?
+
+Hmm, so `bar.run()` may not keep `bar` alive? Somehow my intuition says it should be kept as `run()` can't run alone without `bar`
+
+[09:19:13.0934] <asuth>
+btw, a potentially useful secret option that you can use for things that can sometimes help or not help is the `hier` mechanism:
+- [that with hier:subsystem](https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27+depth%3A4+hier%3Asubsystem)
+- [hier:dir](https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27+depth%3A4+hier%3Adir)
+- [hier:file](https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27+depth%3A4+hier%3Afile)
+
+[09:20:08.0147] <arai>
+`bar.run()` immediately exits and returns a promise , right?
+
+[09:20:32.0239] <krosylight>
+Oh, hmm
+
+[09:21:11.0222] <arai>
+if so, unless the returned promise is kept alive somewhere else, the whole things will be GCed
+
+[09:21:12.0363] <krosylight>
+yeah, so it's then effectively `await promise; console.log("finished")`
+
+[09:21:21.0615] <krosylight>
+I guess I see it now...
+
+[09:22:23.0943] <asuth>
+A fancy term I like to use as much as possible is "symmetry breaking", so in a case like this, I think there's the question of how can we tell the difference between a situation where nothing will ever happen and we should GC versus when something will definitely happen.  (I'm stretching a distributed computing term, I guess.)
+
+[09:22:48.0844] <asuth>
+ * A fancy term I like to use as much as possible is "symmetry breaking", so in a case like this, I think there's the question of how can we tell the difference between a situation where nothing will ever happen and we should GC versus when something will definitely happen and we should not GC.  (I'm stretching a distributed computing term, I guess.)
+
+[09:25:11.0641] <arai>
+so, in the actual code, the `reader` is referenced only from the async function's lexical environment?
+
+[09:26:40.0706] <krosylight>
+I think yes
+
+[09:27:05.0272] <arai>
+and the promise is held only by reader?
+
+[09:27:46.0691] <krosylight>
+it's held by some other internal class
+
+[09:28:06.0720] <krosylight>
+Namely as InputToReadableStreamAlgorithms::mPullPromise
+
+[09:28:46.0876] <krosylight>
+and that class is held by ReadableStream (`const stream` here)
+
+[09:29:11.0812] <krosylight>
+Uh, hmm, maybe the stream doesn't hold the reader
+
+[09:29:40.0197] <krosylight>
+Ah it does, ReadableStream:mReader
+
+[09:30:00.0343] <asuth>
+That's cycle collected too though
+
+[09:30:17.0921] <arai>
+who's supposed to make the stream alive?
+
+[09:31:15.0542] <krosylight>
+In https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit I would say the `stream` should be kept alive, it's definitely needed to run the loop, right?
+
+[09:32:02.0667] <krosylight>
+Who's supposed to be, so I'd say whatever JS engine thing
+
+[09:32:12.0345] <asuth>
+What's the static root that leads there?
+
+[09:34:30.0394] <arai>
+the loop is basically: 1. get a promise from `stream`, 2. internally perform `then` on it, 3. suspend and wait for fulfillment, 4. resume on fulfillment.  And, in the step 3, nothing keeps the suspended async function alive except for the promise
+
+[09:35:31.0808] <arai>
+and if the promise is held only by `stream`, which is held only by the async function's lexical environment slot, it goes wrong?
+
+[09:36:01.0412] <krosylight>
+I expected from 1849860-3.html:
+
+1. get an async iterator from `stream`, which grabs `reader`, which then grabs `stream`
+2. runs the loop, which should grab the async iterator and thus `stream`?
+
+[09:36:53.0202] <arai>
+yes, but all those things are referred only from async function's environment (variables)?
+
+[09:37:04.0496] <krosylight>
+I think that's true
+
+[09:37:05.0958] <arai>
+isn't there anything that keeps the `stream` alive?
+
+[09:37:19.0101] <krosylight>
+Currently no
+
+[09:37:42.0315] <sfink>
+are there situations where we would *want* a pending or incomplete stream to be dropped on the floor? In the current situation, it seems like it is very user-visible, and ownership should somehow follow that. But I don't know if there are other situations where discarding things would be the desired behavior.
+
+[09:37:52.0470] <krosylight>
+(There should be, because as asuth mentioned elsewhere the user may keep only the promise and throw everything else)
+
+[09:38:10.0309] <krosylight>
+But I don't think that directly matters here, IMO JS still should grab the stream...
+
+[09:38:58.0276] <asuth>
+Then we shouldn't mark all the fields as cycle collected in the streams impl?
+
+[09:39:30.0175] <arai>
+(I think I've seen similar situation some times in browser frontend, or maybe testcase, which requires storing a promise or its owner in global scope)
+
+[09:39:42.0484] <krosylight>
+We'll need an extra non-cc'ed thing for that situation, yes
+
+[09:40:35.0777] <arai>
+ahh
+
+[09:40:35.0975] <krosylight>
+But for this situation, we do still have access to AsyncIterableIterator<ReadableStream>
+
+[09:40:54.0778] <arai>
+I forgot about the returned promise of the async function itself
+
+[09:41:08.0591] <arai>
+the testcase discards it
+
+[09:42:24.0482] <arai>
+it would become different behavior when the `readFile`'s returned promise is held somewhere
+
+[09:43:06.0618] <arai>
+err, maybe I'm wrong
+
+[09:45:12.0411] <asuth>
+Also, for anyone else looking at the diagram, I messed up when I decided which base class to use to infer cycle collection, so the dom::Promise erroneously does not mark mPromiseObj as traced or mGlobal as traversed, but they both are.  Fixing the heuristics now.
+
+[09:45:47.0097] <asuth>
+specifically
+```diff
+-[[pretty."nsXPCOMCycleCollectionParticipant".label_containing_class.labels]]
++[[pretty."nsCycleCollectionParticipant".label_containing_class.labels]]
+ label = "cc"
+ 
+-[[pretty."nsXPCOMCycleCollectionParticipant".label_containing_class_field_uses.labels]]
++[[pretty."nsCycleCollectionParticipant".label_containing_class_field_uses.labels]]
+ context_sym_suffix = "::cycleCollection::Trace"
+ label = "cc-trace"
+-[[pretty."nsXPCOMCycleCollectionParticipant".label_containing_class_field_uses.labels]]
++[[pretty."nsCycleCollectionParticipant".label_containing_class_field_uses.labels]]
+ context_sym_suffix = "::cycleCollection::TraverseNative"
+ label = "cc-traverse"
+-[[pretty."nsXPCOMCycleCollectionParticipant".label_containing_class_field_uses.labels]]
++[[pretty."nsCycleCollectionParticipant".label_containing_class_field_uses.labels]]
+ context_sym_suffix = "::cycleCollection::Unlink"
+ label = "cc-unlink"
+```
+
+[09:46:03.0879] <krosylight>
+(Quickly tried that and it didn't help)
+
+[09:46:18.0798] <arai>
+sorry, never mind, the it was opposite direction
+
+[09:50:17.0196] <krosylight>
+From the attached cc log:
+
+```
+000003FCCD28D268 [gc] JS Object (ReadableStream AsyncIterator)
+> 000001D6BBD80510 UnwrapDOMObject(obj)
+
+000001D6BBD80510 [garbage]
+```
+
+So the iterator is getting garbage collected while running the loop, and 000003FCCD28D268 is marked as G
+
+[09:54:16.0144] <arai>
+so, compared to regular generator, the async function's internal "generator object" is held only by the promise reaction created internally for `await` operation, which is added to the `await`'s operand promise. in non-stream case, the promise is supposed to be held and resolved by some thing that will be executed later. such as other function.  in the stream case, the promise is supposed to be resolved by the stream itself, and there's no other actor which is related to the promise or "read" operation ?
+
+[09:56:07.0029] <arai>
+err, maybe my question isn't appropriate
+
+[09:57:15.0208] <arai>
+the reader's promise is left in "pending" state while it's actually reading the file from disk, and once the "read" operation finishes, the promise is resolved?
+
+[09:57:48.0407] <asuth>
+I guess historically if we were using an nsIInputStreamPump, that might hold things, but here in https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit the pump is all in JS space and we're missing a static root for it?
+
+[09:58:08.0430] <asuth>
+ * I guess historically if we were using an nsIInputStreamPump, that would presumably hold a strong reference, but here in https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit the pump is all in JS space and we're missing a static root for it?
+
+[09:59:37.0067] <asuth>
+Conceptually, I think it would make sense for `file.stream()` to provide a strong reference until it runs out of data to provide?
+
+[10:00:15.0511] <asuth>
+So like when the iterator runs out of data and is "done" we drop the strong ref that serves as a "static root"?
+
+[10:00:38.0782] <asuth>
+In cycle collection I guess it's not really a static root since it's just a RefPtr strong ref that isn't traversed.
+
+[10:01:07.0263] <arai>
+why can a reader (the C++ side) be CCed while the "read" operation is in progress?
+
+[10:02:21.0499] <arai>
+maybe I'm misunderstanding what "read" operation is
+
+[10:06:28.0560] <asuth>
+Hm, so spec-wise, the spec has the following references to GC:
+
+https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
+> ReadableStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying source object to be garbage collected even if the ReadableStream itself is still referenced. 
+
+https://streams.spec.whatwg.org/#readable-byte-stream-controller-clear-algorithms
+> ReadableByteStreamControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying byte source object to be garbage collected even if the ReadableStream itself is still referenced. 
+
+https://streams.spec.whatwg.org/#writable-stream-default-controller-clear-algorithms
+> WritableStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying sink object to be garbage collected even if the WritableStream itself is still referenced. 
+
+https://streams.spec.whatwg.org/#transform-stream-default-controller-clear-algorithms
+> TransformStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the transformer object to be garbage collected even if the TransformStream itself is still referenced. 
+
+[10:07:04.0108] <asuth>
+so maybe ReadableSTream::mController should not be traversed?
+
+[10:07:33.0309] <asuth>
+ * so maybe ReadableStream::mController should not be traversed? edit: wait, maybe that's wrong
+
+[10:07:55.0052] <arai>
+my understanding is:
+ 1. when the reader is created and stored into lexical variable, async function's environment keeps it alive
+ 2. when the `reader.read()` operation is performed, the "actor" which performs `read` operation should keep the promise alive
+ 3. when async function awaits on it and suspends, the same "actor" keeps the promise and the async function alive
+ 4. when the `read` operation finishes, the promise is resolved and reaction job is enqueued. the reaction job keeps the async function alive
+ 5. when the reaction job is executed, the async function resumes, and goes to step 2
+
+
+[10:08:58.0297] <arai>
+(to be clear, it's not from the spec)
+
+[10:10:17.0895] <arai>
+where's the code that performs the `read` operation, and what's the interaction between it and the situation "the reader is CCed" ?
+
+[10:13:24.0734] <arai>
+so, yeah, the whole stream, reader, related pending-promises should be kept alive by the fact that "the stream is still open"
+
+[10:14:24.0524] <arai>
+so, something like a `RefPtr` from the global
+
+[10:16:32.0149] <mgaudet>
+(It still feels to me like the it's a pending ReadRequest which should keep the stream alive, as it is the ReadRequest which maps from internal streams machinery to the promise wrapper sent to JS code) 
+
+[10:18:53.0383] <asuth>
+That makes sense; right now the IteratorReadRequest is itself cycle collected and cycle collects its mReader: https://asuth.searchfox.org/mozilla-central/rev/3ce9cb622495a187128d3a874e07f7bc75369561/dom/streams/ReadableStream.cpp#1123-1124
+```cpp
+NS_IMPL_CYCLE_COLLECTION_INHERITED(IteratorReadRequest, ReadRequest, mPromise,
+                                   mReader)
+```
+
+[10:20:18.0343] <asuth>
+(I'll see if I can help the class-diagram functionality maybe understand this situation better; the ReadRequest subclasses aren't helping out a ton, but I think there's something else going on too.)
+
+[10:25:54.0762] <arai>
+so, letting a pending ReadRequest to keep things alive means, stream and reader can be GCed/CCed when a user reads some data and throws them away without closing the stream?
+
+[10:30:39.0381] <bgrins>
+sfink: i like your idea in https://github.com/WebKit/Speedometer/issues/317 (at least, the ?report parameter bit). I believe denispal has thought about some similar ideas in terms of making it easy for to solicit scores from internal testers
+
+[10:31:01.0782] <bgrins>
+we could always stand this up in a branch on our fork if nothing else
+
+[10:31:32.0284] <arai>
+okay, so, `close()` operation is not something the user is responsible to perform, but just an operation that lets things GCed earlier.
+
+[10:31:33.0151] <sfink>
+it works nicely for my purpose, though I'm not sure what the format of the returned data really ought to be
+
+[10:31:49.0930] <arai>
+now I agree that the pending requests should keep things alive
+
+[10:31:56.0932] <bgrins>
+it exposes a CSV and JSON format, I think we'd just pick one or the other and send it
+
+[10:32:14.0275] <bgrins>
+i typically just use csv since it's easy to ingest in a spreadsheet
+
+[10:32:38.0328] <sfink>
+(I'm just dumping out the raw `measuredValues`, which gives the test name and things, but nothing else)
+
+[10:33:03.0446] <bgrins>
+where are you dumping them out?
+
+[10:33:24.0743] <sfink>
+the server appends to a file
+
+[10:33:41.0940] <bgrins>
+what server? have you already built the thing you are talking about in the issue?
+
+[10:33:47.0152] <sfink>
+yes
+
+[10:33:54.0094] <bgrins>
+do you have a branch / diff?
+
+[10:34:33.0284] <sfink>
+no, just a local change https://paste.mozilla.org/qyLEtWL9
+
+[10:34:57.0534] <sfink>
+oops, that doesn't include the server
+
+[10:35:21.0614] <sfink>
+https://paste.mozilla.org/Vgw08yyJ
+
+[10:36:06.0030] <sfink>
+the default stats dump filename should be made platform-independent (I'm using `/tmp` now)
+
+[10:37:48.0965] <bgrins>
+i was thinking you could do `?report=http://localhost:8000/ingest` (to whatever URL you wanted) to decouple the server from static file hosting
+
+[10:37:58.0311] <bgrins>
+at least, that's what would be most speedometer-shaped if we wanted to get something in main
+
+[10:38:39.0353] <sfink>
+ah, good point
+
+[10:39:24.0657] <bgrins>
+you can put whatever we want in a branch on https://github.com/mozilla/Speedometer (including e.g. having a nodejs server that writes to a file etc) to be convenient and more portable for your development needs
+
+[10:40:56.0336] <bgrins>
+do you want push access to that repo?
+
+[10:41:11.0247] <sfink>
+ok, will do. I've already run into problems with needing to check out a different revision in order to run certain tests, so I like your approach of decoupling the static hosting from the reporting
+
+[10:41:34.0705] <sfink>
+uh... yes, I guess I do. If I'm poking at this stuff, I'll probably end up with other little things.
+
+[10:42:39.0735] <bgrins>
+one other option you might look at is crossbench (developed by chrome folks), which automates the selenium and result aggregation / reporting bit. not sure if it supports headless, but you can point it at a custom firefox binary https://docs.google.com/document/d/1rNoyrVQwW6LpSj5LoN8RmelzSq4PDqIDbDIcCx_g7go/edit
+
+[10:42:56.0120] <sfink>
+ooh, thanks
+
+[10:44:41.0404] <sfink>
+(this really came up because I needed to look at a non-shell sp3 test while I was sitting in a student lounge above my son's Japanese class many miles away from my build workstation, and rebuilding firefox and copying the bits over the network to my laptop is slow even when it's local)
+
+[10:44:58.0642] <bgrins>
+alright, i've added you to the repo. don't push to main but otherwise feel free to push at will to a branch. note it will also be hosted at https://branchname--speedometer-preview.netlify.app
+
+[11:52:19.0577] <asuth>
+mgaudet: Brief class-diagram feedback question thread, since I saw you are a forward thinking individual who values the finger things in life such as searchfox class diagrams.  Here's sorta an A/B test question between:
+- A: using the "dot" ranked-based layout where I've turned down the opacity on the edges since they're very distracting and a fundamental problem in the "B" case.  (And noting that I should shortly have hover logic that highlights the node you're looking at, plus its inbound and outbound edges in different colors, and then the nodes at the other end of the edges since it's like physically impossible to follow most of the edges.)
+- B: using "neato" for layout which in more recent releases seems to understand the HTML label syntax and I love.
+
+Which better?  (I'm gonna reply to this to make this a thread imminently.)
+
+[11:52:44.0899] <asuth>
+whoops, forgot only slack lets me paste into my message/thread, at least as how I understand to do it
+
+[11:53:59.0639] <asuth>
+ * mgaudet: Brief class-diagram feedback question thread, since I saw you are a forward thinking individual who values the finer things in life such as searchfox class diagrams.  Here's sorta an A/B test question between:
+
+- A: using the "dot" ranked-based layout where I've turned down the opacity on the edges since they're very distracting and a fundamental problem in the "B" case.  (And noting that I should shortly have hover logic that highlights the node you're looking at, plus its inbound and outbound edges in different colors, and then the nodes at the other end of the edges since it's like physically impossible to follow most of the edges.)
+- B: using "neato" for layout which in more recent releases seems to understand the HTML label syntax and I love.
+
+Which better?  (I'm gonna reply to this to make this a thread imminently.)
+
+[11:55:31.0844] <asuth>
+I guess for the rank-based display the class "is-a" relationship is fundamentally going in the wrong direction which probably doesn't help
+
+[11:55:53.0594] <Ryan Hunt>
+do we have any optimizations to prevent a small JSDependentString from keeping a very large string alive?
+
+[12:13:03.0957] <mstange>
+Ryan Hunt: I don't know, but if we do, somebody should mention them in https://bugzilla.mozilla.org/show_bug.cgi?id=727615
+
+[12:14:45.0906] <Ryan Hunt>
+mstange: nice find! Context here is that a V8'er mentioned they added an optimization to prevent that from happening recently, thought I'd check if it'd be useful for us too
+
+[12:15:37.0295] <Ryan Hunt>
+Skimming through our slicing code, it doesn't look like we're doing it, but it could be done during GC somewhere I haven't seen
+
+[12:32:42.0736] <mgaudet>
+So, if the top image is the dot ranked layout, and the bottom is neato, I find the neato layout a little stressful, but easier to follow, and the dot ranked less stressful, but not so meaningful. I think the edges have gotten turned down a bit -too- much as well; I appreciate the turning down, but it's hard to follow them with that level of opacity
+
+[12:32:59.0009] <mgaudet>
+(perhaps if the edges highlighted on hover it would be different than just a static screenshot)
+
+[12:33:54.0546] <asuth>
+Thanks!  Yes, I am hoping the hover states will help out a lot.  Also, both modes would still be accessible (`graph-layout:neato` versus `graph-layout:dot`), but I am thinking I might change the default to neato.
+
+[12:34:41.0387] <asuth>
+In neato the opacity is a more significant problem because the edges go straight over the nodes and altering the opacity was the fastest way to moot that problem.
+
+[12:35:30.0066] <asuth>
+I could probably do more in terms of hiding the edges behind the nodes or making them have some kind of paint magic when they're atop a node, etc.
+
+[12:35:36.0382] <asuth>
+But those are potentially more involved.
+
+[12:36:12.0609] <mgaudet>
+I do think hover practically solves a number of these issues, particularly since this tends to be an interactive interface I suspect
+
+[12:36:22.0886] <mgaudet>
+so it's OK not to solve the general issue IMO
+
+[12:37:28.0252] <mgaudet>
+> <@arai:mozilla.org> so, letting a pending ReadRequest to keep things alive means, stream and reader can be GCed/CCed when a user reads some data and throws them away without closing the stream?
+
+The pending read request would then keep something in the machinery alive, enough that the promise associated with the read request either gets resolved or rejected, but not just left hanging like currently happens
+
+[13:31:53.0002] <krosylight>
+> <@mgaudet:mozilla.org> The pending read request would then keep something in the machinery alive, enough that the promise associated with the read request either gets resolved or rejected, but not just left hanging like currently happens
+
+This makes sense when stream is not kept alive by anything else, and my remaining question is about why `for await` can't keep the AsyncIterator alive
+
+[13:47:26.0092] <mgaudet>
+krosylight: I'm about to take off for the day, and I'm gone tomorrow, but could you expand on that question (either here or in the bug) -- i'm not quite sure what you mean
+
+[13:49:46.0552] <krosylight>
+Sure, in https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit there's `        for await (const value of stream)` which has the same lifetime problem. In this case the for-await loop must keep the reference to the async iterator from `stream` as it's required to run the loop
+
+[13:49:53.0909] <krosylight>
+ * Sure, in https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit there's `for await (const value of stream)` which has the same lifetime problem. In this case the for-await loop must keep the reference to the async iterator from `stream` as it's required to run the loop
+
+[13:50:22.0216] <krosylight>
+But it's being gone as noted here https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$WHDVHMBsEJgHnW7vjB1OWEZHKb3Wjhrr1PNfx5NJ4Hs?via=mozilla.org&via=matrix.org&via=igalia.com
+
+[13:53:40.0527] <krosylight>
+Maybe it's me not following the conversation, because I still can't understand how ReadRequest strong reference is needed for the original test case with `.read()` either, because to run the loop a reference to `reader` is still required AFAICT?
+
+[13:56:37.0831] <krosylight>
+(Just to disambiguate: I agree ReadRequest should keep a reference, but I still think something else should keep a reference to the stream in the test cases)
+
+
+2023-09-29
+[23:40:01.0541] <arai>
+`for-await-of` puts the async iterator into the value stack (similar to local variable) while it's running, and when it `await`s on a promise, value stack is moved to the suspended internal generator object's slot, and a reaction record is created for resuming the async function when the promise resolves, and the reaction record is added to the (pending) promise.  So, at this point, everything around the async function is reachable only from the promise, and if the promise goes away, the suspended async function will be GCed, because the async function won't be resumed in that case
+
+[23:42:46.0221] <arai>
+and from the JS engine's point of view, there's no guarantee that the promise will eventually be resolved.  so, it's up to stream's side whether to keep the promise alive or not
+
+[23:43:40.0262] <arai>
+to be clear, async function keeps the async interator alive while it's running.  the problem is when the async function is suspended
+
+[23:46:31.0181] <arai>
+in the example case, there's guarantee that the async function is eventually resumed, because  the async function is waiting on the stream's promise, which is in "pending" state while the async function is suspended, and the promise is eventually be either fulfilled or rejected, depending on whether the in-flight "read" operation succeeds or not. then, regardless of fulfill/reject, once the promise is resolved, a reaction job is created with the reaction record's data, and it's put into job queue.  at this point, the job queue keeps the async function alive
+
+[23:46:50.0445] <arai>
+and once the job is executed at the next microtask checkpoint, the async function gets resumed
+
+[03:20:32.0466] <krosylight>
+> <@arai:mozilla.org> and once the job is executed at the next microtask checkpoint, the async function gets resumed
+
+Thank you for the great explanation! I think I finally got it.
+
+One issue is that the stream doesn't know whether the promise will be resolved or not, as its underlying source may just stop responding. In that case explicitly grabbing the promise will leak.
+
+Is there a way to tell whether the JS engine has "weak reference" to the promise so that the GC can happen if that reference goes away?
+
+[06:00:40.0406] <arai>
+krosylight: then, the "underlying source" should know it?
+
+[06:00:52.0663] <arai>
+who's actually performing the read operation in the file's case?
+
+[06:01:56.0712] <arai>
+shouldn't there be something that's blocking on read, or polling for the read?
+
+[06:03:18.0496] <arai>
+in the bug comment's `new ReadableStream().getReader().read().then(() => console.log("foo"));` case, it's guarantee NOT to resolve, because there's no one who's actually performing the read operation, right?
+
+[06:03:57.0104] <arai>
+if `ReadRequest` is created for the example's case, then `ReadRequest` might not be the right class to keep the promise alive
+
+[06:04:24.0991] <arai>
+but someone who's actually going to resolve the promise should keep it alive
+
+[06:11:29.0334] <krosylight>
+> <@arai:mozilla.org> krosylight: then, the "underlying source" should know it?
+
+The underlying source can be user-provided JS script, we can't require scripts to grab promise
+
+[06:11:58.0294] <krosylight>
+It could also be some network thing, although in that case I'd expect it to time out
+
+[06:12:12.0889] <arai>
+if the underlying source is user-provided JS object, then it's responsible for keeping it alive
+
+[06:12:52.0150] <arai>
+and if the source is not reachable from anywhere, the the stream and depending things should be GCed
+
+[06:13:39.0462] <arai>
+and if the underlying source is file, something that's actually reading from the file is responsible for keeping the promise alive, isn't it?
+
+[06:15:01.0208] <krosylight>
+The resulting promise is not the promise returned by the script but a new promise that is ultimately resolved when it resolves
+
+[06:15:07.0937] <evilpie>
+They way we setup RealmOptions in the browser seems so ad-hoc. Seems very easy to miss initializing something important
+
+[06:16:19.0398] <arai>
+krosylight: can you provide an example around those 2 promises?  where are they and who holds references?
+
+[06:19:15.0992] <arai>
+evilpie: is it about `xpc::SetPrefableRealmOptions` ?  or other options set before/after calling it?
+
+[06:20:07.0327] <evilpie>
+Other options that are specific to the global, like "secure context". `xpc::SetPrefableRealmOptions` basically apply to anything
+
+[06:21:52.0565] <jandem>
+yeah I've noticed that too. The more we can move into `SetPrefableRealmOptions` the better. Ideally some of these prefs would be context-wide or process-wide too
+
+[06:22:34.0006] <arai>
+would it be nice if we have a single method that takes all options as separate parameter, with "false, true, or default" variants ?
+
+[06:24:44.0181] <krosylight>
+> <@arai:mozilla.org> krosylight: can you provide an example around those 2 promises?  where are they and who holds references?
+
+Consider this:
+
+```
+const stream = new ReadableStream({
+  async pull(c) {
+    await new Promise(r => setTimeout(r, 2000));
+    c.enqueue('foo');
+  }
+});
+const reader = stream.getReader();
+console.log(await reader.read());
+```
+
+The C++ part receives the promise generated by async function here: https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.cpp#90-94
+
+But what resolves the read() promise is the `c.enqueue()` part that's not managed by the script at all
+
+[06:26:44.0839] <arai>
+in that scenario, setTimeout's reaction keeps the `new Promise` alive, and the promise's reaction record keeps the async function alive, and the async function's arguments keeps the controller alive
+
+[06:27:13.0475] <arai>
+and the controller has a reference to the promise returned by `reader.read()` ?
+
+[06:27:50.0337] <krosylight>
+Here, yes Calling read() again will create and queue the promise as ReadRequest https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultReader.h#32
+
+[06:27:58.0989] <krosylight>
+ * Here, yes https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultReader.h#32
+
+[06:28:51.0702] <evilpie>
+A single method that initialized the important stuff might be good. We have `xpc::InitGlobalObjectOptions`, but that only has two uses right now
+
+[06:31:05.0688] <arai>
+controller holds a seqneuce of `ReadRequest` ?
+
+[06:32:14.0097] <krosylight>
+reader does https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultReader.h#98
+
+[06:33:21.0874] <arai>
+so, the reference is controller -> reader -> ReadRequest -> promise ?
+
+[06:35:15.0849] <krosylight>
+stream -> reader -> ReadRequest -> promise I'd say, the stream -> reader link is here https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStream.h#249
+
+[06:36:03.0286] <arai>
+so, controller -> stream -> reader -> ReadRequest -> promise ?
+
+[06:36:33.0079] <arai>
+and in the file's case, "something that reads file and enqueues" -> controller ?
+
+[06:38:03.0209] <arai>
+if so, something that holds a reference to controller is responsible for keeping things alive in both cases
+
+[06:38:35.0304] <arai>
+and in the above user-provided case, that's JS code which is kept alive by timer
+
+[06:38:56.0089] <arai>
+and in the `new ReadableStream().getReader().read().then(() => console.log("foo"));` case, there's no such thing and everything should be GCed
+
+[06:40:49.0083] <krosylight>
+stream and controller is paired and grabs each other (https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamController.h#66, https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStream.h#247)
+
+Controller delegates the pull operation to the underlying source (any subclass of UnderlyingSourceAlgorithmsBase) so the underlying source is the core
+
+[06:42:23.0182] <krosylight>
+And the controller holds the source https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamController.h#64
+
+[06:42:58.0082] <arai>
+does underlying source holds anything to the above graph?
+
+[06:43:14.0956] <arai>
+or is it purely an internal implementation of the controller?
+
+[06:44:44.0249] <krosylight>
+Anything doing asynchronous read needs to grab the stream https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.h#270 to eventually call EnqueueNative on it
+
+[06:46:40.0773] <arai>
+so, `EnqueueNative` is the method that's called by `c.enqueue` above ?
+
+[06:46:53.0261] <arai>
+and also the method that's called when the file's read operation finishes?
+
+[06:51:00.0479] <krosylight>
+Those two are basically same in this context, yes
+
+and yes, when the read operation (backed by nsIInputStream) calls OnInputStreamReady then it calls enqueue function https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.cpp#460 (not exactly EnqueueNative but anyway does the same)
+
+[06:51:56.0346] <arai>
+okay
+
+[06:53:01.0132] <arai>
+the `mInput->Read` there is blocking operation which is taking time in the example case?
+
+[06:53:04.0123] <arai>
+https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.cpp#440
+```cpp
+nsresult rv = mInput->Read((char*)buffer.get(), pullSize, &bytesWritten);
+```
+
+[06:53:24.0192] <arai>
+to be clear, I'm still not sure why the file's case goes wrong.  what happens when the read operation finishes if related things are CCed/GCed?
+
+[06:56:41.0654] <krosylight>
+The destructor of underlying source class unsubscribes from nsIInputStream in this case by closing it down
+https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.h#235
+https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.cpp#190
+
+[06:57:59.0229] <arai>
+oh, okay, so the above `Read` isn't something blocks on read, but called only when the data is already available.  and the issue happens before the callback is called
+
+[06:58:34.0870] <arai>
+`InputToReadableStreamAlgorithms::OnInputStreamReady` callback I mean
+
+[06:59:52.0968] <arai>
+okay, so far, the something that's actually performing the read operation is `nsIAsyncInputStream` which is held by `InputStreamHolder` ?
+
+[07:00:19.0910] <arai>
+and it doesn't keep the callback alive?
+
+[07:01:05.0068] <arai>
+or, because the input stream is also in the cycle which is CCed ?
+
+[07:01:45.0857] <arai>
+can we add a strong reference to the input stream while the read operation is in progress?
+
+[07:02:48.0718] <arai>
+at least for the file's case
+
+[07:03:34.0125] <arai>
+there should be something that's actually reading from the file, which shouldn't be collected until the read operation finishes, either successfully or with failure
+
+[07:05:03.0674] <arai>
+(err, to my understanding, we haven't yet reached to the actual code that's actually reading)
+
+[07:05:14.0007] <arai>
+(everything there is callback or wrapper around that)
+
+[07:06:05.0166] <krosylight>
+I mean, for the file case we do know it'll come back with some data, but for random nsIInputStream or script source I don't think that's always the case
+
+[07:06:52.0887] <krosylight>
+The data in in the disk so there's something to get already, but for network?
+
+[07:07:05.0097] <arai>
+is there any problem with non-file case right now?
+
+[07:07:24.0555] <krosylight>
+We share the same class with WebTransport
+
+[07:07:55.0724] <krosylight>
+(I need to check whether it's actually affected though)
+
+[07:08:21.0607] <arai>
+the network case is done by C++ (not user-provided JS), right?
+
+[07:08:31.0679] <krosylight>
+As the file case is, yes
+
+[07:08:34.0112] <arai>
+and it will eventually hit timeout if the data doesn't arrive?
+
+[07:09:11.0141] <arai>
+err, if no timeout happens, then it would also be fine given it's waiting for the data that will come in future
+
+[07:09:40.0556] <arai>
+and that should keep things alive
+
+[07:11:27.0474] <krosylight>
+That's something @jesup will know, I don't immediately see anything about timeout in https://w3c.github.io/webtransport/
+
+The case I worry is that the stream and the promise is thrown away, the source doesn't respond, nobody cares nothing but we still keep things around because there's the promise that hasn't been resolved
+
+[07:11:57.0503] <krosylight>
+(If we add a strong reference, I mean)
+
+[07:13:08.0417] <arai>
+I don't think we should care about "the source doesn't respond" case
+
+[07:13:53.0313] <arai>
+"the source" is the something that's actually performing the read operation, right?
+
+[07:14:28.0616] <krosylight>
+"something that provides the data" in general, in this case it happens to be a file reader
+
+[07:14:41.0704] <krosylight>
+But it can just generate some data on demand
+
+[07:15:13.0445] <arai>
+so, then it should keep things alive
+
+[07:15:33.0824] <arai>
+at least the promise should be kept alive as long as the source is alive
+
+[07:18:05.0070] <arai>
+also, the existence of the pending promise is not the reason why things needs to be kept alive.  those promises are kept alive by the existence of the source that will possibly eventually resolve them
+
+[07:19:46.0666] <arai>
+hmm, I guess I should look into the file's case specifically, how the read operation is done and how the result data is passed to stream
+
+[07:20:13.0096] <arai>
+I still don't get why the input stream or something around that can be CCed while the read operation is in progress
+
+[07:22:12.0523] <arai>
+that should be completely unrelated to stream or async function
+
+[07:22:52.0657] <krosylight>
+IMO even the stream itself may not know when it will get the data:
+
+```
+const element = document.createElement("x-foo");
+const stream = new ReadableStream(({
+  start(c) {
+    c.onclick = ev => c.enqueue(ev);
+  }
+})
+
+const reader = c.getReader();
+reader.read();
+```
+
+In this case the stream will absolutely stop if `element` goes out of any scope, but it can't really track that
+
+[07:23:52.0994] <krosylight>
+ * IMO even the stream itself may not know when it will get the data:
+
+```
+const element = document.createElement("x-foo");
+const stream = new ReadableStream(({
+  start(c) {
+    element.onclick = ev => c.enqueue(ev);
+  }
+})
+
+const reader = c.getReader();
+reader.read();
+```
+
+In this case the stream will absolutely stop if `element` goes out of any scope, but it can't really track that
+
+[07:24:35.0282] <arai>
+what does "goes out of scope" mean?  removed from the document?
+
+[07:24:45.0384] <asuth>
+krosylight: I don't know if you'd seen my comment about the spec GC language before at https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms (and in 3 other places that's basically identical):
+> ReadableStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying source object to be garbage collected even if the ReadableStream itself is still referenced. 
+
+This seems to correspond in our code to https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultController.cpp#187-206
+```cpp
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
+//
+// Note: nullptr is used to indicate we run the default algorithm at the
+//       moment,
+//       so the below doesn't quite match the spec, but serves the correct
+//       purpose for disconnecting the algorithms from the object graph to allow
+//       collection.
+//
+//       As far as I know, this isn't currently visible, but we need to keep
+//       this in mind. This is a weakness of this current implementation, and
+//       I'd prefer to have a better answer here eventually.
+void ReadableStreamDefaultControllerClearAlgorithms(
+    ReadableStreamDefaultController* aController) {
+  // Step 1.
+  // Step 2.
+  aController->ClearAlgorithms();
+
+  // Step 3.
+  aController->setStrategySizeAlgorithm(nullptr);
+}
+```
+
+But notably our mAlgorithms [is cycle-collected](http://localhost:16995/mozilla-central/rev/f4174cfafb4fd0a39a466afb66e7fca2344454a3/dom/streams/ReadableStreamDefaultController.cpp#30-31) which seems inconsistent with the spec.
+
+[07:24:45.0515] <arai>
+or just that the JS execution leaves the function?
+
+[07:25:49.0399] <krosylight>
+> <@asuth:mozilla.org> krosylight: I don't know if you'd seen my comment about the spec GC language before at https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms (and in 3 other places that's basically identical):
+> > ReadableStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying source object to be garbage collected even if the ReadableStream itself is still referenced. 
+> 
+> This seems to correspond in our code to https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultController.cpp#187-206
+> ```cpp
+> // https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
+> //
+> // Note: nullptr is used to indicate we run the default algorithm at the
+> //       moment,
+> //       so the below doesn't quite match the spec, but serves the correct
+> //       purpose for disconnecting the algorithms from the object graph to allow
+> //       collection.
+> //
+> //       As far as I know, this isn't currently visible, but we need to keep
+> //       this in mind. This is a weakness of this current implementation, and
+> //       I'd prefer to have a better answer here eventually.
+> void ReadableStreamDefaultControllerClearAlgorithms(
+>     ReadableStreamDefaultController* aController) {
+>   // Step 1.
+>   // Step 2.
+>   aController->ClearAlgorithms();
+> 
+>   // Step 3.
+>   aController->setStrategySizeAlgorithm(nullptr);
+> }
+> ```
+> 
+> But notably our mAlgorithms [is cycle-collected](http://localhost:16995/mozilla-central/rev/f4174cfafb4fd0a39a466afb66e7fca2344454a3/dom/streams/ReadableStreamDefaultController.cpp#30-31) which seems inconsistent with the spec.
+
+It doesn't say "if and only if"?
+
+[07:26:31.0455] <arai>
+I think, it's for the case when the stream is kept alive by something else?
+
+[07:27:04.0131] <krosylight>
+> <@arai:mozilla.org> what does "goes out of scope" mean?  removed from the document?
+
+removed from the document, thrown away, can't added ever anymore
+
+[07:28:11.0118] <krosylight>
+> <@arai:mozilla.org> I think, it's for the case when the stream is kept alive by something else?
+
+Yup, if we do keep the stream until the promise is resolved/rejected
+
+[07:29:00.0292] <krosylight>
+I mean we can do that, that was the previous behavior anyway, but wouldn't it be leaky
+
+[07:29:14.0997] <arai>
+if the element is removed and thrown away, the event handler is no longer reachable, and that means the controller is also not, which mean the stream can be collected
+
+[07:29:17.0686] <asuth>
+ * krosylight: I don't know if you'd seen my comment about the spec GC language before at https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms (and in 3 other places that's basically identical):
+
+> ReadableStreamDefaultControllerClearAlgorithms(controller) is called once the stream is closed or errored and the algorithms will not be executed any more. By removing the algorithm references it permits the underlying source object to be garbage collected even if the ReadableStream itself is still referenced.
+
+This seems to correspond in our code to https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/ReadableStreamDefaultController.cpp#187-206
+
+```cpp
+// https://streams.spec.whatwg.org/#readable-stream-default-controller-clear-algorithms
+//
+// Note: nullptr is used to indicate we run the default algorithm at the
+//       moment,
+//       so the below doesn't quite match the spec, but serves the correct
+//       purpose for disconnecting the algorithms from the object graph to allow
+//       collection.
+//
+//       As far as I know, this isn't currently visible, but we need to keep
+//       this in mind. This is a weakness of this current implementation, and
+//       I'd prefer to have a better answer here eventually.
+void ReadableStreamDefaultControllerClearAlgorithms(
+    ReadableStreamDefaultController* aController) {
+  // Step 1.
+  // Step 2.
+  aController->ClearAlgorithms();
+
+  // Step 3.
+  aController->setStrategySizeAlgorithm(nullptr);
+}
+```
+
+But notably our mAlgorithms [is cycle-collected](http://localhost:16995/mozilla-central/rev/f4174cfafb4fd0a39a466afb66e7fca2344454a3/dom/streams/ReadableStreamDefaultController.cpp#30-31) which seems (edit: potentially[1] )inconsistent with the spec.
+
+1: It could be nice to have specific comments in the code about the relationship of the field to cycle collection.
+
+[07:29:47.0214] <krosylight>
+can be collected, but we are suggesting not allowing it to be collected, right?
+
+[07:29:55.0405] <krosylight>
+because there's a pending read request
+
+[07:30:20.0515] <krosylight>
+ * can be collected, but we are suggesting disallowing it to be collected, right?
+
+[07:31:14.0870] <arai>
+err, sorry, I should've clarified.  now I think that the existence of "pending read request" shouldn't keep things alive
+
+[07:31:47.0262] <arai>
+my current understanding is that, things that grabs controller should keep things alive
+
+[07:32:03.0766] <arai>
+because that's going to enqueue data eventually
+
+[07:32:49.0621] <arai>
+and in the file's case, the ultimate root should be the class that's actually reading the file.  which will call a callback on the listener or input stream or something, that will enqueue the data
+
+[07:34:46.0199] <arai>
+then, to my understanding, the class is CCed in the example case because it's reachable only from the cycle which is collected.  such as stream, reader, or the suspended async function
+
+[07:35:16.0115] <arai>
+but it should be reachable from somewhere else because the read operation is in-flight
+
+[07:35:44.0139] <arai>
+(I guess I should find the class, to make the discussion clearer...)
+
+[07:36:43.0988] <krosylight>
+Hmm, so the file-reading nsIInputStream should keep the strong reference to the nsIIInputStreamCallback? I think I kinda agree...
+
+[07:37:28.0227] <arai>
+yeah, at least while the read operation is in progress
+
+[07:37:31.0059] <asuth>
+We're referring to [1849860-3.html](https://bugzilla.mozilla.org/attachment.cgi?id=9354286&action=edit) for that?  (That makes sense)
+
+[07:37:43.0213] <asuth>
+(that's the one with the Blob and `file.stream()`)
+
+[07:39:26.0044] <arai>
+when the read operation finishes, the it doesn't have to keep strong reference, because there won't be any new event until the next read operation is triggered, which requires reference to the input stream elsewhere
+
+[07:39:33.0193] <arai>
+ * when the read operation finishes, it doesn't have to keep strong reference, because there won't be any new event until the next read operation is triggered, which requires reference to the input stream elsewhere
+
+[07:40:13.0299] <asuth>
+Right, so if someone stopped trying to iterate on the AsyncIterator under the hood, there would be no in-flight read requests for the nsIInputStream, and so it would not be holding the async-iterator-returned promise that would keep an iteration loop alive?
+
+[07:40:54.0232] <arai>
+yeah
+
+[07:44:36.0144] <asuth>
+I guess an interesting complication would be this ReadableStreamTee class.
+
+[07:45:01.0318] <asuth>
+Like if in theory GC should be able to tear off one half of the tee.
+
+[07:45:05.0586] <arai>
+or maybe, the file-reading nsIInputStream should be kept with strong reference outside from the cycle?
+
+[07:45:38.0502] <asuth>
+nsIInputStream and its friends aren't/can't be cycle collected, so when we have calls into them, they'll generally hold a strong ref, it's just a question of making sure they're holding a strong ref to the right thing.
+
+[07:46:22.0055] <asuth>
+ * nsIInputStream and its friends aren't/can't be cycle collected, so when we have calls into them, they'll generally hold a strong ref, it's just a question of making sure their callbacks are holding a strong ref to the right thing.
+
+[07:46:38.0604] <asuth>
+ * nsIInputStream and its friends aren't/can't be cycle collected, so when we have calls into them, they'll generally hold a strong ref to themselves/what they're reading, it's just a question of making sure their callbacks are holding a strong ref to the right thing.
+
+[07:46:49.0727] <asuth>
+ * nsIInputStream and its friends aren't/can't be cycle collected, so when we have calls into them, they'll generally hold a strong ref to themselves/what they're reading that can't go away, it's just a question of making sure their callbacks are holding a strong ref to the right thing.
+
+[07:47:05.0911] <arai>
+what actually happens to the nsIInputStream in the problematic case?
+
+[07:47:30.0543] <arai>
+it's still reading the data while everything else are collected?
+
+[07:48:09.0103] <krosylight>
+It's closed because everything else are collected
+
+[07:48:46.0261] <arai>
+ah, I see
+
+[07:49:13.0876] <arai>
+so the input stream doesn't keep the listener alive
+
+[07:49:48.0653] <arai>
+even if the listener is waiting for the next data and the input stream is reading the data
+
+[07:49:53.0049] <arai>
+?
+
+[07:52:53.0945] <krosylight>
+Hmm, the input stream grabs the callback: https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/xpcom/io/NonBlockingAsyncInputStream.cpp#22
+
+The callback in this case is InputStreamHolder, which grabs the underlying source class in weak reference, maybe that was the fault?
+
+It's kinda understandable here because InputStreamHolder is a generic class which does not assume whether the thing holding it will definitely respond
+
+[07:53:50.0348] <krosylight>
+Just like async function does not hold a promise because it doesn't know it will definitely respond....
+
+[07:54:57.0518] <arai>
+what's the problematic case when the callback is strong reference?
+
+[07:55:33.0644] <arai>
+err, maybe I'm wrong
+
+[07:55:36.0324] <krosylight>
+The code: https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.h#200
+
+[07:55:38.0088] <arai>
+is it this field? https://searchfox.org/mozilla-central/rev/2f5b657343ce18e4b8a56417f707022550f4b742/dom/streams/UnderlyingSourceCallbackHelpers.h#200
+```cpp
+WeakPtr<InputToReadableStreamAlgorithms> mCallback;
+```
+
+[07:55:44.0141] <arai>
+okay
+
+[07:55:44.0474] <krosylight>
+Yup
+
+[07:58:17.0496] <krosylight>
+Maybe we could have an option to have a strong reference instead for file reading case
+
+[07:59:48.0042] <arai>
+let me check, having clycle with `RefPtr` between `InputStreamHolder` and `InputToReadableStreamAlgorithms` is problematic?
+
+[08:00:37.0716] <krosylight>
+InputStreamHolder is held by random nsIInputStream and can't be cycle collected
+
+[08:00:54.0244] <krosylight>
+So it needs to be either cut manually or just not make a cycle
+
+[08:01:11.0280] <asuth>
+I assume we use nsIInputStream in the case where JS is generating the stream of data?
+
+[08:01:33.0355] <krosylight>
+In the JS-made ReadableStream case we don't use nsIInputStream
+
+[08:01:58.0346] <krosylight>
+The whole InputToReadableStreamAlgorithms and InputStreamHolder work is done for blob.stream() and WebTransport
+
+[08:02:20.0006] <krosylight>
+Which do use nsIInputStream
+
+[08:02:30.0478] <asuth>
+It seems like in both those cases we want a strong ref then?
+
+[08:02:52.0663] <krosylight>
+For blob yes, for WT I'm not sure, I can ping jesup 
+
+[08:03:19.0903] <krosylight>
+If WT is okay with it then we can just convert it to RefPtr
+
+[08:03:32.0347] <asuth>
+A network connection is like a MessagePort, as long as it's open, we need to assume it can generate data, and I don't think it itself would be eligible for GC.
+
+[08:04:04.0233] <asuth>
+ * A network connection is like a MessagePort (where the other end is in another global), as long as it's open, we need to assume it can generate data, and I don't think it itself would be eligible for GC.
+
+[08:05:30.0456] <krosylight>
+Even if it may not be observable by anyone?
+
+[08:06:03.0596] <krosylight>
+The script may just throw the whole WT thing away after a read request
+
+[08:06:12.0025] <krosylight>
+without closing it
+
+[08:06:28.0836] <krosylight>
+I wonder what fetch does
+
+[08:06:32.0214] <asuth>
+If there's no listener, then the things could be GCed, yeah.
+
+[08:07:31.0599] <krosylight>
+If we grab a strong reference in InputStreamHolder then the cycle will be kept until the read request is resolved
+
+[08:08:14.0535] <asuth>
+At least for classical DOMEventTargetHelper classes, in particular, we have [KeepAliveIfHasListenersFor](https://searchfox.org/mozilla-central/search?q=symbol:_ZN7mozilla20DOMEventTargetHelper26KeepAliveIfHasListenersForEP6nsAtom&redirect=false) which marks like "onmessage" magical for BroadcastChannel.
+
+[08:08:21.0265] <asuth>
+ * At least for classical DOMEventTargetHelper subclasses, in particular, we have [KeepAliveIfHasListenersFor](https://searchfox.org/mozilla-central/search?q=symbol:_ZN7mozilla20DOMEventTargetHelper26KeepAliveIfHasListenersForEP6nsAtom&redirect=false) which marks like "onmessage" magical for BroadcastChannel.
+
+[08:09:38.0657] <krosylight>
+I think it's not clear for streams whether there's a listener, the only clue is a JS-side reference to promise but turns out we can't guarantee it here
+
+[08:11:19.0143] <krosylight>
+(And even it was guaranteed it would only work for async iterator case but not for `.read()` case)
+
+[08:11:44.0069] <asuth>
+Can you elaborate on that more / the specific test case it corresponds to?
+
+[08:12:06.0784] <krosylight>
+Not sure I follow
+
+[08:12:54.0133] <krosylight>
+which case you mean?
+
+[08:13:18.0203] <asuth>
+Okay, I think I parsed what you mean now.
+
+[08:14:04.0678] <asuth>
+For WebTransport I think that translates into WebTransport should be holding any stream it enqueues with a strong reference.
+
+[08:14:34.0519] <asuth>
+And that strong reference would then hold the stream alive such that it would hold anything that's actively trying to read from that stream via AsyncIterator/promise.
+
+[08:15:21.0995] <asuth>
+If there is nothing listening via AsyncIterator/promise and there's no way to add a new AsyncIterator/promise then that's fine, there's nothing benefiting from that strong reference.
+
+[08:15:54.0714] <asuth>
+Which is to say, the WebTransport could still be GCed if no one retains a reference to it  or a way to hook up to its output stream
+
+[08:16:17.0473] <asuth>
+But if there was a reference to it from within the AsyncIterator/read promise, the WebTransport could be kept alive.
+
+[08:16:50.0504] <arai>
+"whether there's a listener or not" in that context would correspond to whether the promise returned by the stream has any reaction record, I think?
+
+[08:17:27.0137] <arai>
+(currently there's no API to query it tho)
+
+[08:17:57.0615] <asuth>
+we wouldn't need to query it; it would just be an emergent property of the cycle collection
+
+[08:18:19.0029] <arai>
+ah, okay
+
+[08:18:57.0963] <jesup>
+krosylight: that sounds reasonable, so long as we don't leak webtransports
+
+[08:19:30.0950] <krosylight>
+>so long as we don't leak webtransports
+
+Yeah, this is the core part of this discussion 🥲
+
+[08:20:04.0659] <krosylight>
+(still trying to understand what asuth said)
+
+[08:23:18.0901] <krosylight>
+> <@asuth:mozilla.org> For WebTransport I think that translates into WebTransport should be holding any stream it enqueues with a strong reference.
+
+And when does it purge the streams?
+
+[08:26:51.0667] <asuth>
+krosylight: Hm, so, looking at webtransport a bit more, I guess it's again a question of just having an active AsyncInterator/read promise on the webtransport stream, and maybe webtransport doesn't magically have an internal strong ref.
+
+[08:29:31.0087] <krosylight>
+That again leads to a question of whether that active iterator/promise is referenced by anything else, right?
+
+[08:29:45.0451] <krosylight>
+Because otherwise it's just useless
+
+[08:31:43.0343] <asuth>
+> <@krosylight:mozilla.org> Because otherwise it's just useless
+
+No?  The threshold for GC is observability, not utility.  If there's code that will `console.log("blah")` if we don't run GC but doesn't print if we do GC and it doesn't involve WeakRefs/etc., then we have a bug.
+
+[08:32:25.0199] <asuth>
+Hm, I think I parsed wrong again.
+
+[08:32:38.0581] <asuth>
+Let me restate
+
+[08:34:14.0179] <asuth>
+> <@krosylight:mozilla.org> Because otherwise it's just useless
+
+ * No?  The threshold for GC is observability, not utility.  If there's code that will `console.log("blah")` if we don't run GC but doesn't print if we do GC and it doesn't involve WeakRefs/etc., then we (usually) have a bug.
+
+[08:35:01.0108] <asuth>
+Ah, okay, I think my brain just leveled up one level in the galaxy brain setup to understand more what you're talking about.
+
+[08:35:49.0738] <krosylight>
+:galaxy-brain:
+
+[08:38:42.0728] <asuth>
+krosylight: arai What I now understand to be the central issue is that if we have some code that is waiting on an AsyncIterator/read promise, but that code is not holding a reference to the WebTransport or the stream somehow, then from a GC absolutist perspective, we should GC everything, even though that code can have side effects, we should GC it.  And there's no good way to know if there's something actually listening there because we don't have a primitive that lets us decorate the AsyncIterator/read promise-listener, but we want one?
+
+[08:38:56.0871] <asuth>
+ * krosylight: arai What I now understand to be the central issue is that if we have some code that is waiting on an AsyncIterator/read promise, but that code is not holding a reference to the WebTransport or the stream somehow, then from a GC absolutist perspective, we should GC everything, even though that code can have side effects.  And there's no good way to know if there's something actually listening there because we don't have a primitive that lets us decorate the AsyncIterator/read promise-listener, but we want one?
+
+[08:40:18.0747] <krosylight>
+Thank you for writing a great feature request description for me
+
+[08:40:49.0099] <arai>
+to my understanding, whether there's a reaction on the promise isn't the essential part.  GC-ing those promises is only a kind of optimization
+
+[08:43:31.0968] <asuth>
+Is the situation that if someone has an outstanding read() request but didn't put a reaction on the resulting promise, we should keep the underlying thing alive even though if that promise resolves then we would want to GC the underlying ex: WebTransport?
+
+[08:43:44.0323] <krosylight>
+I think whether the JS has the access to the promise can be considered as having a listener, because one can always call `.then()` and get the value
+
+[08:44:48.0758] <arai>
+my understanding is that the WebTransport or stream which is "actively" reading the data and which is going to resolve the promise should keep the promise and depending things alive, regardless of whether there's some reference to them or those promises
+
+[08:45:14.0539] <arai>
+if those promises are not collected until the stream releases the reference, it's still not a problem
+
+[08:46:09.0751] <krosylight>
+For file reading we can say it's "active reading", but for WT it's just waiting for potential data, there may or may not be one
+
+[08:46:26.0973] <asuth>
+I think that's fine
+
+[08:46:33.0300] <arai>
+"potential data" means it should be kept alive
+
+[08:46:58.0790] <asuth>
+And we could potentially then write a glass-box test where we do a read() on a WebTransport where our server will never write anymore data to the WT stream, and we run some GCs and we make sure that the WT stays alive.
+
+[08:47:07.0039] <krosylight>
+> <@arai:mozilla.org> "potential data" means it should be kept alive
+
+if it's observable by anyone, is my argument
+
+[08:47:12.0379] <asuth>
+ * And we could potentially then write a glass-box test where we do a read() on a WebTransport where we don't add a reaction to the promise and where our server will never write anymore data to the WT stream, and we run some GCs and we make sure that the WT stays alive.
+
+[08:47:31.0825] <krosylight>
+otherwise I'd say it's leaky
+
+[08:47:45.0116] <arai>
+I don't think it's leak, it's just a bug in the user-side code
+
+[08:47:51.0309] <arai>
+ * I don't think it's leak in term of platform, it's just a bug in the user-side code
+
+[08:49:14.0564] <asuth>
+In terms of specs, we generally already accept that if you have 2 agents communicating by MessageChannel and they each have a "message" event listener but neither end has an active reference to the MessagePort and so can never call postMessage(), we will leak them because we can't do cross-agent GC.
+
+[08:49:34.0929] <asuth>
+And similarly, yeah, there's no way for the browser to know whether the other end of a connection will ever write data again
+
+[08:50:23.0793] <krosylight>
+So far we are saying file reading case but it's applicable in general streams like https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$vfFkpjLd48qesG_wZWF3GOVJcwgfu_eIKFQFV41x5lc?via=mozilla.org&via=matrix.org&via=igalia.com
+
+Non-actively-reading streams also need to be kept in some way
+
+[08:50:59.0154] <krosylight>
+ * So far we are saying file reading case but the issue is applicable in general streams like https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$vfFkpjLd48qesG\_wZWF3GOVJcwgfu\_eIKFQFV41x5lc?via=mozilla.org&via=matrix.org&via=igalia.com
+
+Non-actively-reading streams also need to be kept in some way
+
+[08:51:19.0113] <krosylight>
+ * So far we are saying file reading case but the issue is applicable in general streams like https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$vfFkpjLd48qesG\_wZWF3GOVJcwgfu\_eIKFQFV41x5lc?via=mozilla.org&via=matrix.org&via=igalia.com
+
+
+
+Non-actively-reading streams also need to be kept in some way
+
+[08:51:30.0112] <krosylight>
+(Matrix broke the line break for me?)
+
+[08:51:52.0071] <asuth>
+(sometimes weird stuff happens with pasting and maybe contenteditable.)
+
+[08:53:59.0878] <krosylight>
+> <@krosylight:mozilla.org> So far we are saying file reading case but the issue is applicable in general streams like https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$vfFkpjLd48qesG\_wZWF3GOVJcwgfu\_eIKFQFV41x5lc?via=mozilla.org&via=matrix.org&via=igalia.com
+> 
+> 
+> 
+> Non-actively-reading streams also need to be kept in some way
+
+My point is, we can't always say that not fulfilling read request is a user code error
+
+[08:56:14.0198] <arai>
+the user code is responsible for resolving the promise (fulfill or reject), or just close the entire stream?
+
+[08:57:02.0588] <arai>
+"keeping things alive when it's still open" doesn't sound like a "leak"
+
+[08:57:49.0451] <arai>
+we could GC those things if there's no reference, but it's not for correctness
+
+[08:58:05.0381] <krosylight>
+I mean, in https://matrix.to/#/!CZEbuMfGYVdQMIBKeP:mozilla.org/$vfFkpjLd48qesG_wZWF3GOVJcwgfu_eIKFQFV41x5lc?via=mozilla.org&via=matrix.org&via=igalia.com case, when can the stream be closed? I don't think there's any stable way to do that unless there's a GC tracker to periodically check `element` is alive
+
+[08:58:22.0647] <asuth>
+Cycle collection is the tracker?
+
+[08:58:54.0085] <krosylight>
+But here we want to not cycle collecting it when there's a request, right?
+
+[08:59:29.0169] <krosylight>
+ * But here we want to not cycle collect it when there's a request, right?
+
+[08:59:56.0238] <asuth>
+When the element is detached from the document, its refcount will be manipulated which will make the cycle collector interested in it.  The click handler will be GC'ed and that can then GC the controller reference which should have been holding the stream open
+
+[09:00:05.0463] <asuth>
+When the stream gets closed the read request and its strong ref would be invalidated.
+
+[09:01:52.0560] <krosylight>
+And where do we add the strong reference?
+
+[09:03:38.0129] <asuth>
+In that example, I think at the end of the code snippet (and start() is run) the static roots are:
+1. The Element is in the DOM tree which holds it strongly, it holds the click handler which holds a reference to the controller and keeps the stream open.  The stream closes if the reference to the controller goes away?
+2. The read() request gets added to the stream and holds a strong reference.  It gets closed out when the stream gets closed because no one holds a reference to the controller anymore.
+
+[09:04:15.0518] <asuth>
+ * In that example, I think at the end of the code snippet (and start() is run) the static roots are:
+
+1. The Element is in the DOM tree which holds it strongly, it holds the click handler which holds a reference to the controller and keeps the stream open.  The stream closes if the reference to the controller goes away?
+2. The read() request gets added to the stream and holds a strong, un-traced reference to the stream.  It gets closed out when the stream gets closed because no one holds a reference to the controller anymore.
+
+[09:05:43.0077] <krosylight>
+>The stream closes if the reference to the controller goes away?
+
+Both owns each other; has the same lifetime
+
+[09:05:49.0837] <krosylight>
+ * > The stream closes if the reference to the controller goes away?
+
+Both owns each other; have the same lifetime
+
+[09:07:00.0268] <arai>
+I think "there's a request" isn't a condition which should be used
+
+[09:07:44.0310] <arai>
+then, if the above example case is considered "valid", then I agree that the user is responsible for closing the stream, but the user is still responsible for releasing the reference if they want the stream to be collected
+
+[09:08:29.0990] <asuth>
+> <@arai:mozilla.org> I think "there's a request" isn't a condition which should be used
+
+Do you mean read() doesn't ever count as adding a strong reference to the stream?
+
+[09:09:23.0402] <krosylight>
+`new ReadableStream().getReader().read()` will leak if we do that
+
+[09:09:58.0478] <arai>
+`read()` will add reference, but it will be part of cycle which can be collected
+
+[09:10:07.0514] <arai>
+the someone who's actually going to write to the controller should be outside of the cycle
+
+[09:10:09.0425] <asuth>
+If the controller's not accessible to enqueue data it seems fair to GC
+
+[09:10:24.0545] <krosylight>
+it's a bit confusing, let's say non-cc'ed reference instead of strong reference
+
+[09:11:12.0855] <arai>
+oh, I wasn't aware of the difference between them
+
+[09:11:50.0751] <krosylight>
+cc'ed strong reference can be cycle collected
+
+[09:14:31.0018] <asuth>
+If it helps for understanding the DOM code [in the class diagrams like this one](https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27%20depth%3A4) mReadRequests   💪 🔗🔍 ⛓️‍💥 means:
+- 💪 is a RefPtr which is technically a strong reference
+-  🔗🔍 means that the CycleCollector helper Traverse method directly references the field
+- ⛓️‍💥 means the CycleCollector helper Unlink method directly references the field
+
+and then for mStoredError   🫚 🔗✏️ ⛓️‍💥:
+- 🫚 means it's a JS::Heap/Root/whatever
+-  🔗✏️ means the CycleCollector helper Trace method directly references the field.
+
+[09:16:10.0226] <asuth>
+krosylight: From an abstract perspective (like, ignoring the spec), for streams where JS is generating the data, I think it matters whether there are any references to the controller that can call enqueue() or that there are ways to get new references to the controller.
+
+[09:16:58.0253] <arai>
+yeah, I agree that the reference to the controller matters
+
+[09:18:36.0901] <krosylight>
+> <@asuth:mozilla.org> krosylight: From an abstract perspective (like, ignoring the spec), for streams where JS is generating the data, I think it matters whether there are any references to the controller that can call enqueue() or that there are ways to get new references to the controller.
+
+pull callback will provide a new reference
+
+[09:19:17.0392] <krosylight>
+(That's how they own each other)
+
+[09:19:26.0809] <arai>
+performing `read()` method, or having a pending `ReadReqeust` shouldn't add non-cc'ed reference, but when something is notified by `read()` and it's going to write to the controller, it should have non-cc'ed reference to the controller, so that when the data arrives to the something, it can write to the controller even if the controller is reachable only from it
+
+[09:20:12.0437] <krosylight>
+>but when something is notified by read()
+
+What do you mean by notified by read?
+
+[09:20:45.0270] <krosylight>
+I guess it means pull callback 
+
+[09:20:50.0824] <arai>
+told to read a data and eventually enqueue a data to controller and resolve the promise
+
+[09:21:07.0347] <arai>
+so, input stream or holder?
+
+[09:22:22.0781] <krosylight>
+What if the pull callback (input stream or holder if non-JS case) needs to just wait for others and don't know whether they can be fulfilled?
+
+[09:23:05.0473] <arai>
+"wait for others" means the other holds a reference?
+
+[09:24:21.0985] <krosylight>
+`pull()` also just end without doing anything, that's what `new ReadableStream()` does, a no-op stream. If we go this road I think we'll have to make many special cases...
+
+[09:24:55.0996] <krosylight>
+ * `pull()` can also just end without doing anything, that's what `new ReadableStream()` does, a no-op stream. If we go this road I think we'll have to make many special cases...
+
+[09:25:08.0384] <arai>
+sorry, what's `pull()` ?
+
+[09:25:09.0460] <krosylight>
+ * pull callback can also just end without doing anything, that's what `new ReadableStream()` does, a no-op stream. If we go this road I think we'll have to make many special cases...
+
+[09:25:14.0034] <krosylight>
+pull callback, sorry
+
+[09:26:36.0346] <arai>
+ending without doing anything would mean that it says it's fine to be collected
+
+[09:26:39.0523] <krosylight>
+In the onclick example, we can't ask `element` to grab our stream
+
+[09:27:14.0900] <arai>
+it grabs the stream via event handler?  doesn't it keep things alive across cc ?
+
+[09:28:06.0066] <krosylight>
+hmm, yeah
+
+[09:28:17.0761] <arai>
+in the onlick example, there's explicit route to the stream, which is global -> document -> element -> event handler -> variables
+
+[09:29:59.0199] <arai>
+so, the file's case, file-reading input stream is responsible for keeping the listener alive, and actually it does.  the issue happens because the holder uses weak ref, which is the special case which needs fix?
+
+[09:32:32.0691] <krosylight>
+Right.
+
+So that way we figured out the file and WT (I feel like I need to think more about WT though, and it's not urgent to change it in any way), and the JS case seems fine with it, so case closed?
+
+[09:33:03.0384] <arai>
+I think so
+
+[09:33:07.0830] <krosylight>
+Yay!
+
+[09:34:28.0396] <asuth>
+krosylight: do you want to talk more about the WT case back in Workers & Storage?
+
+[09:34:46.0791] <krosylight>
+I'll briefly describe the conclusion and call it a day, thank you arai  and asuth !
+
+[09:34:59.0111] <asuth>
+oh right, time zones!
+
+[09:35:02.0083] <krosylight>
+> <@asuth:mozilla.org> krosylight: do you want to talk more about the WT case back in Workers & Storage?
+
+Maybe next week, I feel alone in the office
+
+[09:35:36.0661] <asuth>
+calling it a day is good; I think my understand is improved too... especially how we could have more useful diagrams! moo hoo ha ha ha!
+
+[09:35:50.0278] <asuth>
+ * calling it a day is good; I think my understanding is improved too... especially how we could have more useful diagrams! moo hoo ha ha ha!
+
+[09:35:57.0909] <krosylight>
+Yay searchfox!
+

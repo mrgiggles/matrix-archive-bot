@@ -1,0 +1,2242 @@
+2025-01-03
+[06:55:08.0892] <nbp>
+Do we have an allocator which can work on a pre-allocated fixed set of pages and manage fragmentation?
+
+[08:50:57.0596] <tcampbell>
+`ProcessExecutableMemory` has similar requirements, but it looks like we just have a very basic custom allocator there.
+
+[08:54:16.0367] <nbp>
+That's actually for the ProcessExecutableMemory, or the data section of it …
+
+[08:54:45.0233] <nbp>
+It uses pools and it only reclaim pools when they are all freed.
+
+[08:55:11.0277] <nbp>
+and I was wondering if we had anything else already.
+
+[08:56:01.0673] <nbp>
+as our requirement on a data section might not be as strict as for the executable case, where the constraint are coming from the memory pages protections.
+
+
+2025-01-06
+[08:39:56.0856] <mgaudet>
+I still laugh whenever someone describes this capitalization style as SCREAMING_SNAKE_CASE 
+
+[08:40:13.0256] <mgaudet>
+Also, welcome back to those who are back today P(
+
+[08:40:16.0233] <mgaudet>
+* Also, welcome back to those who are back today :)
+
+[08:42:12.0980] <iain>
+It appears to be the official name according to [wikipedia](https://en.wikipedia.org/wiki/Snake_case), although to be fair the citation there leads back to an [MDN page](https://developer.mozilla.org/en-US/docs/Glossary/Snake_case).
+
+[08:42:56.0727] <mgaudet>
+What a wonderfully silly thing. Love it. 
+
+[09:46:20.0281] <mgaudet>
+We definitely have a fucntion which given a property name returns yes it exists, and here's the holder (or no it doesn't exist) What on earth is it called
+
+[09:46:54.0178] <mgaudet>
+Oh it -is- lookup 
+
+[09:47:46.0272] <mgaudet>
+Hmm. What I really want is "GetProperty" with an out-param that returns the holder object 
+
+
+2025-01-07
+[06:00:55.0800] <padenot>
+Hi! Are we aware / having a look at https://github.com/tc39/proposal-immutable-arraybuffer ?
+
+[07:38:18.0360] <bvisness>
+I've been meaning to look more closely at that myself because it could be relevant for read-only wasm memory
+
+[07:38:59.0445] <bvisness>
+could be useful for webgpu too?
+
+[07:39:27.0976] <padenot>
+sure, but I was asking for Web Audio API and Web Codecs
+
+[07:39:58.0624] <padenot>
+there's a host of use cases for media stuff, but also for graphics rendering, generally (regardless of the spec)
+
+[08:01:05.0939] <dminor>
+We have no concerns about that proposal from an implementation point of view, but we haven't been actively participating in the discussion so far.
+
+[08:03:56.0296] <dminor>
+It seems to be moving along ok by itself. There was a bit of discussion about copy-on-write behaviours at the December plenary, I don't remember the details, and the notes aren't public yet.
+
+[08:08:21.0384] <padenot>
+ok. fwiw it's going to be a game changer for programs that need to interact with Web API (e.g. not doing only operation on e.g. arraybuffer, but sending them around), because it's going to allow skipping a lot of memory copies, that are necessary as things stand today because of quite a few TOCTOU issues and various related problems
+
+[08:13:41.0299] <padenot>
+luke was really big on that idea because of the potential iirc, but he isn't around anymore so ideally we'd follow the progress / implement it, but I wasn't sure if that was happening
+
+[09:28:33.0241] <jonco>
+sfink: If you've got a sec could you review https://phabricator.services.mozilla.com/D233350 ?
+
+[10:12:40.0734] <jonco>
+Thanks!
+
+[11:00:53.0347] <sfink>
+mgaudet: you've almost certainly answered this already in one of your blog posts, but remind me of how to get an initial checkout to use with jj? Do I need to set up cinnabar and do a checkout with it (knowing that I'll have to discard it eventually once they make the official git repo)?
+
+[11:01:22.0595] <sfink>
+I've started using jj with other (small) projects, and it seems like the new year would be a good time to start experimenting with using it for the big checkout. It's feeling like it has the most promise going forward.
+
+[11:02:54.0141] <sfink>
+And anyway, 2025 isn't a real year. 2024 was my mental "whoa, things'll be different then!" benchmark, and anything past that is so obviously in the only imagined future, that I may as well use this cheap imitation of time to try new things out.
+
+[11:28:17.0856] <mgaudet>
+Glanduum has promised an upgrade path for cinnabar repos. 
+
+But yes. Start with cinnabar then to jj init 
+
+[11:28:45.0908] <mgaudet>
+Sorry for bad type on phone eating. 
+
+[12:31:32.0784] <davidj361>
+Why am I getting this error when trying to create and destroy 1000 globals?
+```
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+Hit MOZ_CRASH(mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed) at ...../firefox-102.5.0/mozglue/misc/Mutex_posix.cpp:92
+#01: mozilla::detail::MutexImpl::~MutexImpl()[/usr/local/lib/libmozjs-102.so +0x126900e]
+```
+From this code on line 294 when iterations are set to 1000: https://paste.mozilla.org/ORUYWFR2#L294
+
+[12:39:47.0395] <sfink>
+https://linux.die.net/man/3/pthread_mutex_destroy says:
+EBUSY
+    The implementation has detected an attempt to destroy the object referenced by mutex while it is locked or referenced (for example, while being used in a pthread_cond_timedwait() or pthread_cond_wait()) by another thread. 
+
+
+[12:39:57.0892] <sfink>
+could that be possible in your case? (I haven't read the code.)
+
+[12:40:11.0359] <sfink>
+* https://linux.die.net/man/3/pthread\_mutex\_destroy says:
+```
+EBUSY
+    The implementation has detected an attempt to destroy the object referenced by mutex while it is locked or referenced (for example, while being used in a pthread\_cond\_timedwait() or pthread\_cond\_wait()) by another thread. 
+```
+
+[12:40:51.0115] <sfink>
+* https://linux.die.net/man/3/pthread\_mutex\_destroy says:
+
+```
+EBUSY
+    The implementation has detected an attempt to destroy the object referenced by mutex while it is locked or referenced (for example, while being used in a pthread_cond_timedwait() or pthread_cond_wait()) by another thread. 
+```
+
+[12:45:02.0689] <sfink>
+hm, the code seems like it should work. Perhaps we're not joining some background stencil thread during shutdown? I don't know enough how it works.
+
+[12:45:51.0016] <sfink>
+can you get a full crash stack?
+
+[12:50:06.0123] <davidj361>
+> <@sfink:mozilla.org> can you get a full crash stack?
+
+```
+iteration: 910
+RootedScript is invalid
+
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+Hit MOZ_CRASH(mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed) at .../firefox-102.5.0/mozglue/misc/Mutex_posix.cpp:92
+#01: mozilla::detail::MutexImpl::~MutexImpl()[/usr/local/lib/libmozjs-102.so +0x126900e]
+#02: __cxa_finalize[/lib/x86_64-linux-gnu/libc.so.6 +0x45a56]
+#03: ???[/usr/local/lib/libmozjs-102.so +0x1a2277]
+Segmentation fault (core dumped)
+```
+
+RootedScript seems to fail here?
+```cpp
+        JS::RootedScript script(ctx, JS::InstantiateGlobalStencil(ctx, opts, stencil));
+        if (!script) {
+            std::cout << "RootedScript is invalid\n";
+            exit(1);
+        }
+
+```
+
+[12:50:13.0280] <davidj361>
+> <@sfink:mozilla.org> can you get a full crash stack?
+
+ * ```
+iteration: 910
+RootedScript is invalid
+
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+Hit MOZ_CRASH(mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed) at .../firefox-102.5.0/mozglue/misc/Mutex_posix.cpp:92
+#01: mozilla::detail::MutexImpl::~MutexImpl()[/usr/local/lib/libmozjs-102.so +0x126900e]
+#02: __cxa_finalize[/lib/x86_64-linux-gnu/libc.so.6 +0x45a56]
+#03: ???[/usr/local/lib/libmozjs-102.so +0x1a2277]
+Segmentation fault (core dumped)
+```
+
+RootedScript seems to fail here?
+
+```c++
+        JS::RootedScript script(ctx, JS::InstantiateGlobalStencil(ctx, opts, stencil));
+        if (!script) {
+            std::cout << "RootedScript is invalid\n";
+            exit(1);
+        }
+
+```
+
+[12:51:01.0584] <davidj361>
+I'm going to assume somehow the stack is filled up too much
+
+[12:53:19.0709] <davidj361>
+ * ```
+iteration: 910
+RootedScript is invalid
+
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+Hit MOZ_CRASH(mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed) at .../firefox-102.5.0/mozglue/misc/Mutex_posix.cpp:92
+#01: mozilla::detail::MutexImpl::~MutexImpl()[/usr/local/lib/libmozjs-102.so +0x126900e]
+#02: __cxa_finalize[/lib/x86_64-linux-gnu/libc.so.6 +0x45a56]
+#03: ???[/usr/local/lib/libmozjs-102.so +0x1a2277]
+Segmentation fault (core dumped)
+```
+
+RootedScript seems to fail here on iteration 910?
+
+```c++
+        JS::RootedScript script(ctx, JS::InstantiateGlobalStencil(ctx, opts, stencil));
+        if (!script) {
+            std::cout << "RootedScript is invalid\n";
+            exit(1);
+        }
+
+```
+
+[13:52:41.0010] <sfink>
+(was eating lunch) That looks more to me like it doesn't like to `exit(1)` without doing `JS_DestroyContext` and `JS_Shutdown`. There's probably some background thread or something? I think you should try making all of your exit paths call those functions and see if it still happens.
+
+[13:52:57.0008] <sfink>
+though the real question then is why that function is failing.
+
+[13:54:40.0001] <sfink>
+* though the real question then is why that function (`InstantiateGlobalStencil`) is failing.
+
+[14:53:23.0456] <Tom Tang>
+Hi. Should `ENABLE_EXPLICIT_RESOURCE_MANAGEMENT` be somehow added in `js-config.h` for building the embedding, or am I doing something wrong?
+
+ `explicit-resource-management` is enabled by default in SpiderMonkey nightly builds, and it sets `ENABLE_EXPLICIT_RESOURCE_MANAGEMENT` to 1 when building the SpiderMonkey lib. 
+However when building the embedding, this macro has been used on https://searchfox.org/mozilla-central/rev/e24277e/js/public/ProtoKey.h#89 etc., and disagrees with the lib. As a result, the whole `enum JSProtoKey` index would be off by 1 (e.g. header `JSProto_Uint8Array` 27 will be interpreted as `JSProto_Int8Array` in lib)
+
+[14:59:39.0406] <sfink>
+Hm. I think you're strictly correct that it should be `js-config.h`. But that seems unfortunate; perhaps it would be better to make the exception type unconditional and just never use it?
+
+[14:59:46.0141] <sfink>
+* Hm. I think you're strictly correct that it should be in `js-config.h`. But that seems unfortunate; perhaps it would be better to make the exception type unconditional and just never use it?
+
+[15:01:46.0407] <sfink>
+I'm not sure where the dividing line should be.
+
+[15:02:47.0552] <sfink>
+but it seems like the `SuppressedError()` could be unconditional.
+
+[15:02:55.0752] <sfink>
+* but it seems like the `SuppressedError()` constructor function could be unconditional.
+
+[15:03:13.0004] <sfink>
+(or it could `MOZ_CRASH` if you prefer.)
+
+[15:04:29.0810] <Tom Tang>
+Also https://searchfox.org/mozilla-central/rev/e24277e/js/public/ProtoKey.h#154 and https://searchfox.org/mozilla-central/rev/e24277e/js/public/ProtoKey.h#156 for `DisposableStack` and `AsyncDisposableStack`?
+
+[15:06:05.0168] <iain>
+IIRC, the `ENABLE_EXPLICIT_RESOURCE_MANAGEMENT` config option only determines whether explicit resource management (a new language feature with a not-yet-mature implementation) is included in the build. It requires an additional run-time option to be set (see [here](https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#13004-13011)) to be turned on.
+
+[15:07:00.0883] <iain>
+So it should also be safe to just enable it in the embedder's config.
+
+[15:08:53.0512] <sfink>
+it seems wrong to leave an `#ifdef` in a public header file that breaks the binary API if it is enabled, regardless of how it is defaulted in the embedder config.
+
+[15:09:39.0920] <iain>
+Yeah, maybe that's fair
+
+[15:10:46.0505] <sfink>
+I'll admit it's messy to leave various fragments active when it's disabled. Maybe we need a dummy mechanism for those slots in the proto keys.
+
+[15:11:02.0063] <Tom Tang>
+> So it should also be safe to just enable it in the embedder's config.
+It is enabled by default in nightly builds https://searchfox.org/mozilla-central/rev/e24277e/js/moz.configure#180. I don't want it though :>
+My temporary solution is to add the `--disable-explicit-resource-management` flag to explicitly disable it for my embedding.
+
+[15:11:10.0945] <Tom Tang>
+* > So it should also be safe to just enable it in the embedder's config.
+
+It is enabled by default in nightly builds https://searchfox.org/mozilla-central/rev/e24277e/js/moz.configure#180. I don't want it though :>
+My temporary solution is to add the `--disable-explicit-resource-management` flag to explicitly disable it for my embedding.
+
+[15:12:34.0508] <sfink>
+oh, wait. I think there already is such a mechanism, and is heavily used.
+
+[15:12:49.0691] <sfink>
+cf REAL_IF_TEMPORAL (and REAL_IF_INTL etc.)
+
+[15:14:09.0732] <sfink>
+in fact, the [comment at the top](https://searchfox.org/mozilla-central/rev/e24277e20c492b4a785b4488af02cca062ec7c2c/js/public/ProtoKey.h#18-29) is exactly about this.
+
+[15:16:03.0669] <iain>
+Looks like we made a similar mistake for records and tuples at the bottom of the list, although maybe that's less of a problem because it's at the end
+
+[15:30:53.0246] <sfink>
+I'm trying to put together a patch, but it's messy because the expected macro name is already used elsewhere. :-(
+
+[15:35:53.0516] <sfink>
+have it working, cleaning it up a bit
+
+[15:47:02.0276] <sfink>
+bug 1940342
+
+[15:47:03.0513] <botzilla>
+https://bugzil.la/1940342 — ASSIGNED (sfink) — ProtoKeys break binary compatibility
+
+
+2025-01-08
+[17:25:30.0283] <sfink>
+er, I fear I may be a foreign asset. iain reviewed, I "updated a comment" which scooped up a change that modifies the fundamental storage of a Maybe<T>, I landed. Fortunately, an automated test caught me out.
+
+[17:31:38.0719] <sfink>
+though I'm not sure how that managed to land. It was a modification to an unlanded patch earlier in my stack, and it should have conflicted with the autoland code...?
+
+[19:11:00.0142] <iain>
+Looks like it got sucked up in your patch when you were responding to feedback?
+
+[19:11:18.0691] <iain>
+Oh, wait, that's what you said
+
+[21:48:04.0862] <debadree25>
+😬😬 will be more careful 
+
+[21:57:59.0524] <sfink>
+no worries, I would probably have r+'d the change too
+
+[00:09:31.0353] <mayankleoboy1>
+is this an example of "wasm-gc" : https://share.firefox.dev/3PuFRkV , or is just a wasm demo that does some MinorGC?
+
+[00:17:12.0448] <jandem>
+I see very little minor GC in that profile and at least some of that is triggered by allocations in JS code. The wasm module has "rust_bg" in its file name so it's likely not using wasm-gc
+
+[00:17:24.0526] <jandem>
+* I see very little minor GC in that profile and at least some of that is triggered by allocations in JS code. The wasm module has "rust\_bg" in its file name so it's probably not using wasm-gc
+
+[00:20:16.0682] <jandem>
+* I see very little minor GC in that profile and at least some of that is triggered by allocations in JS code. The wasm module has "rust\_bg" in its file name so I expect it's not using wasm-gc
+
+[00:22:40.0545] <mayankleoboy1>
+OK. So then is there an easy way to identify if the page uses wasm-gc from captured profiles? 
+
+[07:32:26.0125] <iain>
+mayankleoboy1: We inline many (most?) allocations in wasm-gc, but I think we still fall back to VM calls when eg the nursery fills up, so if there are wasm frames that trigger a GC then wasm-gc is probably involved. It looks like [createStructIL](https://searchfox.org/mozilla-central/source/js/src/wasm/WasmGcObject-inl.h#27) may be where VM allocations end up.
+
+[08:23:34.0728] <mayankleoboy1>
+Thanks Iain. I was looking for something like "if the profile has xyz as a function or abc marker then it is using wasm-gc" check that i can do when submitting profiles.
+If there isnt anything like that, i can continue to file bugs aa usual and SM folks can classify it. 
+
+[08:24:07.0226] <iain>
+If you see `createStructIL` in the profile, it's using wasm-gc
+
+[08:57:24.0195] <sfink>
+Jonco: will be about 10min late, depending on how fast I bike
+
+[08:58:25.0176] <Ms2ger>
+No faster than you can do safely, I hope :)
+
+[09:29:24.0636] <jonco>
+denispal: bug 1873235
+
+[09:29:26.0568] <botzilla>
+https://bugzil.la/1873235 — NEW (nobody) — Leaking page repeatedly triggers GC without freeing any memory
+
+[09:29:50.0987] <denispal>
+jonco: thanks!
+
+[13:13:54.0137] <Tarek>
+Hey all I am trying to measure under ms times in a c++ code compiled in wasm but it looks like the precision is locked to 1ms -- is that for spectre protection? is there a way to run below ms timers?
+
+[13:16:04.0973] <Tarek>
+I added 
+```
+ <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin"/>
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp"/>
+``` on the page that loads my worker but no luck
+
+
+[13:16:12.0114] <Tarek>
+* I added
+
+````
+ <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin"/>
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp"/>
+``` 
+
+on the page that loads my worker but no luck
+
+
+[13:19:54.0741] <Tarek>
+* I added
+
+````
+<meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin"/>
+<meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp"/>
+``` 
+
+on the page that loads my worker but no luck
+
+
+[13:20:02.0558] <Tarek>
+* I added
+
+````
+<meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin"/>
+<meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp"/>
+``` 
+
+on the page that loads my worker but no luck
+
+[15:19:44.0752] <sfink>
+Hm, that's what I got from https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/High_precision_timing too. Can those be set with <meta> tags, or does it require actual HTTP headers? I don't know how that stuff works, and people who do may not be in this channel. Neither `performance.now` nor COOP/COEP are part of the JS engine.
+
+[15:21:05.0014] <sfink>
+the all-knowing ChatGPT says <meta> is too late to set those headers, fwiw
+
+[15:21:21.0334] <sfink>
+seems plausible
+
+[15:25:33.0067] <iain>
+For testing Atomics.waitAsync, which also requires COOP/COEP headers in the browser, I cobbled together this little python script:
+```
+# Based on:
+# https://stackoverflow.com/a/21957017
+# https://gist.github.com/HaiyangXu/ec88cbdce3cdbac7b8d5
+
+from http.server import SimpleHTTPRequestHandler
+import socketserver
+import sys
+
+class Handler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        '': 'application/octet-stream',
+        '.css':	'text/css',
+        '.html': 'text/html',
+        '.jpg': 'image/jpg',
+        '.js':	'application/x-javascript',
+        '.json': 'application/json',
+        '.manifest': 'text/cache-manifest',
+        '.png': 'image/png',
+        '.wasm':	'application/wasm',
+        '.xml': 'application/xml',
+    }
+
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
+        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
+        SimpleHTTPRequestHandler.end_headers(self)
+
+if __name__ == '__main__':
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    with socketserver.TCPServer(("localhost", port), Handler) as httpd:
+        print("Serving on port", port)
+        httpd.serve_forever()
+
+```
+
+
+2025-01-09
+[01:01:05.0033] <Tarek>
+Thanks all, I've added those headers into my Python script, but no luck so far. It's kind of weird because the documentation does not mention any 1000 microsecond precision like what I get. Maybe it's how I am compiling that WASM...
+
+[01:02:33.0688] <Tarek>
+trying `emscripten_get_now()`
+
+[01:07:09.0786] <padenot>
+Tarek: if you have a repro page I can make a recording and we can check what causes it
+
+[01:54:50.0921] <Tarek>
+the reason I want to do this is to measure the exact overhead of calling Wasm Builtins. I have plugged hardware-specific routines in Firefox to replace wasm ones, and we can't see a gain. Since most of the calls are at the microseconds level in both sides -- lots of calls on small data-- I am starting to suspect that the call to the imported wasm intrisinc might add that small overhead that cancels the gains. It's hard to tell in the profiler, it's not obvious at all. So what I did is implement a builtin that sleeps for 1ms in Firefox and measure how long it takes from the wasm, to measure a precise overhead. But the results are rounded at the ms to it's hard to measure.
+
+[01:56:26.0197] <padenot>
+I can help
+
+[01:57:15.0694] <padenot>
+When doing performance measurement of that kind, always use profiler markers, never use anything else
+
+[02:00:42.0806] <julienw>
+do you need some help to call performance.mark and measure Tarek ?
+
+[02:00:53.0120] <julienw>
+* do you need some help to call performance.mark and measure from wasm Tarek ?
+
+[02:01:16.0656] <Tarek>
+yeah Julien, from our discussion, I would need to add profiler markers on the wasm side, which would mean importing the wasm builting to reach console.mark etc, but then this might add overhead 
+
+[02:01:40.0487] <Tarek>
+* yeah Julien, from our discussion, I would need to add profiler markers on the wasm side, which would mean importing the wasm console or euivalent builtin to reach console.mark etc, but then this might add overhead 
+
+[02:03:00.0001] <julienw>
+there's also the option of calling performance.now(), that one I know it's influenced by the headers
+
+[02:03:05.0972] <julienw>
+(still in the DOM side though)
+
+[02:05:02.0246] <Tarek>
+I think this is what `emscripten_get_now` calls
+
+[02:05:08.0399] <Tarek>
+will try, thanks
+
+[02:33:21.0456] <Tarek>
+woooo. works now :)
+
+[02:47:38.0467] <Tarek>
+On 205 calls of a builtin that is just sleeping 4ms, I get an average overhead of 1014.92 microseconds.  It feels like there's an issue. It feels extremely large. I am probably doing something wrong cc Ryan Hunt | pto until Jan 8  
+
+[03:00:24.0395] <Tarek>
+gregtatum: have you noticed this issue for Bergamot when using mozIntGemm?
+
+[03:00:56.0681] <Tarek>
+on 1ms calls done ~200 times I get an average overhead of 305ms 
+
+[03:01:08.0525] <Tarek>
+* on 1ms calls done ~200 times I get an average overhead of 305 micros
+
+[03:07:17.0890] <Tarek>
+could this be related to the fact that I compiled the wasm in releasedebuginfo mode?
+
+```
+[ 98%] Linking CXX executable ort-wasm-simd-threaded.jsep.mjs
+em++: warning: disabling closure because debug info was requested [-Wemcc]
+warning: undefined symbol: onnx_dequantize_linear (referenced by root reference (e.g. compiled C/C++ code))
+em++: warning: warnings in JS library compilation [-Wjs-compiler]
+em++: warning: running limited binaryen optimizations because DWARF info requested (or indirectly required) [-Wlimited-postlink-optimizations]
+```
+
+[03:07:38.0121] <Tarek>
+* could this be related to the fact that I compiled the wasm in releasedebuginfo mode?
+
+```
+[ 98%] Linking CXX executable ort-wasm-simd-threaded.jsep.mjs
+em++: warning: disabling closure because debug info was requested [-Wemcc]
+em++: warning: warnings in JS library compilation [-Wjs-compiler]
+em++: warning: running limited binaryen optimizations because DWARF info requested (or indirectly required) [-Wlimited-postlink-optimizations]
+```
+
+[06:00:29.0283] <dminor>
+Ms2ger: Now that we've got non262 tests in `staging/sm` I was thinking of removing duplicated tests from the local `non262` tests and just running them from our test262 import. Do you have any concerns about that?
+
+[06:00:39.0300] <dminor>
+And thanks for all of the working getting the export script running :)
+
+[06:02:10.0068] <dminor>
+Eventually, I think we'll move to writing tests for new proposals directly in `staging`, but for now we'll probably keep `non262` around so as not to increase the barrier to entry for new contributors.
+
+[06:48:32.0503] <gregtatum>
+Tarek: I think this discussion was resolved in Slack, but as was stated in the other room, we operate on larger arrays of data, so the overhead isn't an issue like in your case with smaller arrays.
+
+[07:11:31.0206] <Tarek>
+gregtatum: we're currently trying to do a better job at profiling what's going on. 
+
+[07:40:18.0044] <gregtatum>
+Tarek: if you need profiler marker stacks, you have `ChromeUtils.addProfilerMarker` available as well as you're running a ChromeWorker.
+
+[07:40:54.0736] <Tarek>
+gregtatum: this is for the c++ code inside onnx we don't have gecko there
+
+[07:43:16.0636] <gregtatum>
+If you're compiling Wasm you can call JS code from C++. Here's where I did it in in the Marian code.
+
+```
+diff --git a/src/common/io_item.h b/src/common/io_item.h
+index 24968ec4..e06272c3 100755
+--- a/src/common/io_item.h
++++ b/src/common/io_item.h
+@@ -3,6 +3,7 @@
+ #include "common/shape.h"
+ #include "common/types.h"
+
++#include <emscripten.h>
+ #include <string>
+
+ namespace marian {
+@@ -27,7 +28,25 @@ struct Item {
+         mapped(other.mapped),
+         name(other.name),
+         shape(other.shape),
+-        type(other.type) {}
++        type(other.type) {
++    printf("!!! Item copy constructor %s (count %ld) %p\n",
++           name.c_str(),
++           other.bytes.use_count(),
++           other.bytes.get());
++
++    // clang-format off
++    EM_ASM({
++      const name = UTF8ToString($0);
++      const size = $1;
++      const pointer = $2;
++
++      ChromeUtils.addProfilerMarker(
++        `Item() "${name}" ${size} 0x${pointer.toString(16)}`,
++        { captureStack: true }
++      );
++    }, name.c_str(), bytes->size(), reinterpret_cast<size_t>(bytes.get()));
++    // clang-format on
++  }
+
+```
+
+[07:46:22.0761] <Tarek>
+gregtatum: did you measure the average call time when you call gemmology in translation? E.g are we bigger than 20ms per call for example 
+
+[07:54:57.0633] <gregtatum>
+Tarek: I don't know per call, mostly I profile when translating a full page, and most of the time is spent within a matrix math operation inside of gemmology.
+
+[07:55:27.0132] <gregtatum>
+e.g. here is a random profile that has symbols that was in my history https://share.firefox.dev/4278Oe9
+
+[09:33:21.0803] <mgaudet>
+jonco: Opened https://bugzilla.mozilla.org/show_bug.cgi?id=1940796 -- if you have a pointer to some code that's relevant I'd love to include it for next time we spelunk it
+
+[09:33:25.0734] <mgaudet>
+* jonco: Opened https://bugzilla.mozilla.org/show\_bug.cgi?id=1940796 -- if you have a pointer to some code that's relevant I'd love to include it for next time we spelunk here
+
+[09:47:46.0080] <jonco>
+mgaudet: I commented my understanding of what's going on here
+
+[09:48:29.0930] <mgaudet>
+Thank you! 
+
+
+2025-01-10
+[04:57:46.0467] <mayankleoboy1>
+I was testing a game based on godot engine. I have enabled tiering on my machine. For fun, i tested with tiering disabled. It is brutal: https://share.firefox.dev/3PzqOWU
+
+[04:58:38.0364] <mayankleoboy1>
+* I was testing a game based on godot engine. I have enabled tiering on my machine. For fun, i tested with tiering disabled. It is brutal: https://share.firefox.dev/3PzqOWU (partial)
+
+[05:20:33.0104] <jandem>
+the tiering-enabled profile is a lot better? excellent :)
+
+[05:24:05.0111] <jandem>
+all that time under `minimalBundle` on especially thread #6 is pretty bad. I think we can make that a lot faster. I'll look into it
+
+[05:33:12.0116] <jandem>
+* that said, so much time under `minimalBundle` on especially thread #6 is pretty bad. I think we can make that a lot faster. I'll look into it
+
+[05:34:17.0962] <jandem>
+* that said, so much time under `minimalBundle` on especially thread #6 is pretty bad. I think we can make that a lot faster with some small changes. I'll look into it
+
+[05:40:16.0838] <mayankleoboy1>
+it is. It takes about 4 seconds only. For reference: bug 1939938
+
+[05:40:18.0536] <botzilla>
+https://bugzil.la/1939938 — NEW (nobody) — [WASM] Godot engine based https://emiwa.itch.io/home spends ~4seconds on multiple background threads, and 800ms doing malloc-y stuff on 6 DOMWorkers each
+
+[05:43:44.0230] <mayankleoboy1>
+you may need to disable enhanced tracking protection (the shield icon in addressbar) to make the game run.
+
+[05:44:37.0548] <mayankleoboy1>
+TaskController #2 also looks similarish to my naive eyes.
+
+[05:46:05.0752] <jandem>
+yes that one is very similar
+
+[06:09:58.0890] <jonco>
+jesup: are you still working on bug 1811927 ?
+
+[06:10:00.0333] <botzilla>
+https://bugzil.la/1811927 — ASSIGNED (jesup) — Report non-malloc memory managed by SpiderMonkey to the profiler, e.g. wasm memory
+
+[07:45:42.0911] <jesup>
+jonco: it had totally fallen off my radar
+
+[07:48:12.0259] <jonco>
+jesup: Is there anything blocking this? Currently we don't report any GC memory to the profiler and it would be good to get that fixed. I had assumed this had landed as I saw it being discussed a while ago.
+
+[07:49:54.0983] <jonco>
+I'm happy to help out (or even take over if needs be)
+
+[08:09:24.0725] <jesup>
+If you'd like to take it over, that'd be great - I don't think there's a lot more to do
+
+[08:10:14.0708] <jesup>
+I'm deep in testing multithreading the network cache, to see if it actually helps performance given how fast SSDs are
+
+[08:10:51.0734] <jesup>
+(by bet currently is 'not much'; turning off racecachewithnetwork, at least on SSDs, seems to be a big win though)
+
+[08:10:59.0481] <jesup>
+Thansk!
+
+[08:11:02.0588] <jesup>
+* Thanks!
+
+[08:55:56.0188] <davidj361>
+What's my best bet for benchmarking? i.e. execution time, memory usage, cpu usage, for an embedded application?
+
+[08:58:33.0284] <mgaudet>
+Like what kind of harness? Or specific workloads? 
+
+[09:06:24.0329] <davidj361>
+I want to compare the application's memory, and CPU usage at specific points like for each global compartment introduced
+
+[09:48:45.0691] <jonco>
+jesup: OK sure. I'll ping you if I have any questions.
+
+[12:50:58.0128] <sefeng>
+arai: I got pretty much everything working expect [one test](https://searchfox.org/mozilla-central/source/testing/web-platform/tests/scheduler/tentative/yield/yield-priority-timers.any.js) :) Can I get some opinions about it from you? This one doesn't rely on the `scheduling state` thing, however I am not sure if I can make it pass without changing how we run setTimeout handlers. 
+
+[12:51:10.0904] <sefeng>
+* arai: I got pretty much everything working expect [one test](https://searchfox.org/mozilla-central/source/testing/web-platform/tests/scheduler/tentative/yield/yield-priority-timers.any.js) :) Can I get some opinions about it from you? This one doesn't rely on the `scheduling state` thing, so it should be easy, however I am not sure if I can make it pass without changing how we run setTimeout handlers.
+
+[12:57:23.0015] <sefeng>
+this test expects that `for loop` to finish before the setTimeout handlers for `t2` and `t3`. But we currently [run setTimeout handlers in a sequence](https://searchfox.org/mozilla-central/rev/29e186485fe1b835f05bde01f650e371545de98e/dom/base/TimeoutManager.cpp#814-815,940), and [scheduler.yield](https://wicg.github.io/scheduling-apis/#schedule-a-yield-continuation)'s promise won't resolve until the scheduled task to finish, so AFAICT there's no way for this `for loop` to finish because no matter how high the priority I give to this task, the setTimeout handlers for `t2` and `t3` will be finished first. 
+
+[12:57:51.0703] <sefeng>
+(sorry this feels like a DOM question, but I still want to ask you first :) )
+
+[13:11:48.0867] <sefeng>
+* arai: I got pretty much everything working except [one test](https://searchfox.org/mozilla-central/source/testing/web-platform/tests/scheduler/tentative/yield/yield-priority-timers.any.js) :) Can I get some opinions about it from you? This one doesn't rely on the `scheduling state` thing, so it should be easy, however I am not sure if I can make it pass without changing how we run setTimeout handlers.
+
+[13:37:11.0602] <leftmostcat (UTC-8)>
+I took a peek at https://bugzilla.mozilla.org/show_bug.cgi?id=1919856; am I correct in thinking putting `endOffset_; usesEnvironmentChain_; flags_; hasPurgedStubs_` after `templateEnv_` would cut it down to a single 4-byte hole, or am I missing something? (I'm a little bit confused by what I'm seeing on that layout.)
+
+[13:45:12.0571] <mgaudet>
+Seems quite possible! I'm bad at packing in my head; one thing I've done to experiment here is add `static_assert(sizeof(JitScript), ...)`; once you get the size right, then edit the order and recompile and see if the assert fails because sizeof shrunk
+
+[13:45:37.0497] <mgaudet>
+Sorry I didn't reply here; we don't really have much in the way of introspection system akin to this. 
+
+[13:46:13.0360] <mgaudet>
+In Firefox we have the gecko profiler which can do a lot of this, but I don't think it works for arbitrary embeddings
+
+[13:48:39.0792] <leftmostcat (UTC-8)>
+Thanks for the idea. I'll give that a shot.
+
+[14:55:50.0485] <leftmostcat (UTC-8)>
+Yep, that drops it from 304 bytes to 296 bytes on my machine. I can put up a patch.
+
+[14:56:47.0088] <sfink>
+also, you can always do `static int foo[-sizeof(JitScript)];` to get a compile-time error with the (negative of the) size in it. ;-)
+
+[14:57:15.0486] <leftmostcat (UTC-8)>
+Moving `hasPurgedStubs_` doesn't actually make a difference since it gets aligned with the other hole anyhow.
+
+[15:09:33.0873] <leftmostcat (UTC-8)>
+`clangd` very kindly lets me know the full expression of a `static_assert` with `==` in it. :)
+
+[15:13:22.0773] <sfink>
+Hey, that's much better! Oddly, my clang does not (clang, not clangd), but gcc does.
+
+[15:13:29.0070] <sfink>
+oh, wait, a newer clang version does.
+
+[15:15:39.0719] <leftmostcat (UTC-8)>
+I never actually got around to seeing what `clang` itself does, 'cause I typed it out in my IDE and it immediately told me it was wrong. 😆
+
+
+2025-01-11
+[19:46:43.0008] <arai>
+Can you remind me whether the setTimeout handler is a task or a microtask?
+
+[19:47:03.0290] <arai>
+If it's a task, then microtasks enqueued inside it should be performed before the next task
+
+[19:49:37.0099] <arai>
+I'll look into the timeout handler impl later
+
+[20:03:04.0809] <Redfire>
+Should be a task if implemented properly
+
+
+2025-01-12
+[10:50:07.0464] <debadree25>
+is there a guide on how moz.build files work? when does one append to UNIFIED_SOURCES and when to SOURCES?
+
+[10:58:03.0990] <jandem>
+it's best to add new files to UNIFIED_SOURCES. It lets the build system put multiple .cpp files into a single large cpp file to make compilation faster
+
+[10:59:00.0746] <jandem>
+some files can't be built in unified mode for various reasons so `SOURCES` can be used in that case to compile them in non-unified mode
+
+[11:04:12.0227] <debadree25>
+understood thank you!
+
+
+2025-01-13
+[04:47:02.0419] <padenot>
+Hi, is it expected that if I have a loop that simply copies 100k integers from a float32 array to another one, it can be about 40% faster to unroll manually the body of the loop by eg 16x, in current nightly? I think I do enough iteration / filtering to have the fastest jit to kick in, and filter out outliers. Chrome shows 25% improvement as well
+
+[04:47:45.0287] <padenot>
+https://paul.cx/public/bench-unroll.html has some code
+
+[04:48:25.0505] <padenot>
+I'd use `set` on the array, except this requires views to copy with offsets, and so this create objects, and so it's not appropriate to use in an AudioWorklet
+
+[04:48:42.0047] <nbp>
+We have no loop unrolling at the moment, this has been an expriment a while back, but it never made it past the experiment stage.
+
+[04:54:29.0426] <padenot>
+ok, what I'm hearing is that this is something to consider to get some performance in a library I'm writing
+
+[04:54:34.0835] <padenot>
+in the current state of things
+
+[05:21:30.0133] <mayankleoboy1>
+bug 1039458
+
+[05:21:32.0168] <botzilla>
+https://bugzil.la/1039458 — RESOLVED (bhackett1024) — Unroll tight loops
+
+[05:25:40.0772] <padenot>
+thanks mayank. on the machines I've tested, Firefox is faster than Chrome when unrolled manually (~10% faster), slower than Chrome when not unrolling (8% slower)
+
+[05:51:56.0651] <nbp>
+For what is worth, this might be easy as a code generation within a JS library, with high potential for logic optimization which might not be possible within a JS compiler.
+
+[05:56:22.0405] <mstange>
+padenot: Thanks for finding this, I hadn't thought to try this when I was optimizing loops over typed arrays in the profiler. It might help in a few places.
+
+[06:14:26.0570] <padenot>
+mstange: it's a user of https://github.com/padenot/ringbuf.js that tried it, unrolling by 4, and then I tried 16x because why not
+
+[06:15:01.0794] <padenot>
+nbp: yeah fairly trivial in my case to do it on our side, it really is just a `memcpy`, I figured I'd mention it here anyway
+
+[06:15:59.0807] <padenot>
+I wonder if there are further tricks we could use e.g. copying pairs of f32 as uint64_t
+
+[06:22:40.0528] <nbp>
+From a typed array this might be possible, but from an ordinary array, while I drafted something 13 years ago … this is doable, but handling bailouts waste most of the benefits.
+
+[06:24:31.0281] <padenot>
+I only deal w/ typed arrays, this is in the context of real-time audio processing and all the APIs in the area deal with typed array, and almost always f32
+
+[06:30:21.0555] <nbp>
+you copy from typedarray to another typedarray of the same type?
+
+[06:31:05.0750] <mstange>
+oh right, why not use `set`
+
+[06:41:30.0075] <padenot>
+as said initially, when copying w/ offset, `set` requires the use of views, that creates an object, and that leads to gc
+
+[06:44:07.0212] <mstange>
+oops, sorry, I missed that message
+
+[06:44:38.0889] <padenot>
+in a typical workload with this library, we'd be able to use `set` in ~28% of copy operations
+
+[06:45:13.0336] <padenot>
+the problem being that it means that some operations will be fast, some will be slow, which is really something you want to avoid in real-time programming
+
+[07:27:53.0426] <sefeng>
+arai: it's a task. But `scheduler.yield()` also dispatches a task, so the promise won't be resolved until this task is run
+
+[07:29:54.0135] <arai>
+oh, okay.  then it would depend on the order of those tasks?  do we know the current order?
+
+[07:30:44.0385] <arai>
+also, does the scheduler.yield's task have mictotask checkpoint?
+
+[07:35:31.0778] <arai>
+hmm, maybe I'm missing something.  how does the testcase expect that order?
+
+[07:37:57.0882] <arai>
+the yield's task runs out of order?
+
+[07:50:24.0363] <sefeng>
+arai: so the ordering for `task` is not super clear defined, blink has some notes about this and we plan to align that (or whatever makes sense). However, I don't think this relates to this particular test
+
+[07:52:05.0168] <sefeng>
+we have three setTimeout handlers here, and when the first one runs, `scheduler.yield()` will dispatch a task for its promise, and it won't be resolved until the rest of the setTimeout handlers are run
+
+[07:52:43.0205] <sefeng>
+so I think this test seems wrong
+
+[07:53:40.0761] <arai>
+yeah, unless there's something that requires the out-of-order-ness for the yield's task, the test's expectation doesn't make sense
+
+[07:54:20.0012] <arai>
+if the test is correct, it would be nice to have a comment that describes the reasoning behind the order
+
+[07:54:43.0072] <sefeng>
+yeah, okay, I'll ask this to the spec author 
+
+[07:54:44.0164] <sefeng>
+thanks! 
+
+[07:54:45.0250] <arai>
+(some magic around the setTimeout handling or nesting, or something around that?)
+
+[09:59:09.0895] <sfink>
+it would be nice if `new Uint8Array(b1).set(new Uint8Array(b2))` could optimize away the temporary views, but that seems complex. (It would be conditional on some jerk doing `Uint8Array.prototype.set = () => console.log("hello world")` for example.)
+
+[10:38:36.0882] <sefeng>
+arai: unrelated to my previous question - I am a bit skeptical about if I handle the life time of the scheduling state object correct, especially when it is set to the hostdefined object and being kept in the PromiseJobRunnable 
+
+[10:39:31.0709] <sefeng>
+do you mind give it quick check? Here's the patch. It's caused some a [crash](https://treeherder.mozilla.org/jobs?repo=try&author=sefeng%40mozilla.com&selectedTaskRun=WfCz0XSHTISOIxtcnROuxw.0)
+
+[10:39:44.0511] <sefeng>
+* do you mind give it quick check? Here's the [patch](https://phabricator.services.mozilla.com/D234071). It's caused some a [crash](https://treeherder.mozilla.org/jobs?repo=try&author=sefeng%40mozilla.com&selectedTaskRun=WfCz0XSHTISOIxtcnROuxw.0)
+
+[10:39:56.0784] <sefeng>
+* do you mind give it quick check? Here's the [patch](https://phabricator.services.mozilla.com/D234071). It's causing some a [crash](https://treeherder.mozilla.org/jobs?repo=try&author=sefeng%40mozilla.com&selectedTaskRun=WfCz0XSHTISOIxtcnROuxw.0)
+
+[10:43:50.0068] <arai>
+sefeng:   can you give me an access to the patch? I'll look into it today
+
+[10:44:27.0607] <sefeng>
+access granted (I thought it was a public patch..)
+
+[10:51:31.0695] <arai>
+So, the `WebTaskSchedulingState` is a ref-counted object, right?  in that case, you're supposed to AddRef it when storing the pointer to `SCHEDULING_STATE_SLOT`.  and then Release when resetting the slot to undefined
+
+[10:52:28.0628] <arai>
+PrivateValue behaves like a raw pointer.  the ref-count part needs to be performed manually
+
+[10:55:21.0743] <sefeng>
+okay, that makes sense. Let me try that
+
+[10:55:29.0299] <arai>
+then, the crash sounds like caused by accesses on it from multiple threads.  is it supposed to happen?  if so, I think you need to mark it thread safe somehow
+
+[10:55:44.0399] <arai>
+possibly the NS_SOMETHING part ?
+
+[10:56:08.0026] <sefeng>
+yeah, that's something I don't know. It's also a CC participant 
+
+[10:56:11.0697] <sefeng>
+isn't it main thread only?
+
+[10:57:47.0103] <arai>
+I don't know much about CC, but the crash happens on main thread. so it sounds like the instance is created off main thread, or perhaps the data is already corrupted at that point
+
+[10:58:23.0074] <sefeng>
+perhaps...I am going to try to fix the ref count, hope it'll also fix that 
+
+[10:58:35.0000] <arai>
+If the crash keeps happening after the ref-count part fixed, try checking the stack of the `new` call
+
+[11:57:13.0410] <dminor>
+padenot: https://github.com/tc39/proposal-immutable-arraybuffer is up for Stage 2.7 at the February plenary, which would mean that the spec is complete and it's ready for test cases to be written. Do you have any concerns about the way it's currently specified?
+
+From your earlier comments, it sounds like this is something we should explicitly support this time around.
+
+[12:35:30.0744] <tjr>
+I have a question.  I am right about here https://searchfox.org/mozilla-central/source/dom/canvas/CanvasRenderingContext2D.cpp#2106 in a content process.  If I call nsContentUtils::SubjectPrincipal() (which does GetCurrentJSContext() and then JS::GetRealmPrincipals(realm);) - I expect to the get the principal of the website I'm on, e.g. example.com
+
+[12:37:00.0892] <tjr>
+But I've actually gotten there via some Javascript running in a child actor: https://searchfox.org/mozilla-central/source/toolkit/components/resistfingerprinting/UserCharacteristicsPageService.sys.mjs#331
+
+[12:37:54.0447] <tjr>
+And in _that_ situation I get the SystemPrincipal (and I'm still in the content process).  Which makes some sense - I'm running system code, sure.  But... GetCurrentJSContext() is looking at what I think is a thread-local variable on the main thread to get the context.
+
+[12:38:11.0610] <tjr>
+Does the context get swapped intelligently between System and non-System?  Is something else happening?
+
+[12:38:51.0503] <mccr8>
+If you are running chrome JS, then the current principal is the system principal.
+
+[12:40:27.0276] <tjr>
+That implies that the thread-local JSContext is either a pointer getting changed between the privileged context and the original page context; or we're promoting and demoting the Context when we enter and leave chrome JS.  It could very well be how it works, I just want to make sure my mental model is correct....
+
+[12:41:16.0619] <mccr8>
+There's only one JSContext. Stuff gets swapped around in the context when we switch compartments. There's some kind of stack thing.
+
+[12:43:18.0250] <mccr8>
+eg this kind of stuff deals with the swapping (I think this is really kind of a DOM question though there's a lot of overlap with JS which provides the mechanism that DOM uses) https://searchfox.org/mozilla-central/source/dom/script/AutoEntryScript.h#41
+
+[12:43:50.0153] <tjr>
+thank you!
+
+[12:58:03.0145] <mccr8>
+For your specific case, it sounds like you want to run some JS in the context of the page itself which I think should be doable but I can't think off the top of my head how to do it.
+
+[12:59:29.0374] <tjr>
+Opposite actually, we want to run it in the system context, but we don't check the privileges of the currently running script, we get the document's permissions, meaning we're applying fingerprinting protections to the system-privileged code
+
+[12:59:55.0417] <tjr>
+This isn't to hard to fix, I'm just trying to understand the ecosystem I'm in to make the least bad fix
+
+
+2025-01-14
+[01:12:05.0858] <padenot>
+dminor: I will look at the proposal in detail, and tell others working on different specs and authors to do the same, so we're confident it solves our sisues
+
+[01:12:07.0857] <padenot>
+* dminor: I will look at the proposal in detail, and tell others working on different specs and authors to do the same, so we're confident it solves our issues
+
+[01:12:23.0444] <padenot>
+thanks a lot for the update, this matters a great deal
+
+[01:22:21.0250] <padenot>
+Related to my question from yesterday about auto-vectorization of loops, do we know if others do it?
+
+[01:23:39.0527] <padenot>
+I see https://chromium.googlesource.com/v8/v8/+/refs/heads/main/src/compiler/loop-unrolling.cc but it's always hard to know if it's enabled
+
+[01:23:58.0590] <padenot>
+The relative speedup would indicate that v8 doesn't do it either
+
+[01:24:10.0760] <padenot>
+* Related to my question from yesterday about auto-unrolling of loops, do we know if others do it?
+
+[03:49:45.0707] <Tarek>
+is there a thread pool available in the context of running wasm built-ins? I've implemented my own in my prototype but I assume I should use an existing one. I see the HelperThreadState class but maybe that's compiler internals only?
+
+[14:41:44.0555] <iain>
+Tarek: In the browser, our HelperThread code is backed by the task controller thread pool. (In shell builds we have our own internal thread pool.)
+
+[14:45:23.0570] <iain>
+padenot: It looks to me like V8 is doing loop unrolling in Turboshaft. The design doc is [here](https://docs.google.com/document/d/1baKksj_3cetkL-1IXG8UEFfRnhp2DVg--oWKLgQfG44/edit?tab=t.0#heading=h.ftd5ubtisete).
+
+[14:46:07.0703] <iain>
+Loop unrolling tends to be a pretty heuristic-driven optimization, so it's possible that their code doesn't handle your testcase particularly well.
+
+[14:48:11.0647] <iain>
+(eg they're pattern-matching a fairly specific loop structure (see "Computing Number of Iterations" in the doc), so if your code doesn't match then unrolling won't kick in)
+
+
+2025-01-15
+[17:16:44.0322] <denispal>
+They do indeed do it, you can see it in perfetto.
+
+[17:39:00.0999] <arai>
+So, it turns out the following code behaves differently between the classic script and the module script, due to the characteristics of the global `var`s, where the classic script's global `var`s are properties of global object, but the module's global `var`s are stored into the frame slot by default and has shorter lifetime.
+
+```js
+var obj = { value: "hello" };
+var ref = new WeakRef(obj);
+Promise.resolve().then(() => {
+  clearKeptObjects();
+  gc();
+  console.log(ref.deref()); // classic script shows the object, module shows undefined
+});
+```
+
+Then, if we close over the variable `obj`, the variable is now stored into the module environment object and now has the longer lifetime.
+
+```js
+var obj = { value: "hello" };
+var ref = new WeakRef(obj);
+Promise.resolve().then(() => {
+  clearKeptObjects();
+  gc();
+  console.log(ref.deref()); // both show the object
+});
+function f() { obj; }  // mark `obj` closed over, and put it into env obj
+```
+
+Should we consider this as a problem?  Have we had any bug report with `WeakRef` and module?
+
+
+[17:43:42.0220] <arai>
+the original context is bug 1940741, where we bumped into something similar to this with XPCOM's weak ref
+
+[17:43:43.0529] <botzilla>
+https://bugzil.la/1940741 — ASSIGNED (arai) — DownloadLastDir.sys.mjs should use a strong ref for the observer
+
+[19:15:06.0880] <arai>
+I think this wasn't a problem until `WeakRef`, because `WeakMap` and `WeakSet` don't allow converting weak ref to strong ref, and it always requires strong ref to be preserved to observe the existence of weak ref,  but `WeakRef` allows this, and the closed-over-ness is now observable
+
+[22:01:36.0905] <iain>
+My first instinct is to say that this is covered by [section 9.9.1 of the spec](https://tc39.es/ecma262/#sec-weakref-invariants):
+```
+This specification does not make any guarantees that any object or symbol will be garbage collected. Objects or symbols which are not live may be released after long periods of time, or never at all. For this reason, this specification uses the term "may" when describing behaviour triggered by garbage collection.
+```
+The object is otherwise unreachable, and we've cleared kept objects (which IIUC normally requires returning to the event loop), so collecting it should be allowed. And we're always allowed to *not* collect it. So spec-wise, I think we're okay, unless there's something about global variables in a module script that I'm missing.
+
+[22:17:50.0742] <Tarek>
+thx
+
+[00:02:48.0929] <Tarek>
+so if I need to run threads, should I call `JS::RunHelperThreadTask` ? 
+
+[00:05:36.0063] <Tarek>
+I am doing a very localized thing that looks like this right now: https://pastebin.mozilla.org/uyAGuosQ
+I suppose it's a bad idea to add this code in a WASM built in like this :)
+
+[00:31:25.0480] <jandem>
+Tarek: would bugs 1922194 and 1922223 help?
+
+[00:39:54.0369] <Tarek>
+haha excellent, thanks jandem 
+
+[00:45:14.0394] <Tarek>
+@sergesanspaille gregtatum marco  nit: when I'll push the work for onnx, this intra-operation thread pool is something I will also want to use outside the context of gemmology (e.g. non-int8 specific operations, pure C++ operations like this DequantizeLinear etc) I wonder if it would be more suited to have it as an utility outside the gemmology namespace. 
+
+[00:46:19.0863] <jandem>
+I'm glad it helps. I thought you were working in the same area but wasn't sure
+
+[00:47:31.0252] <Tarek>
+I am, and I knew Serge was working on adding threading in gemmology eventually, but I did not know there were that patch already. 
+
+[00:49:22.0941] <Tarek>
+@jandem by the way, do you know where I could add some performance.marker calls to measure the overhead of calling WASM built ins ? I am experimening a 30 to 40% overhead in round trips, when the op is under 10ms. I am trying to see if something's wrong or if there are ways to improve this part.
+
+
+
+[00:49:36.0962] <Tarek>
+* jandem:   by the way, do you know where I could add some performance.marker calls to measure the overhead of calling WASM built ins ? I am experimening a 30 to 40% overhead in round trips, when the op is under 10ms. I am trying to see if something's wrong or if there are ways to improve this part.
+
+
+
+[00:52:03.0471] <jandem>
+do you have a minimal example that runs in the JS shell? would make it easier to step through it
+
+[00:56:42.0349] <Tarek>
+I do yeah, I also measured it and have some profiles. I have a patch that includes the wasm that calls the new builtin here https://phabricator.services.mozilla.com/D231910 it does not have the debug info so you only get the wasm functions address when profiling -- https://phabricator.services.mozilla.com/D231910 but I can see a few redirections between my extern call in the WASM and the built-in on our side. I was not sure where to look to understand where it goes.
+I also don't know if it's related to the data passed and doing some copies maybes?
+
+[00:56:44.0000] <Tarek>
+* I do yeah, I also measured it and have some profiles. I have a patch that includes the wasm that calls the new builtin here https://phabricator.services.mozilla.com/D231910 it does not have the debug info so you only get the wasm functions address when profiling -- https://phabricator.services.mozilla.com/D231910 but I can see a few redirections between my extern call in the WASM and the built-in on our side. I was not sure where to look to understand where it goes.
+I also don't know if it's related to the data passed and doing some copies maybe?
+
+[00:57:36.0418] <Tarek>
+that makes some of our calls useless because unfortunately ONNX is doing skinny matrix calls that I cannot batch:
+
+[01:13:44.0385] <Tarek>
+from a discussion with jandem : I will try to change https://searchfox.org/mozilla-central/source/js/src/wasm/WasmBuiltins.cpp#1718 when I do my calls to see how that changes the overhead -- thx
+
+[01:57:58.0659] <arai>
+thanks. yeah, it makes sense that it's allowed by the spec.  the remaining concern is that if people are aware of the behavior.  at least with Firefox-internal specific case with JSM, the global `var`s seem to be used to make the lifetime of the variable match the module lifetime, while using global lexical for others.   .sys.mjs preserved the behavior (partially accidentally.  it was for different purpose), and now I'm about to drop the behavior, and hitting issues with weak refs
+
+[01:59:12.0107] <arai>
+so I wonder similar thing has been happening outside of Firefox-internal, such as common JS to ES module migration
+
+[01:59:50.0149] <arai>
+(not sure how much WeakRef is widely used tho)
+
+[02:14:15.0089] <padenot>
+iain: , denispal, thanks for confirming -- SM still beats V8 in speed when unrolling manually though, heh
+
+[02:14:24.0050] <padenot>
+16x unroll
+
+[04:32:39.0989] <jonco>
+What's a fast way to extend an existing array in JS? I'm writing a test to grow an array to very large sizes. array.push(0) takes too long and array.push(...other) doesn't seem that much better.
+
+[04:36:57.0641] <padenot>
+and jsc completely smokes SM by 2x, that itself beats Chrome by 30% when manually unrolling by 16x, they must do some simd stuff or other magic
+
+[04:46:00.0803] <mayankleoboy1>
+Somebody in mozilla once said that JSC devs are "ASM Wizards" 
+
+[05:04:53.0490] <nbp>
+Do they still use LLVM as the last stage of compilation?
+
+[05:05:22.0104] <nbp>
+* Do they still use LLVM as the last stage of compilation (FTL)?
+
+[05:09:45.0200] <jandem>
+they replaced it with B3 (Bare Bones Backend)
+
+[05:11:23.0607] <padenot>
+anyway, if we can get a memcpy function in regular js, all this would be moot
+
+[07:13:31.0292] <davidj361>
+I'm getting very weird results from trying some simple benchmarking, it shows memory not decreasing after each compartment/global falls off from stack from `StencilIteration`. Are compartments not supposed to clean up from memory if the main global is still alive?
+https://paste.mozilla.org/jBoWpgWt
+
+[07:21:28.0025] <arai>
+it would depend on when the gc is performed.  try explicitly running gc after each call
+
+[07:22:25.0282] <arai>
+reference-counted objects are immediately freed when the last reference goes away, but GC objects are not freed immediately 
+
+[07:50:25.0318] <denispal>
+jandem: fwiw, you can also see the LifoAlloc improvement [in telemetry ~10-15%](https://glam.telemetry.mozilla.org/fenix/probe/javascript_ion_compile_time/explore?aggType=avg&ref=2024120912&timeHorizon=ALL&visiblePercentiles=%5B99.9%2C99%2C95%2C75%2C50%2C25%2C5%5D) which is quite nice.
+
+[07:53:33.0400] <iain>
+I would not be surprised if other browsers already had the shorter lifetimes, since that's what the spec implies. If so, there's probably no webcompat issues, because those would already have caused problems in other browsers.
+
+[08:15:43.0053] <jandem>
+denispal: nice! thanks for checking that
+
+[08:22:25.0496] <arai>
+good point. yes, the shorter lifetime is the default, and having unexpectedly longer lifetime won't be much prominent (except for the case where the "leak"-ish behavior causes extra ram usage), and having unexpectedly shorter lifetime (compared to classic script) should be tested by all engines and envs
+
+[08:23:07.0439] <arai>
+I'll focus on the xpcom case and leave the standard case
+
+[10:39:41.0327] <debadree25>
+is there any example of bytecode being emitted right at the end of a block as in the bytecode emitter knows the closing brace of the block and emits code right before that? iiuc [EmitterScope::leave()](https://searchfox.org/mozilla-central/source/js/src/frontend/EmitterScope.cpp#1027) is called at points such as 'return' statement etc etc 
+
+[10:40:30.0854] <debadree25>
+sorry if the question is not very clear i still havent been able to articulate it clearly in my mind can try providing examples if wanted
+
+[10:42:29.0751] <padenot>
+Do we have anything to inspect the generated bytecode or asm for a particular workload at a particular point in time, e.g. after having reached the latest JIT tier? Still related to the memcpy thing
+
+[10:47:29.0523] <iain>
+padenot: Shell or browser?
+
+[10:47:57.0197] <padenot>
+We've been doing experiments in the browser, but I'm not too picky
+
+[10:48:19.0906] <iain>
+In the shell `disnative(fn)` will dump the current jit code for `fn`
+
+[10:48:21.0247] <padenot>
+just a simple standalone web page that is able to draw some graphs, as things stand, and to repeat a workload
+
+[10:48:41.0815] <padenot>
+but I can strip the html I suppose
+
+[10:50:01.0816] <iain>
+In the browser I would consider using [samply](https://gist.github.com/mstange/a8a0943f16f388e3ddc9e726d68c436a)
+
+[10:51:38.0595] <padenot>
+of course samply can do it, heh
+
+[10:51:45.0340] <padenot>
+iain: thanks!
+
+[10:53:03.0445] <iain>
+Note that samply has a known issue where it gives a single version of assembly for each tier, so if you bail out from Ion and recompile then you will not see subsequent versions
+
+[10:53:23.0593] <iain>
+But that hopefully won't be a problem if your function is well-behaved
+
+[10:54:10.0670] <padenot>
+our particular code here is an example in monomorphism and simplicity
+
+[10:54:40.0595] <padenot>
+takes two arrays, copy from one to the other, always the same type, always the same size
+
+[10:54:59.0044] <padenot>
+typed array that is
+
+[10:55:16.0261] <iain>
+How big are the arrays?
+
+[10:55:50.0961] <padenot>
+128 elements to a lot more, a few dozen thousands, we've tried a few things
+
+[10:57:07.0467] <iain>
+OSR could cause minor issues if the loop is long enough that we tier up at the loop head, because then we won't have run any code after the loop, so we might bail out at that point
+
+[10:57:16.0432] <iain>
+But if there's no code after the loop it should be fine
+
+[10:58:08.0720] <iain>
+Anyway, try it out and see what you get. No need to debug problems you don't have
+
+[10:58:09.0443] <padenot>
+the loop body is just an unrolled copy of the source array to the dest array, unrolled by `n`, 16 being the sweet spot. there is a postamble as usual when doing unrolling
+
+[10:58:32.0114] <padenot>
+but yeah
+
+[14:58:30.0151] <Bryan Thrall [:bthrall]>
+There is a specific jsapi-test that's failing for me in a mysterious way: `./mach jsapi-tests testSinglyLinkedList` is failing on jsapi-tests/testSinglyLinkedList.cpp:36 because the value is 0 instead of 1.
+However, in Treeherder, this test appears to be passing, even though I have the exact same commit checked out. I've disabled the unified build and sccache with the same failure. It happens in a debug build but not release. If I enable optimizations, it passes. (MOZCONFIG file causing the failing test is attached).
+
+There must be something in my environment that's causing this failure, but I could use some suggestions what it might be.
+
+[14:59:10.0004] <iain>
+Have you done a clobber build?
+
+[14:59:39.0497] <Bryan Thrall [:bthrall]>
+Yes
+
+[15:05:16.0539] <iain>
+Wild shot in the dark: if you recompile after editing `testSinglyLinkedList.cpp` in some irrelevant way, does it change anything? My best hypothesis is that something in the build system is causing that test to not be rebuilt.
+
+[15:05:20.0550] <iain>
+Otherwise I have no idea.
+
+[15:15:11.0751] <Bryan Thrall [:bthrall]>
+Yeah, I can change the expected value value on that line and see the failure report show the new failure.
+
+[15:15:35.0890] <iain>
+Blech. Have you checked to see if you were cursed by a witch?
+
+[15:41:40.0809] <Bryan Thrall [:bthrall]>
+🤷
+
+
+2025-01-16
+[09:53:00.0640] <jonco>
+sfink: hey, if you have time could you review my patches so I can land them tomorrow before I go on PTO?
+
+[09:53:35.0283] <sfink>
+oh sorry, I hadn't seen those. I'll get right on it.
+
+[09:54:17.0343] <jonco>
+thanks!
+
+[10:04:21.0556] <sfink>
+done
+
+[10:04:46.0893] <jonco>
+sfink: great, thanks
+
+[15:01:38.0680] <Bryan Thrall [:bthrall]>
+See [this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1942183 ) for my solution
+
+
+2025-01-17
+[03:15:15.0635] <jonco>
+jandem: The change to dynamic element sizing wasn't intentional. Do you think it matters? Currently we constrain the size to one of these predetermined bucket sizes whereas with the patch we grow by 1.125 rounded up whatever the initial size was. The buckets were adding in bug 1039965 which is solely about avoiding slop.
+
+[03:15:17.0426] <botzilla>
+https://bugzil.la/1039965 — RESOLVED (n.nethercote) — JS array elements clownshoes
+
+[03:46:31.0916] <Ms2ger>
+How have we had 7-digit bug numbers for 11 years
+
+[03:46:39.0589] <Ms2ger>
+👴
+
+[03:53:55.0431] <jandem>
+jonco: it uses more memory so it might matter. I guess we could try it
+
+[03:55:40.0319] <jandem>
+ideally we'd distinguish between growing the elements and doing a single large-allocation where additional elements may be less likely
+
+[03:58:42.0629] <jonco>
+that's true, it does use more memory when making a single large allocation
+
+[03:59:23.0257] <jandem>
+we could try it and keep an eye on awsy numbers
+
+[04:02:05.0675] <jonco>
+I'll try and stick with something closer to the existing setup
+
+[04:04:01.0272] <jandem>
+* jonco: it uses more memory so it might matter for that. I guess we could try it
+
+[05:29:39.0797] <nbp>
+Ms2ger: the real question, is how did we manage to not get to `2******` numbers sooner?
+
+[05:29:55.0966] <nbp>
+* Ms2ger: the real question is, how did we manage to not get to `2******` numbers sooner?
+
+[05:32:06.0012] <Ms2ger>
+Have only made it to bug 1942302 yet? Slackers :)
+
+[05:32:07.0341] <botzilla>
+https://bugzil.la/1942302 — NEW (nobody) — rafflehouse.com - Blank page with Strict ETP
+
+[05:39:31.0152] <nbp>
+Yeah some people have been using slack since 2014 🤦
+
+[06:03:40.0475] <debadree25>
+no possibility of bug number overflow?
+
+[06:12:59.0728] <nbp>
+I think we have plenty of time before this becomes a concern, given that we are just above uint16 range.
+
+[07:15:43.0323] <tjr>
+I have a question about https://searchfox.org/mozilla-central/source/dom/bindings/SimpleGlobalObject.cpp#116-126 - specifically trying to understand the non-main-thread version and why it gets a null principal.  The MainThread version gets a NullPrincipal but the off-thread version gets no principal... Why is that?
+
+[07:15:54.0280] <tjr>
+freddy: you may also be interested ^
+
+[07:38:35.0541] <jandem>
+you'll probably get a better answer in DOM, but looking at the history I see a review comment in bug 1246153: "We shouldn't be creating any JS globals on the main thread without a principal. The best thing to do here is probably to check NS_IsMainThread, and mint a new nsNullPrincipal in that case."
+
+[07:38:37.0705] <botzilla>
+https://bugzil.la/1246153 — RESOLVED (bzbarsky) — Make dictionary init from a JSON string work on workers
+
+[07:39:05.0383] <jandem>
+* you'll probably get a better answer in #DOM, but looking at the history I see a review comment in bug 1246153: "We shouldn't be creating any JS globals on the main thread without a principal. The best thing to do here is probably to check NS\_IsMainThread, and mint a new nsNullPrincipal in that case."
+
+[07:39:40.0718] <jandem>
+and workers used different principals until bug 1804093 
+
+[07:39:54.0567] <jandem>
+* you'll probably get a better answer in #DOM, but looking at the history I see this review comment in bug 1246153: "We shouldn't be creating any JS globals on the main thread without a principal. The best thing to do here is probably to check NS\_IsMainThread, and mint a new nsNullPrincipal in that case."
+
+[07:40:17.0813] <botzilla>
+https://bugzil.la/1804093 — RESOLVED (nika) — Eliminate WorkerPrincipal and WorkletPrincipals
+
+[09:58:29.0165] <nika>
+> <@tjr:mozilla.org> I have a question about https://searchfox.org/mozilla-central/source/dom/bindings/SimpleGlobalObject.cpp#116-126 - specifically trying to understand the non-main-thread version and why it gets a null principal.  The MainThread version gets a NullPrincipal but the off-thread version gets no principal... Why is that?
+
+The off thread one should get a null principal now too, I just missed it in the bug jandem linked above
+
+[09:58:48.0882] <tjr>
+I can write a patch and flag you for review?
+
+[10:34:53.0421] <nika>
+sure
+
+
+2025-01-20
+[09:27:26.0360] <Tarek>
+is there a way to serialize the result of a WebAssembly.compile() ? I want to store it in indexeddb and reload it later
+
+[09:40:33.0250] <padenot>
+no, except if things have changed
+
+[09:41:05.0724] <padenot>
+it used to be possible and was later removed
+
+[09:41:26.0585] <padenot>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1469395
+
+[09:42:03.0125] <Tarek>
+So how url-based caching works for wasm files ?
+
+[09:42:43.0765] <Tarek>
+I assume the module gets somehow serialized 
+
+[09:45:28.0677] <padenot>
+searchfox says that Ryan Hunt will know the current state of things, https://searchfox.org/mozilla-central/source/js/src/wasm/WasmFeatures.cpp#299-317
+
+[10:10:44.0520] <Ryan Hunt>
+(be back tomorrow) the current way to do it with the JS-API requires you to pass the Response from a fetch() to a streaming compile method (compileStreaming, instantiateStreaming). It will use an alt-data entry in the network cache for the fetched URL. We used to have a way to use IndexedDB, but it was objected to by the W3C tag and so we removed support. It's possible we could add chrome only support back, but I don't know how much work that is.
+
+[10:21:50.0019] <Tarek>
+thanks. The part of the puzzle I am missing is what code is putting the compilation result in the network cache. I guess we can continue tomorrow. 
+
+
+2025-01-21
+[01:27:41.0927] <padenot>
+If one changes a pref named `javascript.options.xxx`, is it dynamically update like in Gecko or not ?
+
+[02:28:28.0505] <arai>
+it depends on which pref it is.  If it's prefs listed in `StaticPrefList.yaml` and it's used with the generated binding functions, the `set_spidermonkey_pref` field ([ref](https://searchfox.org/mozilla-central/rev/345ec3c55ddda5f0ce37168f0644dcdcc4834409/modules/libpref/init/StaticPrefList.yaml#102-107)) represents when it's updated
+
+[02:39:13.0861] <padenot>
+ah yes perfect thanks, our pref were indeed marked as `startup`
+
+[03:18:27.0627] <arai>
+Question regarding privileges or similar flag.  in bug 1941780, we want to make the code execution related to Debugger API to bypass the CSP.  Do we have any way to mark certain execution (not certain global) "special", so that the information can be passed to the CSP's callback ?
+
+[03:18:29.0402] <botzilla>
+https://bugzil.la/1941780 — NEW (nobody) — script.evaluate and script.callFunction should bypass CSP
+
+[14:05:31.0643] <mgaudet>
+Does anyone here understand constexpr enough to tell me why this is broken: https://godbolt.org/z/Pbc8cqa1M 
+
+[14:07:07.0299] <mgaudet>
+The thing that kills me is that the static_assert says yep, type is what you expect but then it tells at me that the type is wrong in the else branch; to which I want to yell: Of Bloody Course It Is: I -checked- and wanted you to compile the other branch
+
+[14:10:41.0359] <mgaudet>
+Oh for [goodness sake C++ what are you smoking](https://en.cppreference.com/w/cpp/language/if#Constexpr_if): 
+
+> Outside a template, a discarded statement is fully checked. if constexpr is not a substitute for the #if preprocessing directive: 
+
+
+2025-01-22
+[05:04:39.0116] <nbp>
+* <del>mgaudet: the returned value is not of the same type as the status variable.</del>
+
+[05:25:54.0496] <nbp>
+mgaudet: https://godbolt.org/z/4dqfPzdW6 maybe?
+
+[07:16:01.0944] <mgaudet>
+The fact that works is infuriating (but that's about what I had been thinking about last night :P) 
+
+[07:39:15.0838] <nbp>
+s/forward/please_stop_looking/
+
+[07:45:47.0074] <@allstarschh>
+sfink: Should we skip the GC meeting later? I was working on DOM/Fetch part this week, so nothing is GC-related
+
+[07:46:04.0919] <sfink>
+yeah, I'm good with skipping it
+
+[09:08:20.0276] <mayankleoboy1>
+Nbp: super nitpick on the alias of bug 1943077:
+It should match the whiteboard tag of dependent bugs, which is "js-perf-next" 
+
+[09:08:23.0997] <botzilla>
+https://bugzil.la/1943077 — NEW (nobody) — [meta] THE Place where to pick your next performance issue to work on.
+
+[09:08:38.0432] <mayankleoboy1>
+* nbp:  super nitpick on the alias of bug 1943077:
+It should match the whiteboard tag of dependent bugs, which is "js-perf-next" 
+
+[09:11:07.0989] <nbp>
+I agree that this would be logical given that it is under the sm-js-perf meta bug. However, this is a question for iain, I suppose. Given that we do not know yet whether this bug should capture actionable & impactful WASM performance issues 
+
+[09:24:27.0397] <iain>
+I'm unconvinced that a metabug is an improvement. One big advantage of a whiteboard tag is that you can search for it and immediately see a bug list like [this](https://bugzilla.mozilla.org/buglist.cgi?quicksearch=js-perf-next&list_id=17397046), containing exactly the bugs that have been tagged as valuable and actionable. To do the same for a metabug, you have an additional click to get to the list of blockers, then another click to filter out any dependents of those bugs. Once you've done that, you get less information about the bugs (eg "is somebody already working on this") than the bug list, so you need another click to view as bug list.
+
+[09:28:02.0586] <Ryan Hunt>
+whiteboard tags are cheap, I'd prefer we have a separate wasm-perf-next tag just to keep it focused on what's relevant for what. There's sometimes overlap, but that's more rare
+
+[09:29:04.0388] <iain>
+Semi-related: one thing that I forgot to highlight in the meeting is that, when tagging a bug with js-perf-next, I've also been writing a comment with "**js-perf-next**: description of next steps", to make it clear which part is actionable. Sometimes we have an idea that may or may not be a big win, but there's a cheap experiment we can run to help decide.
+
+[09:29:24.0350] <iain>
+The whiteboard tracks bugs that have those comments.
+
+[09:29:42.0226] <iain>
+The metabug tracks those bugs, plus anything they depend on, which is somewhat less useful.
+
+[09:29:50.0111] <nbp>
+whiteboards tags are not cheap, quite the opposite, they are not indexed in Bugzilla database.
+
+[09:30:48.0939] <Ryan Hunt>
+what I mean is that it costs nothing to create one. Not that lookups are as fast as metabug relationships
+
+[09:31:26.0666] <Ryan Hunt>
+if there was a lot of overlap, I'd say we should have just one. But that historically does not tend to be the case
+
+[09:32:13.0785] <nbp>
+Also meta bugs are discoverable compared to having a link in Matrix channel.
+
+[09:37:19.0986] <mgaudet>
+We can document this in places though, rather than add the overhead of a meta-bug. I definitely think the whiteboard tag is the level of friction for now,and we can re-evaluate a tree later if we need it 
+
+[09:53:34.0167] <sfink>
+if the quicksearch "blocks:sm-perf-next" worked, then I personally wouldn't experience any additional friction with the meta bug. But it doesn't work. Filed bug 1943113.
+
+[09:53:35.0280] <botzilla>
+https://bugzil.la/1943113 — NEW (query-and-buglist) — Allow searching for named blocking bugs
+
+[09:55:02.0712] <sfink>
+(arguably, just "js-perf-next" will get you to the list whereas "sm-perf-next" would only get you the metabug itself, but since I prefer to be more explicit with "whiteboard:js-perf-next" and "blocks:sm-perf-next" anyway, I don't notice that difference)
+
+[09:57:16.0684] <iain>
+I personally search for "js-perf-next", so "blocks:sm-perf-next" is a little worse
+
+[09:58:33.0084] <sfink>
+yep, that's reasonable. I just find myself frequently searching for short enough fragments that I get too many nonsense results if I leave off the field, so I've trained myself to always use it.
+
+[10:02:14.0992] <sfink>
+note that I recently created myself a personal backlog bug 1932473 as a meta bug, which should NOT be taken as an argument favoring meta bugs, because for a personal bug like that the whiteboard tag would be more polluting. (And I'd still prefer some kind of private tag, since the meta bug is still too visible.) It's different for an annotation that is meant to be shared and visible.
+
+[10:02:16.0205] <botzilla>
+https://bugzil.la/1932473 — ASSIGNED (sfink) — [meta] sfink backlog
+
+[10:03:04.0870] <sfink>
+it definitely seems better than my previous solution of endlessly piling up needinfos
+
+[14:29:26.0585] <mgaudet>
+❤️ `window.filteredMarkers.length` for quickly counting marker events to compare between profiles
+
+
+2025-01-23
+[23:06:40.0849] <jandem>
+arai++ for bug 1881888
+
+[23:06:43.0356] <botzilla>
+https://bugzil.la/1881888 — ASSIGNED (arai) — Remove support for JSMs
+
+[23:14:34.0197] <arai>
+thanks :)
+
+[23:47:34.0078] <padenot>
+mgaudet: can I interest you in https://padenot.github.io/fouineur/ if you want that capability times 1000
+
+[06:31:25.0828] <mayankleoboy1>
+https://share.firefox.dev/3WrQwRa . What are the huge "ZwWaitForAlertByThreadId" in the TC0 and TC1 threads? 
+(Generally this means in profiles that the thread is idle/waiting) . 
+I also notices that these areas are not overlapping between TC0 and TC1.. does that mean that the thread arent really concurrent?
+
+[06:32:10.0197] <mayankleoboy1>
+These profiles are from the testcase in Bug 1939938 with lazy tiering disabled. Jan fixed part of it in bug 1940985.
+
+[06:32:10.0979] <botzilla>
+https://bugzil.la/1939938 — NEW (nobody) — [WASM] Godot engine based https://emiwa.itch.io/home spends ~4seconds on multiple background threads, and 800ms doing malloc-y stuff on 6 DOMWorkers each
+
+[06:32:11.0184] <botzilla>
+https://bugzil.la/1940985 — VERIFIED (jandem) — Optimize uses check in BacktrackingAllocator::minimalBundle
+
+[06:33:45.0148] <mayankleoboy1>
+* https://share.firefox.dev/3WrQwRa . What are the huge "ZwWaitForAlertByThreadId" in the TC0 and TC1 threads? 
+(Generally this means in profiles that the thread is idle/waiting) . But in this case the stack seems to have lots of wasm module compilation??
+I also notices that these areas are not overlapping between TC0 and TC1.. does that mean that the thread arent really concurrent?
+
+[06:34:23.0536] <mayankleoboy1>
+* These profiles are from the testcase in Bug 1939938 with **lazy tiering disabled**. Jan fixed part of it in bug 1940985.
+
+[06:35:47.0219] <jandem>
+the thread is waiting under `wasm::ModuleGenerator::finishOutstandingTask`
+
+[06:43:45.0679] <mayankleoboy1>
+* https://share.firefox.dev/3WrQwRa . What are the huge "ZwWaitForAlertByThreadId" in the TC0 and TC1 threads? 
+(Generally this means in profiles that the thread is idle/waiting) . But in this case the stack seems to have lots of wasm module compilation??
+I also notices that these areas are not overlapping between TC0 and TC1.. does that mean that the thread arent really concurrent?
+Background:
+while looking at profiles, i remove the "zwwaitforAlertByThreadID" as that is just idle time.  I did the same here when filing the recent wasm/ion regalloc bugs. But looking at this new profile, i wondered if this is actually idle times, and should I remove them from profiles when trying to find "this TC thread spends X% of **total non-idle time** in function A". 
+
+[07:02:22.0711] <jseward>
+It must be waiting here: `taskState_.condVar().wait(lock);`.  But I'm not sure why it would need to wait there a long time.
+
+[07:03:17.0150] <jseward>
+mayankleoboy1: is there a bug report for this, or at least some STR ?
+
+[07:28:13.0823] <Ryan Hunt>
+when we're background compiling a whole module with either baseline or Ion (in this case it's doing the Ion complete tier2 compile), there is one coordinator thread/task which has a ModuleGenerator. this coordinator sends off batches of functions to be compiled on other threads. When we run out of threads that can compile functions, the coordinator thread needs to block to wait for the compile threads to catch up. That's what looks like is happening here
+
+[07:30:10.0832] <Ryan Hunt>
+it can also happen when all of the functions have been queued to be compiled on other threads, but have not finished yet.
+
+[07:30:49.0318] <Ryan Hunt>
+I think it's generally harmless when it happens, because the other compile threads should be getting the OS resources while the coordinator thread just waits
+
+[07:53:57.0249] <mayankleoboy1>
+The STR is just bug 1939938 with lazy tiering disabled. From reading response of rhunt look like all of the profile is expected. But happy to file a bug if you prefer.
+
+[07:53:58.0317] <botzilla>
+https://bugzil.la/1939938 — NEW (nobody) — [WASM] Godot engine based https://emiwa.itch.io/home spends ~4seconds on multiple background threads, and 800ms doing malloc-y stuff on 6 DOMWorkers each
+
+[07:57:18.0607] <mayankleoboy1>
+Ryan Hunt: And in the profile i shared, both TC0 and TC1 are coordinator tasks?
+
+[07:57:38.0976] <mayankleoboy1>
+* The STR is just bug 1939938 with lazy tiering disabled. From reading response of rhunt look like all of the profile is expected. But happy to file a bug if there is anything to investigate further.
+
+[07:58:55.0106] <mayankleoboy1>
+Also, possible to use TC5/6/7/ more?
+
+[07:59:11.0212] <Ryan Hunt>
+Yeah, it looks like there are multiple modules being compiled here and so you get multiple coordinator tasks. You can tell by looking for ModuleGenerator or CompileCompleteTier, CompileBuffer, CompileStreaming on the call stack
+
+[07:59:13.0885] <mayankleoboy1>
+* Also, possible to use TC5/6/7/ more to increase parallelism and reduce total wall-clock time?
+
+[07:59:49.0212] <Ryan Hunt>
+ExecuteCompileTask on the call stack indicates it's a task for compiling a batch of functions
+
+[08:02:50.0553] <Ryan Hunt>
+That's a good question. I'd probably need to look at the test case closely. Sometimes wasm modules have just a few big functions and so we're limited in parallelism. It looks like TC5/6/7 do some compile work here and there, but not as much as the others. It's also odd how many big modules are being compiled. Usually there's just one big module on most web pages.
+
+[08:03:00.0291] <mgaudet>
+Oh that looks very cool. I definitely will need to play with this :) 
+
+[08:04:16.0830] <padenot>
+mgaudet: good, in exchange you get to tell me when it breaks, and also what features you want !
+
+[08:04:23.0864] <mgaudet>
+:D 
+
+[08:04:55.0264] <mgaudet>
+oh boy... did not expect to wake up to a private methods webcompat bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1943296 
+
+[08:08:02.0013] <mayankleoboy1>
+I filed bug 1943371 for this. Please feel free to edit all the wrong thingsi added on the bug!
+
+[08:08:03.0686] <botzilla>
+https://bugzil.la/1943371 — NEW (nobody) — [WASM] Investigate increasing parallel module compilation on Godot engine based https://emiwa.itch.io/home
+
+[08:14:07.0757] <Ryan Hunt>
+thanks!
+
+[08:15:02.0021] <mayankleoboy1>
+also added the comment on non-overlapping idle state of the two coordinator threads.
+
+[08:36:41.0850] <Ms2ger>
+FIXME: tune this macro! Last updated: Jan 2008
+
+[08:36:48.0228] <Ms2ger>
+Time flies
+
+[09:44:26.0987] <mayankleoboy1>
+time flies like an arrow, 
+fruit flies like banana
+
+[09:53:28.0518] <mgaudet>
+In case someone knows off the top of the head before I go rummaging: Does off-thread-compilation cancellation end up changing warmup counts, or deferring re-entry to ion in any fashion? (I suspect no, since we toss code on compacting GC but am curious) 
+
+[09:53:58.0248] <iain>
+Bailing out does reset warmup counts
+
+[09:54:38.0791] <iain>
+(See [here](https://searchfox.org/mozilla-central/source/js/src/jit/Ion.cpp#2524-2530))
+
+[09:55:14.0625] <mgaudet>
+Ok, but probably not cancellation 
+
+[09:55:42.0774] <mgaudet>
+* In case someone knows off the top of the head before I go rummaging: Does off-thread-compilation cancellation end up changing warmup counts, or deferring re-entry to ion in any fashion? (I suspect no, since <del>we toss code on compacting</del> cancel on some GC but am curious) 
+
+[09:56:33.0242] <iain>
+I think you're correct. If we changed the warmup count, we would probably do it [here](https://searchfox.org/mozilla-central/source/js/src/jit/IonCompileTask.cpp#225-233)
+
+[10:11:44.0834] <sfink>
+Oh nice! This looks like it would be much better than my usual map/filter chains to extract and aggregate information from the GC markers.
+
+[10:12:18.0134] <debadree25>
+just out of curiosity in all bytecode emitter classes its common to have if(!emit<something>()) { return false; } is there no macro magic to make this disappear and/or has it been considered? (i think it has happened twice that i left the if block empty 😅) question inspired in the process of learning ocaml the let* monad pattern is quite nice 
+
+[10:12:44.0325] <debadree25>
+i guess the refactoring overhead would be huge on trying such a code pattern..
+
+[10:14:23.0503] <iain>
+There's also the problem that the correct return value depends on the return type of the function, so eg you'd need a separate macro for `return false` and `return nullptr`
+
+[10:16:28.0453] <iain>
+We have macros for slightly more complicated cases, like [MOZ_TRY_VAR](https://searchfox.org/mozilla-central/source/mfbt/Try.h#32) for use with mozilla::Result and [TRY_ATTACH](https://searchfox.org/mozilla-central/source/js/src/jit/CacheIR.h#457-466) in CacheIR
+
+[10:17:38.0278] <iain>
+If we were writing in Rust, a lot of this would be `emitSomething()?`.
+
+[10:18:33.0098] <iain>
+But for simple `return false` cases, I think our general conclusion is that it's not so bad and you get used to writing it after a while
+
+[10:19:26.0037] <debadree25>
+yeah
+
+[10:26:04.0417] <sfink>
+you could do it with one macro: `constexpr bool FailureReturnValue = false` at the top of the function and `#define TRY(expr) do if (!expr) { return FailureReturnValue; } while(0)` or something. Maybe with `#define TRY_RETURNS(val) constexpr auto FailureReturnValue = (val)` for the setup. 🫤
+
+[10:26:26.0299] <sfink>
+but yeah, in practice I think it's better to get used to the return false stuff
+
+[10:27:52.0011] <sfink>
+it seems like macros hiding return statements will always come back to bite you somehow.
+
+[10:29:48.0904] <padenot>
+you also get to tell me when it breaks !
+
+[12:03:26.0892] <mgaudet>
+gets back from lunch and looks at try: "Wow. That's a -lot- of red. And orange" 
+
+[12:03:48.0671] <mgaudet>
+but hey! The pernosco reproducer has been at it too :) 
+
+[14:06:23.0507] <mgaudet>
+!!! I finally had an AI comment generated by review bot that caught something 
+
+[14:16:41.0984] <iain>
+Fun fact: godbolt supports other language, including [seeing the assembly that V8 generates for an arbitrary function](https://godbolt.org/z/5zbEeGP98)
+
+[14:16:52.0564] <iain>
+* Fun fact: godbolt supports other languages, including [seeing the assembly that V8 generates for an arbitrary function](https://godbolt.org/z/5zbEeGP98)
+
+[14:18:00.0296] <jlink>
+Whoa
+
+[15:53:48.0253] <iain>
+confession: Batching of off-thread baseline compilation is implemented, with a mere 374 jit-test failures
+
+[15:53:51.0819] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2025-01-24
+[17:22:38.0271] <sfink>
+probably just cosmic ray bit flips or something, it sounds like it's working
+
+[02:34:16.0597] <nbp>
+The question is the ratio of discarded comments versus the valid.
+
+[09:18:53.0617] <mgaudet>
+Oh it's bad. Like really bad. I'd estimate I discard 20-40 suggestions for ever suggestion I let through 
+
+[09:20:20.0291] <mgaudet>
+Huh. I wonder how that works... would be kinda cool if we could get added (tho the v8 builtin calls there don't make me hopeful)
+
+[09:20:49.0717] <iain>
+IIRC those are shell builtins in d8
+
+[09:25:41.0097] <iain>
+Testing locally, it looks like they're available if you run d8 with `--allow-natives-syntax`
+
+[09:28:36.0203] <mgaudet>
+Yeah; I guess my worry being that it makes the idea of getting SM added to godbolt less interesting/plausible because you can't flip between SM and V8 with a given case and compare the disasm
+
+[09:28:52.0208] <mgaudet>
+(in the same way you can with clang v. gcc for example)
+
+[09:28:54.0094] <iain>
+Ah, right
+
+[09:29:29.0173] <iain>
+We could maybe add equivalent builtins
+
+[09:30:29.0300] <iain>
+`%PrepareFunctionForOptimization` is probably the equivalent of allocating a jitscript
+
+[09:32:40.0094] <iain>
+And `%OptimizeFunctionOnNextCall` just does an eager Ion compilation
+
+[12:26:52.0394] <mgaudet>
+Ugh. Poor iain discovering the horror: Dependency is one of those words I seemingly -cannot spell reliably-
+
+[12:46:27.0720] <debadree25>
+what does the assertion [here](https://searchfox.org/mozilla-central/source/js/src/ds/Nestable.h#56) mean? context i see it in a crash stack trace something like [this](https://pastebin.mozilla.org/4piDordG) it appears things havent nested correctly 😅 my vague idea is it seems like having both the control of [switch](https://searchfox.org/mozilla-central/source/js/src/frontend/SwitchEmitter.h#326) and [try](https://searchfox.org/mozilla-central/source/js/src/frontend/TryEmitter.h#135) is somehow causing problems but dont know what nuances to keep in mind here to debug this 😅😅
+
+[13:02:49.0320] <mgaudet>
+Hmmm. My briefest of guesses based on that is that it's trying to enforce a LIFO construction destruction order. Normally this would be guaranteed when using something on the C++ stack, but that invariant can be broken (and in that stack seems to be) if you use Maybe. (as you can do something like 
+
+```
+Maybe<N> a;
+Maybe<N> b;
+a.emplace();
+b.emplace();
+a.reset() // assert here -- destroyed inner A before outer B
+b.reset() 
+```
+
+[13:13:23.0191] <debadree25>
+ah that makes sense thank you for explaining 
+
+[13:35:53.0606] <mgaudet>
+No problem :) 
+
+
+2025-01-25
+[11:52:53.0448] <debadree25>
+i tried this and indeed just changing the order of .reset()s fixed my issue too! ty!
+
+
+2025-01-26
+[16:47:06.0619] <leftmostcat (UTC-8)>
+It's Saturday, so if anyone responds before Monday I'll be mad at you. I'm taking a peek at https://bugzilla.mozilla.org/show_bug.cgi?id=1916432 and, if I understand correctly, the idea is that some number of MIR ops correspond directly to LIR ops and, instead of managing the correspondence by hand, the LIR op can be generated automatically. (I'm assuming MIR and LIR are mid- and low-level intermediate representations, respectively.)
+
+I found js/src/jit/{M,L}IROps.yaml; what I'm missing is understanding how to find MIR ops that would be candidates for automated LIR generation and whether modifications would be needed outside those files.
+
+[09:03:20.0995] <iain>
+leftmostcat (UTC-8): It's currently 4am Monday in Australia, so I'm going to go ahead and answer your question despite being in Canada.
+
+[09:03:58.0855] <leftmostcat (UTC-8)>
+Got me on the details, dang. 😁
+
+[09:04:44.0627] <iain>
+In addition to the files you've already found, the key files are [GenerateLIRFiles.py](https://searchfox.org/mozilla-central/source/js/src/jit/GenerateLIRFiles.py#281) and [Lowering.cpp](https://searchfox.org/mozilla-central/source/js/src/jit/Lowering.cpp).
+
+[09:06:04.0489] <iain>
+GenerateMIRFiles.py may also be relevant.
+
+[09:06:23.0811] <iain>
+* [GenerateMIRFiles.py](https://searchfox.org/mozilla-central/source/js/src/jit/GenerateMIRFiles.py) may also be relevant.
+
+[09:10:11.0837] <iain>
+Basically, there's a bunch of fairly mechanical boilerplate that needs to exist for every op. `MIROps.yaml` contains the information that we need to generate boilerplate for less complicated MIR ops. `LIROps.yaml` does the same for LIR ops. There are a bunch of complicated ops (many of which predate this system) that don't fit in, in which case we just write them by hand. In some cases, the op is simple enough that we actually have enough information in the MIR description to generate all the LIR boilerplate too.
+
+[09:10:58.0990] <leftmostcat (UTC-8)>
+Great, thank you. I'll dig through it. :)
+
+[09:11:05.0361] <iain>
+Debadree did an initial implementation [here](https://bugzilla.mozilla.org/show_bug.cgi?id=1916359)
+
+[09:13:06.0868] <iain>
+Off the top of my head, I don't remember the exact criteria that a LIR op needs to meet to be eligible. But step 1 would be to look at the GenerateLIRFiles code and figure out what it can generate. Then I guess step 2 would be to look at LIR ops in LIROps.yaml to see if any of them could be generated now if we tagged them, and step 3 would be to see if there are any simple improvements we could make to the GenerateLIRFiles code to support more ops.
+
+[09:14:56.0904] <debadree25>
+generally i think if the MIR and LIR op have same name they would be 1-1 and lot of the ops are same name 
+
+[09:15:21.0947] <debadree25>
+so easy win there just need to be careful they may have same name but different params 
+
+[09:15:33.0428] <debadree25>
+* generally what i saw is if the MIR and LIR op have same name they would be 1-1 and lot of the ops are same name 
+
+
+2025-01-27
+[23:22:36.0127] <jandem>
+we could potentially automate this too. Change the build script to auto-generate LIR ops also for the other MIR ops, then compare these to the current LIR ops and print a list of matching ones
+
+[23:26:06.0578] <jandem>
+* we could potentially automate this too. Change the build script to compare MIR and LIR opcode definitions to see which LIR ops could be auto-generated and print a list of matching ones
+
+[23:34:35.0812] <jandem>
+* we could potentially automate this too. Change the build script to compare MIR and LIR opcode definitions to see which LIR ops could be auto-generated and print a list of matching ones. Or auto-generate LIR for all MIR ops and determine which ones match hand-written LIR ops
+
+
+2025-01-29
+[08:31:21.0087] <padenot>
+Hi, how can one add a Firefox Profiler marker in `js/` without importing libxul stuff ?
+
+[08:33:24.0058] <iain>
+padenot: [Here's an example](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineBailouts.cpp#1265-1283)
+
+[08:33:48.0705] <padenot>
+thanks a lot. this is screaming for a macro or whatnot
+
+[08:34:40.0789] <iain>
+We currently only do it in a half-dozen places
+
+[08:35:02.0912] <iain>
+Possibly *because* there is no easy macro
+
+[08:35:07.0897] <padenot>
+right, I was about to say
+
+[08:35:39.0409] <padenot>
+2025 is the year of the Firefox Profiler and MOZ_LOG we should get on it !
+
+[08:43:22.0728] <mgaudet>
+So, `JS_LOG` maps to MOZ_LOG and can be viewed in the marker chart 
+
+[08:43:45.0618] <mgaudet>
+they aren't first class markers, but if you just want to have something show up in the marker table it's -great- already 
+
+[08:44:07.0180] <padenot>
+yeah that really is amazing
+
+[08:44:31.0160] <padenot>
+Now, iain answer would work, except we need markers with a duration, is that something we do ?
+
+[08:44:39.0881] <mgaudet>
+I'm going to open a bug though for a better marker interface in the JS engine; we have some old stuff already open. Not sure how much the win is ober JS
+
+[08:44:48.0323] <mgaudet>
+* I'm going to open a bug though for a better marker interface in the JS engine; we have some old stuff already open. Not sure how much the win is over JS_LOG
+
+[08:44:51.0435] <mgaudet>
+ah yeah duration.
+
+[08:45:01.0389] <mgaudet>
+I don't think we have anything there yet? 
+
+[08:45:45.0983] <padenot>
+the overall context is that we need markers to characterize performance of intgemm operations, so we can write better SIMD kernels and generally understands various AI workloads better, than all runs in WASM
+
+[08:45:46.0178] <Bryan Thrall [:bthrall]>
+I'm pretty sure there's no duration marker support yet, but it wouldn't be hard to add
+
+[08:46:02.0631] <mgaudet>
+Does the GC duration stuff work through markers? Or another interface I wonder
+
+[08:46:37.0600] <padenot>
+locally, we used my header: https://searchfox.org/mozilla-central/source/tools/profiler/public/MicroGeckoProfiler.h, this works well, and was very useful. We can't land this (or at least we haven't started that discussion)
+
+[08:50:45.0006] <mgaudet>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1944618d
+
+[08:50:52.0228] <mgaudet>
+* https://bugzilla.mozilla.org/show\_bug.cgi?id=1944618
+
+[08:51:18.0216] <padenot>
+it's all on gecko's side from the look of it: https://searchfox.org/mozilla-central/search?q=symbol:_ZN7mozilla12baseprofiler8categoryL4GCCCE&redirect=false
+
+[08:51:53.0025] <mgaudet>
+Ahh yes  
+
+[08:51:53.0915] <mgaudet>
+too bad 
+
+[08:53:13.0276] <padenot>
+I'm sure the folks in #profiler:mozilla.org will be delighted to offer some help should it be needed
+
+[08:57:22.0557] <padenot>
+I hooked up our bug to this new one, let me know if I can help, for now we'll use our non-landable thing
+
+[09:01:09.0555] <mgaudet>
+I do wonder how ryan/jan would feel about a `ifdef Firefox Build` wrap around that just for expediency sake. 
+
+I won't have time to do any of that wiring up at the moment, so if you wanted to take a stab at it tho I'd be happy to review 
+
+[09:01:23.0817] <mgaudet>
+(looking at the patch https://phabricator.services.mozilla.com/D235972)
+
+[09:02:31.0865] <padenot>
+one technique that I've been using and seen done by others to be able to mark interesting bits of code (event, duration, etc) is to have a generic header w/ a generic API, and then substitute the implementation behind it to bind to ETW, tracy, Gecko Profiler, etc.
+
+[09:03:24.0479] <padenot>
+we do this to be able to instrument our audio IO library, that lives in a separate github repo and is in use by lots of other projects (e.g. all the nintendo emulators, various other stuff), but vendored in Fx
+
+[09:04:10.0673] <padenot>
+when in Fx, those macros insert markers in the Fx Profiler, and it's nice and easy -- but I have no idea about spidermonkey packaging so it might not be the best solution
+
+[09:06:04.0798] <padenot>
+https://github.com/mozilla/cubeb/blob/master/src/cubeb_tracing.h
+https://searchfox.org/mozilla-central/source/media/libcubeb/src/cubeb_tracing.h for illustration purposes
+
+[09:08:12.0606] <mgaudet>
+So basically so long as you guarantee the active version of cubeb_tracing.h is earlier in the include path, it superceeds the other one
+
+[09:08:39.0088] <padenot>
+no we're not as clean as that
+
+[09:08:42.0834] <padenot>
+we just overwrite the rfile
+
+[09:08:46.0466] <padenot>
+* we just overwrite the file
+
+[09:08:52.0507] <mgaudet>
+Heh ok. Fair enough. 
+
+[09:09:16.0086] <padenot>
+this works well because this is managed by `updatebot`
+
+[09:09:36.0449] <padenot>
+or `mach vendor` etc. you can list files you don't want imported / ignored
+
+[09:10:32.0808] <mgaudet>
+I think the idea is interesting in general though... we generally would like more access to stuff from FX with less pain; Bryan Thrall [:bthrall] for example is looking at glean. 
+
+Our pattern so far that works best is function pointer structs, but it might be nice to have something easier and with less overhead. 
+
+Though, function pointer structs also work better for embedders who consume this as a DLL, not build time dependency
+
+[09:12:20.0394] <padenot>
+I've been also doing something you shouldn't do at home, which is `dlopen(nullptr, ...)` and fetching the gecko profiler symbols in the address space
+
+[09:12:46.0992] <padenot>
+for when I need to instrument the bottom of e.g. ffmpeg, and that's not in libxul or something that links to libxul (`libmozavcodec.so` etc.)
+
+[09:14:29.0200] <padenot>
+helpful in some weird environment such as sandboxing code as well
+
+[09:49:49.0854] <Redfire>
+I managed to get cross-lang lto (so SM C++ and my Rust) working and it made it ~3% faster* for ~2% bigger size
+*no very serious tests were conducted, i don't have any
+
+[09:50:33.0694] <sfink>
+I have a patch for that. I hadn't bothered to land it because it was in the middle of a stack of other stuff, and it didn't seem like anyone else was likely to make use of it soon. Looks like I was wrong! (Well, sadly, I was right, but now it's *much* later than I expected for the rest of the stack...)
+
+[10:46:00.0851] <iain>
+Does anybody know why Searchfox is no longer showing any code coverage data?
+
+[11:00:21.0136] <padenot>
+marco: ^ ? iirc sylvestre told me there ongoing brokenness that was painful and so some things were disabled
+
+[11:00:26.0470] <padenot>
+* marco: ^ ? iirc sylvestre told me there was ongoing brokenness that was painful and so some things were disabled
+
+[11:01:05.0617] <padenot>
+happy to take over if need be, maybe put it up on https://bugzilla.mozilla.org/show_bug.cgi?id=1944618 ?
+
+[11:09:34.0233] <marco>
+iain: padenot: yes, it's been broken for a while
+
+[11:09:46.0401] <marco>
+The task parsing the coverage results is failing for unknown reasons
+
+[11:10:39.0048] <iain>
+Is there a bug I can follow? I miss code coverage
+
+[11:23:46.0329] <marco>
+iain: https://bugzilla.mozilla.org/show_bug.cgi?id=1925873
+
+[11:56:30.0862] <sfink>
+just queued the landing, in bug 1924272
+
+[12:14:26.0661] <mgaudet>
+nice! https://phabricator.services.mozilla.com/D225437 probably solve padenot 's interim problem nicely 
+
+
+2025-01-30
+[00:44:30.0992] <Tarek>
+Is there an easy way to programmatically grab the peak RSS of a process in a profile ?
+
+[00:58:04.0398] <padenot>
+that was fast, we'll queue something just behind that one then thanks a bunch!
+
+[00:59:56.0911] <padenot>
+the backout was fast as well unfortunately
+
+[01:00:06.0232] <padenot>
+give me a profile that interest you and I can show you how
+
+[01:00:11.0383] <padenot>
+* give me a profile that interests you and I can show you how
+
+[01:00:50.0324] <Tarek>
+I need to do it in the CI through code
+
+[01:04:09.0569] <padenot>
+yes, you if you have your profile, you can then go through the big json and find that information
+
+[01:06:31.0817] <Tarek>
+Thanks 🙏 will give it a shot 
+
+[01:06:53.0896] <padenot>
+good luck it's easy to get lost as it's big. #profiler:mozilla.org will be able to help
+
+[01:07:50.0004] <Tarek>
+Thanks. I was planning to post there and I messed up on element haha 
+
+[07:38:06.0925] <sfink>
+gah, that thing will just not stick. Um... it's good, because I'm learning how to manage things with jj, right?
+
+[07:38:27.0649] <Ms2ger>
+Anyone attending fosdem, btw?
+
+[12:30:35.0388] <mstange>
+iain: When fixing the profiler assembly view if the same function has multiple compilations, I noticed that showing the compilation with the most samples may not always be useful, either - if I run 200 iterations of an sp3 subtest, I will have at least 200 compilations of every function, because we don't reuse ion compiled code between the test iterations
+
+[12:30:44.0191] <mstange>
+iain: Is that a case I should worry about?
+
+[12:33:29.0538] <iain>
+Huh, I hadn't considered that. It would certainly be nicer if we could somehow collapse them in cases where the generated code is the same, but that's a very difficult problem, for the same reason that we don't share Ion-compiled code: sometimes we bake in various realm-specific information.
+
+[12:34:28.0550] <iain>
+But there have definitely been cases where showing the hottest compilation would be helpful, and multiple iterations wouldn't have been an issue
+
+[12:34:55.0314] <mstange>
+There's a hack I put into samply when you run it with `--iteration-count` (and it launches the profiled process multiple times) and specify `--reuse-threads` - in that case I crudely match up JIT functions by (name, compiled size in bytes)
+
+[12:35:21.0764] <iain>
+If that works, that would be great
+
+[12:35:34.0880] <mstange>
+so then the samples from the restarted iterations will look as if they were running the compilation from the original iteration
+
+[12:35:48.0825] <iain>
+Assuming that the compilations are the same size?
+
+[12:35:56.0523] <mstange>
+yeah, I haven't checked that yet
+
+[12:36:26.0690] <mstange>
+but since it's done on the samply side it won't help for profiles that were collected without `--reuse-threads`
+
+[12:36:48.0587] <mstange>
+furthermore, different compilations within the initial "iteration" (the first launched process) aren't shared, but I should probably just fix that
+
+[12:40:09.0050] <iain>
+The cases where I've wanted this are when we have N samples in an Ion script outside of the assembly view, but only M samples (with M << N) in the assembly view. 
+
+[12:40:39.0287] <iain>
+In general I've assumed that this is because sometimes we compile Ion code initially, then have to recompile later for some reason
+
+[12:41:06.0736] <iain>
+In which case there will be two completely distinct compilations with the same name, but different code
+
+[12:42:03.0397] <mstange>
+right, yes, that case will be fixed by just doing what you said - show the compilation with the most samples
+
+[12:42:10.0059] <mstange>
+I have the patch written now, need to write a test though
+
+[12:42:13.0738] <iain>
+If you can just get that working, I would be happy
+
+[12:43:02.0198] <iain>
+If you can also do magic combining in cases where the assembly is ~the same, that would also be nice, but it's not necessary
+
+[12:44:26.0856] <iain>
+(If there were a way to dump out each of the compilations alongside their corresponding sample counts, I wouldn't mind processing that myself)
+
+[14:07:06.0338] <mstange>
+iain: [Here's a deploy preview for you](https://deploy-preview-5349--perf-html.netlify.app/public/zkqdb0x8t6jseamaftp5x8t1pfnt663jmfwesy0/flame-graph/?globalTrackOrder=0w6&hiddenGlobalTracks=02w6&hiddenLocalTracksByPid=3553-0wjlwprwyl~3672-0wx6x8wxe~3757-0w35wfhwx5x7wxc&profileName=Firefox%20Charts-chartjs-Android-Pixel8-Jun4-2024&symbolServer=http%3A%2F%2F127.0.0.1%3A3000%2F0ln7w07ga865rra7yy3s2p6q46czfs5a1d5wjv5&thread=zv&transforms=fs-m--async%2C-sync~df-1484~df-4028~df-1483~df-3852~df-5646~df-1485~df-18377~df-737~df-16182~df-1490~ff-1794~rec-1794~df-3619~df-3736~df-3845~df-5873~df-4967~df-1064&v=10)
+
+[14:07:29.0544] <mstange>
+when you use samply you can do `PROFILER_URL="https://deploy-preview-5349--perf-html.netlify.app/" samply record ...`
+
+[14:07:55.0349] <iain>
+Awesome, thanks!
+
+[14:08:10.0576] <iain>
+Now I just have to remember which bug I was looking at last time I ran into this problem
+
+[14:31:42.0870] <iain>
+Now I'm trying to recreate the behaviour with a handwritten testcase, but even in the non-preview version, I am seeing multiple versions of Ion functions (one per compile) with sample counts properly attributed to each. Which is exactly what I wanted and was hoping for, but now I'm trying to figure out if I was asking for a feature that already existed, and I somehow managed to miss the extra copies of the function in the call tree.
+
+[14:31:51.0601] <iain>
+I could have sworn this didn't always work this nicely
+
+[14:31:58.0208] <iain>
+But either way: thanks! Samply is great!
+
+
+2025-01-31
+[08:48:46.0915] <netskink>
+Hello, I opened a thread on mozilla developers and was told this was a better place to discuss.  Should I post this link here or repost the question?  Here is the link to the other thread https://matrix.to/#/!lrZtdjyLpBmoKbMdyx:mozilla.org/$jfeBKjaO8_Cl6uU9j0C3MJBE0M3CWEtE46sBYZ8kXBQ?via=mozilla.org&via=matrix.org&via=igalia.com
+
+[09:00:00.0008] <arai>
+you don't have to repost the question.  try reproducing the toolchain environment at the point of version 52 (that is, 2017 or so I guess) and see if the issue goes away
+
+[09:08:22.0030] <netskink>
+Yes, that is the plan.  I can't do that at the moment though.  I need to use a laptop from home, a network from home, etc.
+
+[09:10:27.0088] <netskink>
+in regards to gcc vs clang. I found in the source, perhaps a moz.config some if defined options.  ONe was HAVE_DTRACE.  I could do ./mach configure --disable-trace and the config option worked.  However, I didn't find the tie in to be exact.  HAVE_DTRACE vs --disable-dtrace.  I also found CLANG_CXX.  Any idea to find how to map these or a short cut to just --enable-clang?
+
+[09:17:58.0087] <netskink>
+FWIW, I addeed to moz.config:
+```
+export CC=clang
+export CXX=clang++
+export LD=lld"
+
+[09:19:13.0053] <netskink>
+* FWIW, I addeed to moz.config:
+
+```
+export CC=clang
+export CXX=clang++
+export LD=lld"
+```
+
+And that is currently building and appears to be using clang.
+
+An option to do:
+```
+ac_add_options --enable-linker=lld
+```
+
+Did not work.  It said it was an invalid option.
+
+[09:20:08.0522] <netskink>
+Any idea how to disable jit?  --disable-jit does not work on 52, but does work on 130
+
+[09:33:52.0201] <netskink>
+This is odd. Using clang, this is an error:
+
+```
+0:00.17 /usr/bin/gmake -f client.mk -s
+ 0:00.81 Adding client.mk options from /home/davis/sm/norust2/mozilla-unified/mozconfig:
+ 0:00.81     MOZ_OBJDIR=/home/davis/sm/norust2/mozilla-unified/obj-x86_64-pc-linux-gnu
+ 0:00.81     OBJDIR=/home/davis/sm/norust2/mozilla-unified/obj-x86_64-pc-linux-gnu
+ 0:00.81     FOUND_MOZCONFIG=/home/davis/sm/norust2/mozilla-unified/mozconfig
+ 0:00.93 Elapsed: 0.00s; From dist/public: Kept 0 existing; Added/updated 0; Removed 0 files and 0 directories.
+ 0:00.93 Elapsed: 0.00s; From dist/sdk: Kept 0 existing; Added/updated 0; Removed 0 files and 0 directories.
+ 0:00.93 Elapsed: 0.00s; From dist/private: Kept 0 existing; Added/updated 0; Removed 0 files and 0 directories.
+ 0:00.95 Elapsed: 0.01s; From dist/include: Kept 326 existing; Added/updated 0; Removed 0 files and 0 directories.
+ 0:00.99 Elapsed: 0.00s; From _tests: Kept 1 existing; Added/updated 0; Removed 0 files and 0 directories.
+ 0:01.49 0 compiler warnings present.
+Error running mach:
+
+    ['build']
+
+The error occurred in code that was called by the mach command. This is either
+a bug in the called code itself or in the way that mach is calling it.
+
+You should consider filing a bug for this issue.
+
+If filing a bug, please include the full output of mach, including this error
+message.
+
+The details of the failure are as follows:
+
+AssertionError
+
+  File "/home/davis/sm/norust2/mozilla-unified/python/mozbuild/mozbuild/mach_commands.py", line 459, in build
+    monitor.finish(record_usage=status==0)
+  File "/home/davis/sm/norust2/mozilla-unified/python/mozbuild/mozbuild/mach_commands.py", line 236, in __exit__
+    self.monitor.stop_resource_recording()
+  File "/home/davis/sm/norust2/mozilla-unified/python/mozbuild/mozbuild/controller/building.py", line 243, in stop_resource_recording
+    self.resources.stop()
+  File "/home/davis/sm/norust2/mozilla-unified/testing/mozbase/mozsystemmonitor/mozsystemmonitor/resourcemonitor.py", line 289, in stop
+    assert self._running
+```
+
+I'm not certian where the code is relative to the code
+
+[09:34:07.0345] <netskink>
+is this a js compiler test failure?
+
+[09:48:05.0633] <fkilic>
+Is Number.MAX_SAFE_INTEGER same on 32 bits systems? AFAICT from MDN it looks like it is, but just want to make sure
+
+[09:48:20.0118] <fkilic>
+* Is Number.MAX\_SAFE\_INTEGER same on 32 bits systems? AFAICT from MDN it sounds like it is, but just want to make sure
+
+[09:49:08.0382] <sfink>
+[yes](https://262.ecma-international.org/#sec-number.max_safe_integer) (it's in the spec)
+
+[09:49:24.0537] <fkilic>
+awesome, thank you!
+
+[10:03:56.0598] <mgaudet>
+(Honestly, in the 52 era you might be best served by using the old `./configure && make` story if you can get a package somwhere
+
+[10:31:42.0268] <netskink>
+to be honest, i am hoping after I get a working build, to use those generated makefiles as my starting point on zos. I like this mach tool, but I dont have pyton27 on zos.  I do have 3.11.9 and 3.12.1
+

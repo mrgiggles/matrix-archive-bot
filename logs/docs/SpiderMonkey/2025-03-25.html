@@ -1,0 +1,168 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2025-03-25</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2025-03-25<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2025-03-24" class="nav-link"><span>prev</span></a>
+<a href="2025-03-26" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Mon Mar 24 2025 17:21:59 GMT-0700 (Pacific Daylight Time)">00:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@kfjvj:matrix.org">kfjvj</span>&gt;</div></td><td class="msg-cell"><p>I'm trying to do a depth-first traversal with ubi::Nodes, but I keep hitting a segfault related to hash functions.</p>
+<p>Here's the code:</p>
+<pre><code>struct EdgeInfo {
+};
+
+struct TraversalHandler {
+    using NodeData = EdgeInfo;
+    using Traversal = JS::ubi::BreadthFirst&lt;TraversalHandler&gt;;
+
+    bool operator() (Traversal&amp; /*traversal*/, JS::ubi::Node /*origin*/, const JS::ubi::Edge&amp; /*edge*/, EdgeInfo* /*edgeInfo*/, bool /*first*/) {
+        
+        std::wcout &lt;&lt; L"operator(): Mark 1" &lt;&lt; std::endl;
+        std::u16string edgeName{edge.name.get()};
+        std::wcout &lt;&lt; L"operator(): Mark 2" &lt;&lt; std::endl;
+
+        std::wcout &lt;&lt; L"EDGE NAME: " &lt;&lt; edgeName.c_str() &lt;&lt; std::endl;
+        std::wcout &lt;&lt; L"operator(): Mark 3" &lt;&lt; std::endl;
+
+        return true;
+    }
+    
+    int dummy = 0; // TODO: Remove
+};
+
+void printDebugMozJSMemoryUse(JSContext* ctx) {
+    JS::ubi::RootList rootList{ctx, true};
+    std::wcout &lt;&lt; L"Mark 1" &lt;&lt; std::endl;
+    auto [ok, nogc] = rootList.init();
+    std::wcout &lt;&lt; L"Mark 2" &lt;&lt; std::endl;
+    if (!ok) {
+        ara::log::LogDebug() &lt;&lt; "Could not initialize root list.";
+        return;
+    }
+
+    JS::ubi::Node root{&amp;rootList};
+    
+    TraversalHandler handler;
+    TraversalHandler::Traversal traversal(ctx, handler, nogc);
+    traversal.wantNames = true;
+
+    std::wcout &lt;&lt; L"Mark 3" &lt;&lt; std::endl;
+
+    std::wcout &lt;&lt; L"Mark 3.5" &lt;&lt; std::endl;
+
+    if (!traversal.addStart(root)) {
+        ara::log::LogDebug() &lt;&lt; "Out of memory!";
+        return;
+    }
+    std::wcout &lt;&lt; L"Mark 4" &lt;&lt; std::endl;
+    
+    // LEFTOFF: This is segfaulting.  Why?
+    JS::AutoCheckCannotGC noGc2(ctx);
+    if (!traversal.traverse()) {
+        ara::log::LogDebug() &lt;&lt; "Error with traversal.";
+        return;
+    }
+    std::wcout &lt;&lt; L"Mark 5" &lt;&lt; std::endl;
+}
+</code></pre>
+<p>And, according to my debugger, I hit a segfault around here (image posted above).</p>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Mon Mar 24 2025 19:03:39 GMT-0700 (Pacific Daylight Time)">02:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">what's the backtrace of the crash?  and what's the details of the segfault?</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Mon Mar 24 2025 19:04:24 GMT-0700 (Pacific Daylight Time)">02:04</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">for example, what's the address?</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Tue Mar 25 2025 06:54:34 GMT-0700 (Pacific Daylight Time)">13:54</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-6" title="@yannis:mozilla.org">yannis</span>&gt;</div></td><td class="msg-cell">hello! is <a href="https://searchfox.org/mozilla-central/source/js/src/zydis/moz.build">Zydis</a> only present in SpiderMonkey, not in Firefox?</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Tue Mar 25 2025 06:59:41 GMT-0700 (Pacific Daylight Time)">13:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell"><span class="nick-6">yannis</span>: <a href="https://searchfox.org/mozilla-central/source/js/src/moz.build#574-575">https://searchfox.org/mozilla-central/source/js/src/moz.build#574-575</a> Apparently only when <code>--enable-jitspew</code> is provided.</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Tue Mar 25 2025 07:07:45 GMT-0700 (Pacific Daylight Time)">14:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-6" title="@yannis:mozilla.org">yannis</span>&gt;</div></td><td class="msg-cell">ha, that's the part I was missing, thank you!</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Tue Mar 25 2025 07:10:08 GMT-0700 (Pacific Daylight Time)">14:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-6" title="@yannis:mozilla.org">yannis</span>&gt;</div></td><td class="msg-cell">so it's used by both but only in debug builds by default if I read this correctly <a href="https://searchfox.org/mozilla-central/source/js/moz.configure#520-524">https://searchfox.org/mozilla-central/source/js/moz.configure#520-524</a></td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Tue Mar 25 2025 07:59:48 GMT-0700 (Pacific Daylight Time)">14:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@smaug:mozilla.org">smaug</span>&gt;</div></td><td class="msg-cell">hmm, maybe I can add a tiny hack for events which are kept alive even after minorGC. Mark them as jsholders, so their CanSkip get called in UnmarkSkippableJSHolders(). And that way if they keep stuff alive through various .*Target member variables, black bit propagation should manage to reduce the CC graph</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Tue Mar 25 2025 07:59:51 GMT-0700 (Pacific Daylight Time)">14:59</a></td><td class="nick-cell"><div class="m-ov"><span class="nick nick-4" title="@smaug:mozilla.org">smaug</span></div></td><td class="msg-cell">tries</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Tue Mar 25 2025 08:02:37 GMT-0700 (Pacific Daylight Time)">15:02</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">New V8 blog post about why they abandoned sea of nodes: <a href="https://v8.dev/blog/leaving-the-sea-of-nodes">https://v8.dev/blog/leaving-the-sea-of-nodes</a></td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Tue Mar 25 2025 08:55:54 GMT-0700 (Pacific Daylight Time)">15:55</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@smaug:mozilla.org">smaug</span>&gt;</div></td><td class="msg-cell">it does help quite a bit. In case of the tiktok's leak, CC time drops to two slices, 4ms and 3ms vs without the patch there are ~50 slices of which some are the max idle time (50ms). But one of the forgetSkippable gets slow, since it does the black marking</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Tue Mar 25 2025 08:58:18 GMT-0700 (Pacific Daylight Time)">15:58</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-9" title="@awingo:igalia.com">wingo</span>&gt;</div></td><td class="msg-cell">the point about sea-of-nodes producing poor schedules for wasm was unexpected, for me</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Tue Mar 25 2025 09:00:14 GMT-0700 (Pacific Daylight Time)">16:00</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@bvisness:mozilla.org">bvisness</span>&gt;</div></td><td class="msg-cell">yeah, that was interesting but maybe not totally surprising in retrospect</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Tue Mar 25 2025 09:01:02 GMT-0700 (Pacific Daylight Time)">16:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@bvisness:mozilla.org">bvisness</span>&gt;</div></td><td class="msg-cell">after all, it's been a selling point of wasm that an ahead-of-time optimizing compiler can actually make a difference, and I suppose sea of nodes just throws all that away</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Tue Mar 25 2025 10:21:11 GMT-0700 (Pacific Daylight Time)">17:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@nbp:mozilla.org">nbp</span>&gt;</div></td><td class="msg-cell">I did claim when they introduced it that it was pointless to have a sea-of-nodes when JavaScript CFG is littered with snapshots which are capturing the previous compilation tiers memory representation. However, I failed to see it as being as issue for WASM. Glad we have not followed them.</td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Tue Mar 25 2025 13:16:19 GMT-0700 (Pacific Daylight Time)">20:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><span class="nick-4">iain</span>: Is there a way to avoid IC fallback if I use !== in polymorphic code?</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Tue Mar 25 2025 13:17:02 GMT-0700 (Pacific Daylight Time)">20:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><p>Specifically the <code>dependencyOutput !== cachedDependencyOutputs[i]</code> check in this code:</p>
+<pre><code class="language-js">export function createSelector(dependencies: any[], fn: any): any {
+  const dependencyCount = dependencies.length;
+  let firstRun = true;
+  let inputForCachedOutput = null;
+  const cachedDependencyOutputs = [];
+  let cachedSelectorOutput = null;
+  return (input) =&gt; {
+    if (firstRun) {
+      for (let i = 0; i &lt; dependencyCount; i++) {
+        cachedDependencyOutputs[i] = dependencies[i](input);
+      }
+      cachedSelectorOutput = fn(...cachedDependencyOutputs);
+      inputForCachedOutput = input;
+      firstRun = false;
+    } else if (input !== inputForCachedOutput) {
+      let selectorOutputsMatchCache = true;
+      for (let i = 0; i &lt; dependencyCount; i++) {
+        const dependencyOutput = dependencies[i](input);
+        if (dependencyOutput !== cachedDependencyOutputs[i]) {
+          selectorOutputsMatchCache = false;
+          cachedDependencyOutputs[i] = dependencyOutput;
+        }
+      }
+
+      if (!selectorOutputsMatchCache) {
+        cachedSelectorOutput = fn(...cachedDependencyOutputs);
+      }
+    }
+    return cachedSelectorOutput;
+  };
+}
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Tue Mar 25 2025 13:18:29 GMT-0700 (Pacific Daylight Time)">20:18</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">What are the input types? Arbitrary values?</td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Tue Mar 25 2025 13:19:10 GMT-0700 (Pacific Daylight Time)">20:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">yes, arbitrary values</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Tue Mar 25 2025 13:19:11 GMT-0700 (Pacific Daylight Time)">20:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><a href="https://share.firefox.dev/4hN9Dgw">https://share.firefox.dev/4hN9Dgw</a></td></tr>
+  <tr class="msg" id="L20"><td class="ts-cell"><a class="ts" href="#L20" alt="Tue Mar 25 2025 13:19:35 GMT-0700 (Pacific Daylight Time)">20:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">the types for a single call site of createSelector will be somewhat consistent</td></tr>
+  <tr class="msg" id="L21"><td class="ts-cell"><a class="ts" href="#L21" alt="Tue Mar 25 2025 13:19:45 GMT-0700 (Pacific Daylight Time)">20:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">but createSelector is called in many places with different dependency output types</td></tr>
+  <tr class="msg" id="L22"><td class="ts-cell"><a class="ts" href="#L22" alt="Tue Mar 25 2025 13:20:21 GMT-0700 (Pacific Daylight Time)">20:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Right, and it looks too big to inline</td></tr>
+  <tr class="msg" id="L23"><td class="ts-cell"><a class="ts" href="#L23" alt="Tue Mar 25 2025 13:21:52 GMT-0700 (Pacific Daylight Time)">20:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@jrmuizel:mozilla.org">jrmuizel</span>&gt;</div></td><td class="msg-cell">Can someone remind me how to dump the bytecode in js shell?</td></tr>
+  <tr class="msg" id="L24"><td class="ts-cell"><a class="ts" href="#L24" alt="Tue Mar 25 2025 13:22:14 GMT-0700 (Pacific Daylight Time)">20:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">If you have a function <code>foo</code>, <code>dis(foo)</code> will dump the bytecode for that function</td></tr>
+  <tr class="msg" id="L25"><td class="ts-cell"><a class="ts" href="#L25" alt="Tue Mar 25 2025 13:24:22 GMT-0700 (Pacific Daylight Time)">20:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@jrmuizel:mozilla.org">jrmuizel</span>&gt;</div></td><td class="msg-cell">That matches my memory but my shell build maybe doesn't have <code>dis()</code>?</td></tr>
+  <tr class="msg" id="L26"><td class="ts-cell"><a class="ts" href="#L26" alt="Tue Mar 25 2025 13:24:29 GMT-0700 (Pacific Daylight Time)">20:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-1">mstange</span>: Yeah, we don't really have a good megamorphic fallback for when comparison ICs get really messy.</td></tr>
+  <tr class="msg" id="L27"><td class="ts-cell"><a class="ts" href="#L27" alt="Tue Mar 25 2025 13:25:45 GMT-0700 (Pacific Daylight Time)">20:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-14">jrmuizel</span>: it's only defined in builds with <code>--enable-debug</code> or <code>--enable-jitspew</code>.</td></tr>
+  <tr class="msg" id="L28"><td class="ts-cell"><a class="ts" href="#L28" alt="Tue Mar 25 2025 13:25:54 GMT-0700 (Pacific Daylight Time)">20:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@jrmuizel:mozilla.org">jrmuizel</span>&gt;</div></td><td class="msg-cell">yep, just figured it out</td></tr>
+  <tr class="msg" id="L29"><td class="ts-cell"><a class="ts" href="#L29" alt="Tue Mar 25 2025 13:26:43 GMT-0700 (Pacific Daylight Time)">20:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-1">mstange</span>: Can you open a bug for your comparison thing? I'll have to think a bit about what the codegen for a megamorphic compare would do.</td></tr>
+  <tr class="msg" id="L30"><td class="ts-cell"><a class="ts" href="#L30" alt="Tue Mar 25 2025 13:26:51 GMT-0700 (Pacific Daylight Time)">20:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><span class="nick-4">iain</span>: sure, will do</td></tr>
+  <tr class="msg" id="L31"><td class="ts-cell"><a class="ts" href="#L31" alt="Tue Mar 25 2025 13:27:04 GMT-0700 (Pacific Daylight Time)">20:27</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><a href="https://searchfox.org/mozilla-central/rev/8c7e56f7bd827bd8c4016ee12a631604d691f597/js/src/vm/EqualityOperations.cpp#27-52">https://searchfox.org/mozilla-central/rev/8c7e56f7bd827bd8c4016ee12a631604d691f597/js/src/vm/EqualityOperations.cpp#27-52</a> has more special cases than I was naively expecting</td></tr>
+  <tr class="msg" id="L32"><td class="ts-cell"><a class="ts" href="#L32" alt="Tue Mar 25 2025 13:27:16 GMT-0700 (Pacific Daylight Time)">20:27</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">but I guess they all make sense</td></tr>
+  <tr class="msg" id="L33"><td class="ts-cell"><a class="ts" href="#L33" alt="Tue Mar 25 2025 13:30:10 GMT-0700 (Pacific Daylight Time)">20:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Yeah, comparison is messy in JS</td></tr>
+  <tr class="msg" id="L34"><td class="ts-cell"><a class="ts" href="#L34" alt="Tue Mar 25 2025 13:30:35 GMT-0700 (Pacific Daylight Time)">20:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">but at least "is same object or is both null or is both undefined" probably could be handled by the same IC, maybe that's already the case</td></tr>
+  <tr class="msg" id="L35"><td class="ts-cell"><a class="ts" href="#L35" alt="Tue Mar 25 2025 13:32:06 GMT-0700 (Pacific Daylight Time)">20:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Right now I think we would end up with an Ion IC with a few separate stubs for that</td></tr>
+  <tr class="msg" id="L36"><td class="ts-cell"><a class="ts" href="#L36" alt="Tue Mar 25 2025 13:32:30 GMT-0700 (Pacific Daylight Time)">20:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">But in your case it looks like you're comparing enough different things that we hit the limit of 6 stubs</td></tr>
+  <tr class="msg" id="L37"><td class="ts-cell"><a class="ts" href="#L37" alt="Tue Mar 25 2025 13:32:37 GMT-0700 (Pacific Daylight Time)">20:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">So we eventually fall back to calling into the VM</td></tr>
+  <tr class="msg" id="L38"><td class="ts-cell"><a class="ts" href="#L38" alt="Tue Mar 25 2025 13:34:30 GMT-0700 (Pacific Daylight Time)">20:34</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">Oh, wait: have you considered using <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is">Object.is</a> instead?</td></tr>
+  <tr class="msg" id="L39"><td class="ts-cell"><a class="ts" href="#L39" alt="Tue Mar 25 2025 13:37:05 GMT-0700 (Pacific Daylight Time)">20:37</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell">Oh sweet, no I had not considered that, will give it a try!</td></tr>
+  <tr class="msg" id="L40"><td class="ts-cell"><a class="ts" href="#L40" alt="Tue Mar 25 2025 13:39:01 GMT-0700 (Pacific Daylight Time)">20:39</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">That will at least give a fast path in cases where the two values are the same</td></tr>
+  <tr class="msg" id="L41"><td class="ts-cell"><a class="ts" href="#L41" alt="Tue Mar 25 2025 13:43:44 GMT-0700 (Pacific Daylight Time)">20:43</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-1" title="@mstange:mozilla.org">mstange</span>&gt;</div></td><td class="msg-cell"><span class="nick-4">iain</span>: That worked perfectly, <a href="https://share.firefox.dev/4j8gW3r">https://share.firefox.dev/4j8gW3r</a></td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

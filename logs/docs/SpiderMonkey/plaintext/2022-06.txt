@@ -1,0 +1,3465 @@
+2022-06-01
+[20:24:05.0923] <liam_g>
+When I'm doing GC Tracing, do I have to worry about multi-threading pitfalls? I.e. if the GC identifies all live Heap objects, but by the time it's finished some more of Objects have been created which weren't traced and hence accidentally get destroyed. Do I have to use locks to prevent this kind of thing, or is the GC smart enough too deal with it on its own?
+
+[20:24:54.0031] <liam_g>
+I'm asking this because I've read that GC happens on a background thread...
+
+[23:33:30.0188] <jandem>
+> <@mgaudet:mozilla.org> Is it possible from within SM to figure out if we're running on a worker thread? 
+> 
+> ShadowRealm.prototype.importValue likely can't work until modules can be imported in workers (soon), but in the mean time I was thinking we should make it throw
+
+workers have a non-null `parentRuntime`, but it would probably be safest to add a `ContextOption` that you set in `XPCJSContext.cpp`
+
+[23:33:44.0475] <jandem>
+ * workers have a non-null `parentRuntime`, but it would probably be safest and more robust to add a `ContextOption` that you set in `XPCJSContext.cpp`
+
+[23:33:57.0674] <jandem>
+ * workers have a non-null `parentRuntime`, but it would probably be safest and more robust to add a `ContextOption` that you set for the main thread in `XPCJSContext.cpp`
+
+[01:34:16.0815] <jonco>
+> <@liam_g:mozilla.org> When I'm doing GC Tracing, do I have to worry about multi-threading pitfalls? I.e. if the GC identifies all live Heap objects, but by the time it's finished some more of Objects have been created which weren't traced and hence accidentally get destroyed. Do I have to use locks to prevent this kind of thing, or is the GC smart enough too deal with it on its own?
+
+You don't have to worry, the GC handles this for you
+
+[01:34:41.0039] <jonco>
+Nothing that is created during an incremental GC gets swept.
+
+[02:53:04.0478] <liam_g>
+What a relief!
+
+[02:53:12.0877] <liam_g>
+Thanks for your response.
+
+[05:13:59.0404] <dbezhetskov>
+I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`.
+
+[05:14:17.0201] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`. 
+For unknown reason I get:
+```
+Adding configure options from /home/dmitry/code/mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh /home/dmitry/code/igalia/mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh /home/dmitry/code/igalia/mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+[05:14:53.0833] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from /home/dmitry/code/mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh /home/dmitry/code/igalia/mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh /home/dmitry/code/igalia/mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+If I change existing shell and don't try to introduce my own - everything is OK
+
+[05:15:55.0053] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from .../mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+If I change existing shell and don't try to introduce my own - everything is OK.
+
+Someone has a expertise in SM build system to consult me
+
+[05:15:59.0620] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from .../mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+If I change existing shell and don't try to introduce my own - everything is OK.
+
+Someone has a expertise in SM build system to consult me?
+
+[05:16:30.0008] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from .../mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+If I change existing shell and don't try to introduce my own - everything is OK.
+
+Who has an expertise in SM build system to consult me?
+
+[05:17:51.0394] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside with existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated the config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from .../mozconfigs/release_wasi
+  --enable-application=wasm-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+If I change existing shell and don't try to introduce my own - everything is OK.
+
+Who has an expertise in SM build system to consult me?
+
+[05:18:06.0105] <dbezhetskov>
+ * I want to add a custom binary (custom shell for wasm stuff) alongside with existing `js/src/shell`. I've copied `js/src/shell` into `js/src/my-shell`, updated `moz.build`- `GeckoProgram("my-shell", linkage=None)` and updated the config file accordingly `ac_add_options --enable-application=my-shell`.
+For unknown reason I get:
+
+```
+Adding configure options from .../mozconfigs/release_wasi
+  --enable-application=my-shell
+  --target=wasm32-unknown-wasi
+  --with-sysroot=/opt/wasi-sdk/share/wasi-sysroot/
+  --disable-stdcxx-compat
+  --without-system-zlib
+  --without-intl-api
+  --disable-shared-js
+  --disable-shared-memory
+  --disable-tests
+  --disable-cranelift
+  --disable-jemalloc
+checking for host system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.guess`
+x86_64-pc-linux-gnu
+checking for target system type... 
+Executing: `sh .../mozilla_ref/build/moz.configure/../autoconf/config.sub wasm32-unknown-wasi`
+Unknown OS: wasi
+
+```
+
+If I change existing shell and don't try to introduce my own - everything is OK.
+
+Who has an expertise in SM build system to consult me?
+
+[05:23:17.0711] <dbezhetskov>
+target OS is `wasi` and this is OK, because SM supports wasi but not in my shell
+
+[05:23:24.0733] <dbezhetskov>
+ * target OS is `wasi` and this is OK because SM supports wasi but not in my shell
+
+[05:29:18.0426] <dbezhetskov>
+btw, what is a usual way to add custom binary into SM?
+
+[05:36:34.0672] <jandem>
+dbezhetskov: I wonder if it's simpler to follow jsapi-tests, see moz.build [here](https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/moz.build)
+
+[05:36:46.0421] <jandem>
+ * dbezhetskov: I wonder if it's simpler to follow jsapi-tests, see moz.build file [here](https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/moz.build)
+
+[05:37:39.0248] <jandem>
+a separate binary that's usually included when building the shell
+
+[05:38:37.0126] <wingo>
+dbezhetskov: on the side apparently in moz.configure/init.configure, allow_wasi is false
+
+[05:38:57.0333] <wingo>
+so whatever is calling split_triplet is not passing allow_wasi=true
+
+[05:39:33.0581] <jandem>
+ * a separate binary that's usually included when building the shell (depending on `--{enable,disable}-tests` configure flag)
+
+[06:37:08.0262] <dbezhetskov>
+> <@jandem:mozilla.org> dbezhetskov: I wonder if it's simpler to follow jsapi-tests, see moz.build file [here](https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/moz.build)
+
+hmm, didn't understand how it is working, we build all these .cpp tests and then link them into the test main? I don't see any executable name in the moz.build for jsapi-tests
+
+[06:37:57.0570] <nbp>
+there is one named jsapi-tests, which executes all the tests listed in the cpp files.
+
+[06:43:46.0393] <sfink>
+jonco: I haven't finished reviewing this but am going out for a little bit, and wanted to be sure you saw the clang-tidy comment on https://bugzilla.mozilla.org/show_bug.cgi?id=1772129 (I also commented) -- there's a missing variable name, so the RAII object isn't doing anything.
+
+[06:44:15.0265] <jonco>
+sfink: oh thanks
+
+[06:49:23.0510] <jonco>
+sfink: wait, where's the missing variable name?
+
+[07:02:45.0414] <dbezhetskov>
+> <@nbp:mozilla.org> there is one named jsapi-tests, which executes all the tests listed in the cpp files.
+
+one more stupid question, if I declare `GeckoProgram("my-tests", linkage=None)`, what should I write if mach config to build `my-tests`? I tried `ac_add_options --enable-application=my-tests` but mach returns `ERROR: Cannot find project my-tests`
+
+[07:02:56.0459] <dbezhetskov>
+> <@nbp:mozilla.org> there is one named jsapi-tests, which executes all the tests listed in the cpp files.
+
+ * one more stupid question, if I declare `GeckoProgram("my-tests", linkage=None)`, what should I write inside mach config to build `my-tests`? I tried `ac_add_options --enable-application=my-tests` but mach returns `ERROR: Cannot find project my-tests`
+
+[07:03:18.0781] <jandem>
+jsapi-tests gets built automatically with the shell, so I was thinking that'd work for your shell too?
+
+[07:05:28.0329] <jandem>
+so you'd just keep using `--enable-application=js`
+
+[07:07:27.0247] <dbezhetskov>
+hmm, I need my own custom shell as a wasm module in the end, I can't build it with all js-tests .cpp files
+
+[07:08:19.0353] <jandem>
+jsapi-tests is just an example for how to add a binary to the JS shell's build system
+
+[07:12:01.0683] <dbezhetskov>
+aha, I see, actually I'm doing the same scheme for my custom shell
+
+[07:38:30.0440] <dbezhetskov>
+hmm, looks like js-tests approach isn't working for me, I need a fully custom `js-shell`, I don't want to build the original shell, or maybe I misunderstand something
+
+[07:39:16.0638] <jandem>
+is there a problem with building the original shell next to yours?
+
+[07:43:00.0140] <dbezhetskov>
+> <@jandem:mozilla.org> is there a problem with building the original shell next to yours?
+
+I think no, in theory, but why I need to build it, I don't need it?
+
+[07:44:11.0468] <jandem>
+dbezhetskov: I think you can turn it off with a configure flag or similar, not all browser builds build the js shell afaik
+
+[07:44:48.0492] <jandem>
+ah here: https://searchfox.org/mozilla-central/rev/3419858c997f422e3e70020a46baae7f0ec6dacc/js/src/moz.build#53
+
+[08:09:12.0227] <dbezhetskov>
+thanks jandem, it works, I've just added my shell into `DIRS += [ "rust", "shell", "wasm-shell",]` instead of `TEST DIRS` because we don't build jstests for wasi target
+
+
+[08:18:12.0909] <mgaudet>
+Oh this is neat: https://twitter.com/jimmyhmiller/status/1531638254264541185 
+
+[08:19:10.0306] <sfink>
+jonco: oh sorry, I thought I had linked the phabricator rev. https://phabricator.services.mozilla.com/D147849#inline-814926
+
+[08:19:34.0151] <jonco>
+sfink: thanks, that was silly
+
+
+2022-06-02
+[11:51:06.0045] <tcampbell>
+iain: when I use `--disable-tests` these days, the jit-tests still work for me. Maybe someone fixed it?
+
+[11:52:34.0804] <tcampbell>
+oh, jit-test works, jstests does not
+
+[11:53:00.0697] <tcampbell>
+(jsapi-tests don't either but I wouldn't expect that with disable-tests since it is a compiled test)
+
+[12:03:11.0519] <tcampbell>
+ooh `ok_if_tests_disabled`
+
+
+2022-06-03
+[21:49:56.0211] <liam_g>
+What's the easiest way of interacting with JS::PropertyKey / JS::HandleId? I'm trying to implement a property getter method for a JSObject, but the PropertyKey parameter doesn't seem so straight forward. What I want is to do something like this:
+
+JS::HandleId id;
+
+if (id == "x")
+    ...
+else if (id == "y")
+    ...
+
+What's the correct way?
+
+[22:41:40.0947] <jandem>
+liam_g: see [here](https://searchfox.org/mozilla-central/rev/4bce7d85ba4796dd03c5dcc7cfe8eee0e4c07b3b/js/xpconnect/src/XPCJSID.cpp#518-525) for one way to do it
+
+[23:16:43.0027] <liam_g>
+Thanks, this is helpful. Is literal string comparison the only option? I was hoping that there was some method that was a little more efficient.
+
+[23:18:45.0485] <jandem>
+the other option is to atomize the string you want to compare to, then it's just `id1 == id2`
+
+[23:19:21.0878] <jandem>
+or if you have a `JSAtom*`, `id.isAtom(atom)`
+
+[23:21:28.0087] <liam_g>
+Sounds like this might be what I need to do.
+
+[23:27:41.0623] <liam_g>
+I can't find much explanation about JSAtoms in the docs. I'm guessing that they're intended for commonly named properties. Is this correct?
+
+[23:30:18.0436] <jandem>
+yeah, all property names are internally represented as atoms. They allow fast equality comparisons because for each unique string there's one `JSAtom*`
+
+[23:30:42.0221] <liam_g>
+Makes sense. Is it like a string pool?
+
+[23:31:47.0897] <jandem>
+yes exactly. You can use `JS_AtomizeString` to get or create an atom
+
+[23:36:05.0430] <jandem>
+and then `PropertyKey::NonIntAtom(atom)` to create the `jsid`/`PropertyKey` from it. `isAtom()` doesn't work for you because JSAtom/JSString are distinct opaque types outside the engine
+
+[23:38:09.0212] <jandem>
+ * and then `PropertyKey::NonIntAtom(atom)` to create the `jsid`/`PropertyKey` from it. `isAtom(atom)` doesn't work for you because JSAtom/JSString are distinct opaque types outside the engine
+
+[23:41:37.0835] <liam_g>
+Great. I'm guessing that I can set up some sort of static container to store all the Atoms I need. Is there any existing facility for this? And will I need to trace that container?
+
+[23:43:59.0858] <jandem>
+not really, you could use a struct or something so you can do `JSAtom* foo = myAtoms->foo`
+
+[23:45:13.0776] <jandem>
+you'd have to trace the atoms. There is an API, `JS_AtomizeAndPInString`, to allocate atoms that are never collected (pinned) and so don't need to be traced, but it is kind of deprecated
+
+[23:46:22.0123] <jandem>
+ * you'd have to trace the atoms. There is an API, `JS_AtomizeAndPInString`, to allocate atoms that are never collected (pinned) and so don't need to be traced, but it is kind of deprecated. For now it might be fine to use though, as long as your set of atoms is small
+
+[23:48:01.0735] <liam_g>
+What about JS::PersistentRooted?
+
+[23:50:11.0622] <jandem>
+that should work too, but note that atoms are thread-local (each context has its own set of atoms, for the most part)
+
+[23:50:41.0886] <liam_g>
+OK, thanks a lot for your help. This is enough to get me started.
+
+[05:34:26.0957] <Tim>
+Hi, wondering if there's any sort of compile-time and/or run-time flag I can enable to spew a lot of debug info about garbage collection. Sorry if this is already answered in the documentation -- I looked, but didn't see anything. (Trying to debug a GC assertion failure with a record/tuple JIT test.)
+
+[05:42:33.0835] <wes>
+Morning, folks! 
+I'm interested in snapshotting the state of long-running JS programs. No host environment objects to worry about. Is JSBC still supported? Is this the way to start my investigation? I've previously implemented the equivalent of the old firefox fast load with XDR on 1.8.5, but I need something dynamic (not just post-parsing/pre-execution) and for a modern engine.  (Is nbp still at moz?)
+
+[05:44:33.0238] <wes>
+Tim: Clues? ```./gc/Statistics.cpp:  const char* env = getenv("JS_GC_PROFILE");
+./gc/GCTrace.cpp:  char* filename = getenv("JS_GC_TRACE");```
+
+
+[05:44:50.0592] <wes>
+Tim: ISTR those were useful, but I haven't looked at this stuff in *years*
+
+[05:44:51.0260] <Tim>
+> <@wes:mozilla.org> Tim: Clues? ```./gc/Statistics.cpp:  const char* env = getenv("JS_GC_PROFILE");
+> ./gc/GCTrace.cpp:  char* filename = getenv("JS_GC_TRACE");```
+
+I'll see how far that gets me, thanks!
+
+[05:44:55.0069] <nbp>
+wes: We already have a form of it currently restricted to self-hosted code, which is snapshotted in the first run, and reloaded in subsequent runs. This mechanism is used in SpiderMonkey test suite, to speed it up, as well as in Firefox parent process, to speed up child processes which are loading the same self-hosted code.
+
+[05:47:39.0630] <wes>
+nbp: Thanks, Nicolas!  That's very interesting. Do you think we could make it work in the middle of a program, to restore the program to that point?  We have some programs which run for days, on machines that run for hours.... and a general solution to runtime snapshot/recovery would be much more interesting than making the devs implement it in script on an ad-hoc basis.
+
+[05:48:10.0245] <nbp>
+wes: [in the shell](https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#12725), and [in Firefox](https://searchfox.org/mozilla-central/source/js/xpconnect/src/XPCJSContext.cpp#1380)
+
+[05:49:38.0890] <nbp>
+wes: The “stencil” capture the state before any execution. As opposed to what XDR use to do, which was to serialize actual objects as they were when running. So I do not think “stencil” would be sufficient to capture object mutations.
+
+[05:51:45.0948] <nbp>
+wes: On Linux, there is a new feature which is not yet merged called [CRIU](https://criu.org/Usage_scenarios#.22Save.22_ability_in_apps_.28games.29.2C_that_don.27t_have_such) which would let any program do that, but might not be practical for Firefox.
+
+[05:53:25.0417] <wes>
+nbp: Hmm...good food for thought here - thank you. .... hmm, CRIU is quite interesting, as well. I've been avoiding containerization, but only because it has been unnecessary.
+
+[05:53:34.0493] <nbp>
+wes: We do capture Stencil and store it in the cache, but this is only a way to skip the parser, which was last time I measured a 42ms improvement per page load, on average.
+
+[05:53:57.0116] <nbp>
+ * wes: We do capture Stencil and store it in the necko cache, for web pages, but this is only a way to skip the parser, which was last time I measured a 42ms improvement per page load, on average.
+
+[05:58:08.0589] <wes>
+nbp: That happens after module, resolution, right? So .. yeah ... that gets me a start up cache. I wonder if I can figure out a generic way to push the timeline forward from the startup image. I *might* be able to, assuming I can a) serialize all GC things, and b) snapshot when the program has just finished a "run to completion" cycle.   (that would mean that I don't need to worry about the JS stack etc)
+
+[06:02:09.0760] <nbp>
+The next problem which then comes to mind is any form of non-determinisitic function calls (`Date.now()`), or DOM mutations and references (`let foo = document.getElementById('foo');`).
+
+[06:07:00.0978] <wes>
+nbp: the DOM stuff is, luckily, not an issue - the engine runs in a host environment which is extremely restricted. It's barely able to run an event loop. No DOM etc. I can definitely snapshot the host env.  Still contemplating Date.now() et al.  I think maybe the intractable problem will be unresolved promises. *thinking*
+
+[06:08:39.0909] <nbp>
+Well, the problems is that all the control flow which depends on this non-determinism. `if(Date.now() < 1654261692124) console.log("Come back tomorrow ;)")`
+
+[06:13:03.0848] <wes>
+nbp: Of course. Hm. Boy this is an interesting problem. I wish the solutions were easy. But I guess this wouldn't be interesting, then. :)
+
+[06:18:25.0287] <nbp>
+A "simple" alternative, is to reject any form of non-determinism prior snapshotting, otherwise you don't snapshot.
+
+[06:20:37.0625] <wes>
+nbp: That's true - and possibly on my road map as well.  We sometimes need to validate correctness by re-running work on other machines, and non-determinism is an enemy there, as well. Have contemplated making Math.random(), Date.now(), etc, completely deterministic. 
+
+[06:25:07.0549] <nbp>
+/me runs on NixOS, where most of things are set to the EPOCH + 1s to workaround `make` bugs.
+
+[07:13:00.0910] <mstange>
+jandem: I'm super happy about all the recent frame pointer work! Thank you and thanks anba!
+
+[07:13:19.0921] <mstange>
+jandem: How close do you think we are to having full native stacks on macOS arm64 in the Firefox profiler? I just tested today's build and it looks like the profiler still can't unwind through Baseline JIT code.
+
+[07:22:08.0333] <jandem>
+mstange: glad to hear :) I hope things will be better in 1-2 weeks
+
+[07:23:02.0124] <mstange>
+ah, perfect
+
+[07:23:54.0270] <mstange>
+jandem: one of the stacks I found in the profile I just took was in a jitted regular expression - are we planning to give those frame pointers too?
+
+[07:24:54.0881] <jandem>
+mstange: good question, we probably should.. there are also some trampolines that just preserve FP but should probably get their own FP too...
+
+[07:25:33.0399] <jandem>
+I have patches for some of them
+
+[07:25:47.0952] <mstange>
+nice!
+
+[10:06:54.0878] <mgaudet>
+After chatting with Iain, and also our recent team meeting, I've worked up a rough "So you're implementing a JS Feature" checklist, and now it's looking for a home.
+
+Two options: 
+
+* In tree (js/src/docs): Gets rendered at [Firefox Source Docs](https://firefox-source-docs.mozilla.org/). Can't get nice checkboxes though. 
+* spidermonkey.dev: Can get nice checkboxes... but out of tree. 
+
+How much do other people like nice checkboxes...
+
+[10:08:37.0499] <iain>
+I think I like in-tree more than I like checkboxes?
+
+[10:09:34.0075] <iain>
+But either way: great! Thanks for putting this together
+
+[10:10:07.0665] <sfink>
+can in-tree docs do ☐ or ☑ with unicode characters?
+
+[10:10:48.0128] <mgaudet>
+oh, unicode probably will work 
+
+[10:16:45.0168] <mgaudet>
+Ok. Unicode it is. patch up soonish. 
+
+[10:26:07.0415] <arai>
+Phabricator applies some syntax highlight with keywords for .md ...
+
+[10:27:04.0189] <arai>
+JavaScript or something 
+
+[10:36:14.0280] <sfink>
+evilpie: there is still something wrong with the SavedFrame deserialization, I'm getting crashes.
+
+[10:37:02.0161] <sfink>
+but I also wanted to ask how web-platform-tests .ini files work. I have several .ini files that I'm emptying out because all of the tests that were expected to fail are now passing. Should I be removing the file or something, or just leaving the `[test.html]` header line there?
+
+[10:37:05.0498] <sfink>
+I should look at what you did.
+
+[10:37:56.0744] <sfink>
+oh! Should I have `expected: OK` in them?
+
+[10:38:14.0747] <sfink>
+looks like it
+
+[10:45:13.0268] <sfink>
+oh, I see. asan is telling me in great detail that I am dumb and exactly why. Thank you asan. You are correct.
+
+[11:00:45.0659] <evilpie>
+> <@sfink:mozilla.org> oh! Should I have `expected: OK` in them?
+
+You almost never need expected: Ok you want to remove the section or the whole file
+
+[11:01:16.0446] <sfink>
+if I remove the whole file, it'll run whatever .html files it finds or something?
+
+[11:01:23.0680] <sfink>
+or do I need to do something in the parent directory?
+
+[11:02:35.0037] <evilpie>
+The ini file is only required to annotate failures
+
+[11:04:01.0342] <sfink>
+ok, cool, thanks
+
+[15:43:41.0266] <arai>
+> <@arai:mozilla.org> Phabricator applies some syntax highlight with keywords for .md ...
+
+it turns out that it thinks md is MiniD https://bugzilla.mozilla.org/show_bug.cgi?id=1756645#c1
+
+
+2022-06-06
+[23:38:27.0067] <liam_g>
+I'm having trouble understanding the `Action` parameter inside `BaseProxyHandler::enter()`. Because it's XORable might contain multiple values, I'm not sure how to prioritize them. I.e. because this parameter could contain any combination of { get, set, call, etc. }, I'm not sure which one to check for first. It's probably quite simple, but none of the native classes I can find that inherit from `BaseProxyHandler` make much use of this paramter. Does anyone have any example code?
+
+[23:41:45.0689] <arai>
+https://searchfox.org/mozilla-central/rev/4c3f6e8bf87fffb7c62feb4c76a14e0eb0b94c1f/js/public/Proxy.h#241-244
+
+[23:42:15.0436] <arai>
+it's OR-able for `assertEnteredPolicy`
+
+[23:43:45.0469] <arai>
+`BaseProxyHandler::enter` is called here https://searchfox.org/mozilla-central/rev/4c3f6e8bf87fffb7c62feb4c76a14e0eb0b94c1f/js/public/Proxy.h#613
+
+[23:44:14.0096] <arai>
+and all callsite of `AutoEnterPolicy` passed only one flag https://searchfox.org/mozilla-central/search?q=AutoEnterPolicy+policy&path=
+
+[23:44:30.0560] <arai>
+so, no need to check multiple flags
+
+[00:05:13.0273] <liam_g>
+I see. So does that mean I can use switch? Or do I have to use something like this?
+
+if (action & GET)
+...
+else if (action & SET)
+...
+
+[00:05:53.0517] <arai>
+switch would work
+
+[00:06:54.0414] <liam_g>
+awesome. Thanks for your help.
+
+[01:53:45.0488] <nchevobbe>
+Hello folks 👋 I'm trying to add record/tuple support in DevTools, based on Tim's work (https://bugzilla.mozilla.org/show_bug.cgi?id=1765477), but I'm hitting an issue. Executing `Cu.getGlobalForObject(#{hello: 1})` in the Browser Toolbox console hits https://searchfox.org/mozilla-central/rev/4c3f6e8bf87fffb7c62feb4c76a14e0eb0b94c1f/js/xpconnect/src/XPCComponents.cpp#1839-1841 , which feels wrong?
+
+[01:55:09.0083] <nchevobbe>
+I'm not sure where `isPrimitive`. I found https://searchfox.org/mozilla-central/source/js/public/Value.h#723 , but I don't understand why this code does at all :) Is there a way I could fix this myself easily, or should I file a bug about it?
+
+[02:38:11.0633] <evilpie>
+nchevobbe: I think `object.isPrimitive()` replace with `!object.hasObjectPayload()` and `object.toObject()` with `object.getObjectPayload()` should fix this
+
+[04:55:20.0030] <nchevobbe>
+Thanks evilpie and Tim  :) I'll try that, I was probably missing something because it made Firefox crash when I tested earlier
+
+[05:57:09.0459] <nchevobbe>
+seems to work well after a few other replacement of `isObject`/`toObject` :)
+
+[07:55:38.0880] <evilpie>
+sfink: I have to admit `&state != &noState` makes me /slightly/ uncomfortable
+
+[08:32:33.0688] <sfink>
+evilpie: uh, I think I may not have the right version uploaded then. That should be gone now.
+
+[08:35:07.0232] <sfink>
+evilpie: sorry about that! I uploaded the latest.
+
+[08:36:15.0902] <tjr>
+While looking at 2+ year old Nightly differences, I found this weird one in `setPendingException` - is this concerning/worth a bug? https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#1099-1132
+
+[13:44:55.0729] <yury>
+where I can read more about `clang-tidy: mozilla-non-memmovable-template-arg` ?
+
+[13:45:51.0747] <arai>
+https://searchfox.org/mozilla-central/search?q=NonMemMovableTemplateArgChecker&redirect=false
+
+[13:46:25.0765] <arai>
+hmm, unfortunately it doesn't have comment
+
+[13:48:11.0805] <arai>
+added by bug 1159433
+
+[13:48:13.0299] <botzilla>
+https://bugzil.la/1159433 — RESOLVED (ehsan.akhgari) — Add an analysis that will prevent non-memmovable classes to be passed as template arguments to classes that require their template argument to be memmovable
+
+[13:48:22.0536] <yury>
+"Cannot instantiate %0 with non-memmovable template argument %1" gives better description than "ERROR: Type 'XXXX' must not be used as parameter"
+
+
+2022-06-07
+[23:21:25.0212] <liam_g>
+I'm having trouble getting the JSString classes (especially JSLinearString) to work with my pre-existing string functions, which use `std::string` and `const char*` arguments. I can use JS::GetLatin1LinearStringChars(), but I don't know how to convert from `Latin1Char*` to `char*`. I really need a systematic solution, i.e. one or two new functions to convert JS Strings to std::string or char[], rather than wrestling with the problem again and again. Ideally I would love it if these functions were non allocating, but I would settle for something that copies to std::string. What do people normally use for this? There are a few candidates in CharacterEncoding.h, but they are depracated.
+
+[02:53:25.0542] <Tim>
+Anyone else noticing that `Cargo.lock` changes every time you run a build, meaning that it's easy to accidentally `git add` the change if you're not being careful?
+
+[02:53:42.0025] <Tim>
+this just started happening after pulling changes within the past few days
+
+[03:39:03.0176] <arai>
+liam_g: what's the encoding of `const char*` in your code?
+
+[03:40:20.0709] <arai>
+if it's ASCII and the `JSString` also contains ASCII, you can just cast `Latin1Char*` to `char*`
+
+[03:42:27.0575] <arai>
+then, `JSString` base class doesn't guarantee the contiguous memory block.  so, possible allocation is necessary at least once for `JS_EnsureLinearString`
+
+[03:43:53.0098] <arai>
+there's a comment in [String.h](https://searchfox.org/mozilla-central/rev/1c6bb1476e86b6d428b26d04e6ea3f4367528c77/js/public/String.h#137-175)
+
+[03:45:18.0934] <liam_g>
+So JSLinearString is guaranteed to be contiguous, is it?
+
+[03:45:26.0297] <liam_g>
+That answers another one of my questions :)
+
+[03:46:43.0874] <arai>
+yes, `JSLinearString` is guaranteed to use single memory block
+
+[03:46:53.0530] <liam_g>
+The characters are just ascii, but I'm not able to cast them. `static_cast<const char*>` on an `unsigned char*` doesn't compile for me.
+
+[03:47:28.0398] <liam_g>
+(and Latin1char seems to be a typedef for unsigned char)
+
+[03:47:59.0709] <arai>
+there's document about strings in [StringType.h](https://searchfox.org/mozilla-central/rev/1c6bb1476e86b6d428b26d04e6ea3f4367528c77/js/src/vm/StringType.h#80)
+
+[03:48:55.0315] <arai>
+what error do you get?
+
+[03:49:02.0872] <liam_g>
+Yeah I've read through that but I'm still struggling. Sorry, this is really basic stuff I know. Char and string handling is one of my weakest areas of C++
+
+[03:51:06.0712] <arai>
+I guess you need `reinterpret_cast<const char*>(...)`
+
+[03:52:45.0740] <liam_g>
+Will this take care of it? I was guessing that the static_cast doesn't work because the data would be offset by 128.
+
+[03:53:02.0078] <liam_g>
+> <@arai:mozilla.org> what error do you get?
+
+It's just a plan invalid type conversion.
+
+[03:53:21.0203] <arai>
+there's no offset
+
+[03:53:50.0399] <liam_g>
+> <@liam_g:mozilla.org> Will this take care of it? I was guessing that the static_cast doesn't work because the data would be offset by 128.
+
+No need to explain to me if / why this comment doesn't make any sense :) I guess I'll play around with reinterpret_cast and see if I can get it to work.
+
+[04:28:04.0929] <liam_g>
+reinterpret_cast does seem to work, and I can get a `string_view` from here. This seems like a good solution. 
+https://paste.mozilla.org/x8Q55hop
+
+[04:29:57.0909] <liam_g>
+New problem though: `JS::GetLatin1LinearStringChars()` requires `JS::AutoRequireNoGC`. I'm using `JS::AutoCheckCannotGC`, but this asserts (because I've done nothing to stop the GC). Is there another version of `JS::AutoRequireNoGC` I should be using? Or is there some way of halting the GC within this scope?
+
+[04:34:16.0269] <liam_g>
+`AutoDisableGenerationalGC` maybe?
+
+[04:35:32.0266] <arai>
+can you provide the code and the error? https://paste.mozilla.org/
+
+[04:37:19.0237] <liam_g>
+https://paste.mozilla.org/zVhzLYRv
+
+[04:37:38.0645] <arai>
+what's the code?
+
+[04:38:48.0066] <liam_g>
+Oh sorry, it's the one I posted already: https://paste.mozilla.org/x8Q55hop
+
+[04:38:59.0442] <liam_g>
+Not a working example though.
+
+[04:39:37.0557] <arai>
+you shouldn't perform any operation that can GC inside `JS::AutoCheckCannotGC`'s scope
+
+[04:41:05.0713] <arai>
+you need to move `toLinearString`  out of it, at least
+
+[04:44:04.0047] <arai>
+https://paste.mozilla.org/WqinJ1p0
+
+[04:44:37.0188] <arai>
+Also, note that, the pointer returned by `JS::GetLatin1LinearStringChars` is valid only in the `JS::AutoCheckCannotGC`'s scope
+
+[04:45:39.0570] <arai>
+if you want to keep the string after that, you need to copy it, instead of using view
+
+[04:45:50.0174] <liam_g>
+Yes, I'll work within that scope.
+
+[04:46:54.0250] <liam_g>
+I got it working with `JS::AutoCheckCannotGC();` I was using `JS::AutoCheckCannotGC checkGB{};` instead, and the brace initialization was the problem.
+
+[04:47:16.0243] <liam_g>
+Thanks for getting me back on my feet, once again!
+
+[04:47:40.0280] <liam_g>
+SpiderMonkey is the most challenging coding I'm ever done. But also somehow the most rewarding.
+
+[04:47:52.0695] <liam_g>
+ * SpiderMonkey is the most challenging coding I've ever done. But also somehow the most rewarding.
+
+[04:58:46.0540] <evilpie>
+> <@liam_g:mozilla.org> I got it working with `JS::AutoCheckCannotGC();` I was using `JS::AutoCheckCannotGC checkGB{};` instead, and the brace initialization was the problem.
+
+`JS::AutoCheckCannotGC();` Is wrong. You need something like `JS::AutoCheckCannotGC noGc();`
+
+[05:05:40.0261] <liam_g>
+ * I got it working with `JS::AutoCheckCannotGC();` I was using `JS::AutoCheckCannotGC {};` instead, and the brace initialization was the problem.
+
+[05:07:26.0987] <liam_g>
+Right, it needs to be named.
+
+
+2022-06-08
+[12:09:17.0976] <nika>
+Is there active work on a patch to remove the JS::{Rooted,Handle,etc...} typedefs from the tree?
+
+[12:23:31.0023] <tcampbell>
+nika: no, not started or planned yet. 
+
+[12:23:58.0294] <nika>
+ok. Could we consider silencing the clang plugin warning about it until we do so?
+
+[12:24:10.0903] <tcampbell>
+Maybe we should start with things that are not JSObject/Value since most of those are pretty minimal
+
+[12:24:53.0705] <nika>
+> <@nika:mozilla.org> ok. Could we consider silencing the clang plugin warning about it until we do so?
+
+I build with the clang plugin enabled locally to catch issues it causes, and the https://searchfox.org/mozilla-central/source/build/clang-plugin/JSHandleRootedTypedefChecker.cpp check really fills up the logs
+
+[12:25:00.0857] <tcampbell>
+Ah, oops
+
+[12:25:13.0308] <nika>
+(and slows down my builds)
+
+[12:25:21.0033] <mccr8>
+Can we have some rule to not add warnings before the warnings are fixed. I feel like this isn't the first time this happened recently.
+
+[12:26:04.0844] <nika>
+Or at least have them off-by-default
+
+[12:26:32.0967] <nika>
+require an environment variable or flag in mozconfig to enable experimental warnings
+
+[12:26:46.0805] <nika>
+(I suppose that's a bit of a request for a different room ^^)
+
+[12:27:28.0608] <tcampbell>
+Hmm.. I hadn't realized the order that these changes happened.. 
+
+[12:28:28.0232] <tcampbell>
+nika: do you have any recommendations of tooling to mass replace and start looking at what patch might look like?
+
+[12:32:44.0570] <nika>
+For the instances which are matched by the checker, you might be able to do `./mach static-analysis check --fix -c mozilla-js-handle-rooted-typedef` or something like that
+
+[12:33:15.0033] <nika>
+tbh I've never used the `--fix` feature of clang-tidy before, but I'd check in with the static-analsys foklks about it
+
+[12:35:56.0474] <nika>
+hmm, actually doesn't seem to work
+
+[12:40:28.0426] <nika>
+Yeah, it seems it doesn't work well, if I run: 
+```
+./mach static-analysis check --checks=mozilla-js-handle-rooted-typedef dom/bindings/ToJSValue.cpp --header-filter='.*' --fix
+```
+
+I would hope to see it replace e.g. https://searchfox.org/mozilla-central/rev/2f5ed7b7244172d46f538051250b14fb4d8f1a5f/dom/bindings/ToJSValue.h#88, but it only replaces https://searchfox.org/mozilla-central/rev/2f5ed7b7244172d46f538051250b14fb4d8f1a5f/dom/bindings/ToJSValue.h#414
+
+[12:40:54.0707] <nika>
+tcampbell: If you fixed up the check though, you could probably get it to work
+
+[12:41:59.0726] <nika>
+(the `--checks=` also doesn't seem to work, oh well)
+
+[12:42:40.0801] <tcampbell>
+Ah
+
+[12:44:19.0508] <nika>
+((you might also be able to get away with just sed :p - the patterns are pretty predictable, so searching for `\b(JS::)?MutableHandleValue` and replacing it with `\1MutableHandle<\1Value>` would probably get you 90% of the way there
+
+[12:44:23.0818] <nika>
+ * ((you might also be able to get away with just sed :p - the patterns are pretty predictable, so searching for `\b(JS::)?MutableHandleValue` and replacing it with `\1MutableHandle<\1Value>` would probably get you 90% of the way there))
+
+[12:44:31.0238] <nika>
+ * ((you might also be able to get away with just sed :p - the patterns are pretty predictable, so searching for `\b(JS::)?MutableHandleValue\b` and replacing it with `\1MutableHandle<\1Value>` would probably get you 90% of the way there))
+
+[12:47:59.0633] <nika>
+That vaguely looks like it'
+
+[12:48:01.0852] <nika>
+ * That vaguely looks like it'd work :p
+
+[12:48:25.0449] <tcampbell>
+I was gonna start with vscode, yeah :p
+
+
+2022-06-09
+[23:30:27.0884] <Ms2ger 💉💉>
+Do we still wanna keep the typedefs inside SM?
+
+[00:26:00.0387] <jandem>
+we'd like to be consistent with code outside SM
+
+[01:36:07.0771] <Ms2ger 💉💉>
+A brave new world indeed :)
+
+[02:18:07.0832] <nbp>
+Don't forget to tell embedders about it.
+
+[05:34:22.0856] <tcampbell>
+I don't think there will be any rush to delete to public typedefs
+
+[05:35:37.0689] <tcampbell>
+I'm also not sure best way to handle HandleObject/HandleValue since that will be a disruptive changeset. Probably will make sense to do directorty-by-directory. I'm starting with the internal ones for now (HandleArrayObject, debugger internals, wasm internals, etc)
+
+[05:41:31.0950] <tcampbell>
+The stuff I'm changing makes the code look "different", but because we never had a complete set of typedefs to begin with I don't find that the result is looking unfamiliar at all.
+
+[06:53:05.0452] <mstange>
+jandem: does `javascript.options.ion` turn off both Ion and Warp?
+
+[06:53:43.0967] <jandem>
+mstange: yeah. The "warp" pref was removed when we switched from IonBuilder to WarpBuilder
+
+[06:53:50.0070] <mstange>
+ah
+
+[06:53:56.0666] <mstange>
+oh heh maybe I should just apply the patches from bug 1770366 too
+
+[06:53:58.0172] <botzilla>
+https://bugzil.la/1770366 — ASSIGNED (jandem) — Use frame pointer register in Warp/Ion
+
+[07:05:20.0403] <jandem>
+mstange: mysterious. At this point we should be able to walk frame pointers all the way to the main function, at least that's what I see on linux x64
+
+[07:10:45.0928] <mstange>
+jandem: do you have a linux aarch64 environment to test in? with the jitdump information we should be able to see aarch64 assembly in perf report now
+
+[07:11:16.0506] <mstange>
+jandem: I could give that a try in the spidermonkey shell in a linux vm on my arm64 mac
+
+[07:12:00.0247] <jandem>
+mstange: not easily. My next laptop will be an M1 but they said it will take a few weeks still until it arrives...
+
+[07:18:05.0645] <jandem>
+mstange: bug 1773480 could be confusing things too still, but the frame pointer chain itself should work. I'll look into this a bit more
+
+[07:18:06.0898] <botzilla>
+https://bugzil.la/1773480 — ASSIGNED (jandem) — Swap frame pointer and stub pointer in BaselineStub frames
+
+[07:43:07.0692] <jandem>
+mstange: I updated the patch, we were clobbering the frame pointer elsewhere in EnterJit on arm64 :/ I confirmed in the simulator that we now make it to jit code with the correct fp chain
+
+[07:44:24.0672] <mstange>
+you have a simulator!?
+
+[07:46:00.0183] <jandem>
+mstange: SM has builtin simulators for non-x86/x64 architectures, just for "interpreting" the jit code. They're pretty basic but very useful for testing changes locally on x64
+
+[07:46:20.0373] <jandem>
+here's the arm32 one for example: https://searchfox.org/mozilla-central/source/js/src/jit/arm/Simulator-arm.cpp
+
+[07:49:28.0542] <jandem>
+ * mstange: SM has builtin simulators for non-x86/x64 architectures, just for "interpreting" the jit code generated for a different target. They're pretty basic but very useful for testing changes locally on x64
+
+[07:51:32.0775] <mstange>
+that's really cool!
+
+[07:54:29.0175] <jandem>
+yeah it saves a lot of time when porting jit changes to these architectures
+
+[11:08:20.0463] <pastah>
+How do I even compile these via mach? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/tree/esr91/examples
+
+[11:08:39.0736] <pastah>
+the spidermonkey build instructions are outdated
+
+[11:08:52.0362] <pastah>
+i.e. utilizing ../configure
+
+[11:22:13.0768] <pastah>
+I guess I could still use meson, but I'm getting complaints about mozjs-91 not being found on Ubuntu 20.04
+
+[11:22:33.0350] <pastah>
+how can I use `mach` to get >= mozjs-91?
+
+[11:22:47.0134] <pastah>
+ * how can I use `mach` to get the >= mozjs-91 dependency?
+
+[11:23:54.0504] <smaug>
+mgaudet: does ShadowRealm.evaluate return the value of the last statement, and if that is callable, then a magical callable is created?
+
+[11:31:20.0846] <mgaudet>
+> <@smaug:mozilla.org> mgaudet: does ShadowRealm.evaluate return the value of the last statement, and if that is callable, then a magical callable is created?
+
+Yes. Otherwise it will throw
+
+[11:31:31.0810] <mgaudet>
+(Erm. Unless primitive return) 
+
+[11:34:27.0420] <smaug>
+mgaudet: Which zone do we end up using for shadowrealms?
+
+[11:34:57.0290] <smaug>
+I assume the same as the enclosing global.
+
+[11:35:19.0226] <mgaudet>
+Yes. We inherit compartment and zone. 
+
+[11:42:34.0263] <smaug>
+mgaudet: which patch adds SetShadowRealmInitializeGlobalCallback ?
+
+[11:48:40.0158] <tcampbell>
+pastah: you are that that those docs are a bit out of date. You should be able to follow the general spidermonkey build instructions [here](https://firefox-source-docs.mozilla.org/js/build.html) and then tweak the mozconfig file it describes to include some of the links from the embedding examples. Something similar to this:
+```
+ac_add_options --enable-application=js
+ac_add_options --enable-optimize
+ac_add_options --enable-debug
+ac_add_options --disable-jemalloc
+```
+The reason you won't be able to find `mozjs-91` in Ubuntu 20.04 is the SpiderMonkey/Firefox 91 was release some time in 2021. The lastest version of SpiderMonkey when Ubuntu 20.04 was released was version 68 which depending on your usecase might be too old or not. The Examples repository does have branches with the older instructions.
+
+[11:50:49.0474] <tcampbell>
+The use of 'meson' is only for the convenience of building the examples yourself. If you build spidermonkey but don't set an appropriate --prefix and install, you'll need to extend your LD_LIBRARY_PATH and PKG_CONFIG_PATH environment variables to point to your build/dist directories. (This is just general linux development stuff but can be annoying if you aren't clear what should or should not work in a spidermonkey build)
+
+[11:52:12.0473] <pastah>
+tcampbell: thank you for the help
+
+[11:55:39.0645] <mgaudet>
+> <@smaug:mozilla.org> mgaudet: which patch adds SetShadowRealmInitializeGlobalCallback ?
+
+Sorry, was at lunch: https://phabricator.services.mozilla.com/D146236 which is the base patch 
+
+[11:56:06.0720] <mgaudet>
+Of course, that callback is heavily defined by the requirements of Gecko 
+
+[12:14:50.0347] <pastah>
+In the spidermonkey embedding examples is it possible to export C++ functions to Javascript? Or does it need JSContext* and all those arguments?
+
+[12:15:37.0091] <pastah>
+Like how could I export an int foo() { return 1; } to Javascript via these embedding examples?
+
+[12:15:54.0971] <pastah>
+ * Like how could I export an int foo() { return 1; } to Javascript via these embedding examples? Where calling foo(); in Javascript gives a 1?
+
+[12:20:18.0906] <mgaudet>
+pastah: Yeah, you'd want to wrap that in a JSNative, with a JSNative signature: https://searchfox.org/mozilla-central/source/js/public/CallArgs.h#77 
+
+[12:22:19.0868] <mgaudet>
+Then you'd be able to map that onto the cook book examples [here](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/d9a734321de9394ac4cd30cb2889970622c12136/examples/cookbook.cpp#L937-L940) 
+
+[12:22:31.0546] <pastah>
+so I would have to manually create a wrapper for each C++ function to export?
+
+[12:23:00.0239] <pastah>
+i.e. I can't automate generating exports for a C++ library of functions & classes?
+
+[12:28:39.0917] <mgaudet>
+pastah: Normally that responsibility would lay with a binding generator of sorts; I don't know off the top of my head if any have built in support for SM/JSAPI; in general though, you're always going to need those wrappers to handle things like `int foo(int x)` being called from JS as `foo("hi")`, `foo(1n)` etc
+
+[12:29:14.0788] <mgaudet>
+A binding generator would adopt a policy for how to handle that: i.e. throw on mismatch type, or attempt to coerce. 
+
+[12:29:23.0894] <pastah>
+thank you
+
+[12:29:47.0602] <pastah>
+for the JSNative part, how would I go about using it properly? It wasn't too clear to me.
+
+[12:30:23.0518] <pastah>
+I mean is there just a specific function within the cookbook I would use as a template and which line of code actually exposes it?
+
+[12:32:17.0827] <mgaudet>
+Hmm. There's not an example that shows all the pieces together it seems
+
+[12:33:31.0798] <mgaudet>
+[This comment](https://searchfox.org/mozilla-central/source/js/public/CallArgs.h#17-44) is the best summary of how to deal with arguments 
+
+[12:34:48.0890] <mgaudet>
+and the convention is: `return true` if everything went well, and if not, `return false`.
+
+[12:35:11.0954] <mgaudet>
+If it's your code that has gone wrong, be sure to also throw an exception with the `JS_ReportError*` family of functions.
+
+[12:47:02.0690] <pastah>
+Is it normal that console.log("hi") doesn't work in cookbook.cpp?
+
+[12:47:38.0686] <mgaudet>
+pastah: uh; well, I would assume no one has provide a binding for `console` or `console.log`, so my expectation would be yeah, it wouldn't work.
+
+[12:50:00.0433] <pastah>
+I see. Was confused on how to see if returnFloat and all that actually returned what it was supposed to inside javascript
+
+[12:53:24.0325] <mgaudet>
+one way would be `if (returnFloat() != 3.14159) { throw 'oops'}`; you'd see the error show up as a failure when evaluating that JS 
+
+[12:53:54.0534] <mgaudet>
+(of course, floating point equality is a mess, so that might not work anyhow, but you see the general thrust) 
+
+[12:59:23.0058] <liam_g>
+I want to use ForwardingProxyHandler to forward gets and sets to an object stored in the private slot. Am I free to also store something else (non GC thing) in the reserve slot of the proxy object?
+
+[13:04:04.0849] <pastah>
+> <@mgaudet:mozilla.org> pastah: uh; well, I would assume no one has provide a binding for `console` or `console.log`, so my expectation would be yeah, it wouldn't work.
+
+is there an option to have console and all those javascript debugging functions available? I want to inspect things within the javascript engine itself
+
+[13:04:45.0783] <pastah>
+vs printf of arg as a C++ function
+
+[13:53:51.0165] <mgaudet>
+pastah: Sorry; I don't think we expose any of that via the embedder API. 
+
+If you're poking around in the JS engine itself, you might be best served starting from our shell build, and exploring all the testing functions that are available (call help() from the shell) 
+
+[13:56:26.0017] <mgaudet>
+> <@liam_g:mozilla.org> I want to use ForwardingProxyHandler to forward gets and sets to an object stored in the private slot. Am I free to also store something else (non GC thing) in the reserve slot of the proxy object?
+
+Uh. I... don't think you'd want to do that. Presumably any other code that wants to use that slot would subsequently clobber it. 
+
+You could subclass ProxyObject and provide your _own_ slot for that purpose though
+
+[14:04:29.0171] <liam_g>
+How do I provide my own slot?
+
+[14:30:48.0807] <liam_g>
+Maybe I could just store a member variable in my ForwardingProxyHandler derivative, and then retrieve it using js::GetProxyHandler()? This seems easier than messing with reserve slots, which I don't fully understand.
+
+[14:38:03.0295] <mgaudet>
+liam_g: Maybe that would work? Depends a lot on what you're trying for. 
+
+[14:38:21.0146] <mgaudet>
+take a peek at `PROXY_CLASS_DEF` and here as maybe some helpful pointers; https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#683 
+
+[14:56:58.0876] <liam_g>
+I'm just trying to find a way for my Proxy object to store a weak_ptr to a C++ object which it is mirroring. I've been using the reserve slots for this and it seems to work, but it's a bit awkward because I have to new and delete a weak_ptr.
+
+[15:10:17.0898] <arai>
+what's the size of weak_ptr ?
+
+[15:14:00.0153] <liam_g>
+on my system it's 16
+
+[15:24:23.0495] <arai>
+then I think you need to allocate it separately
+
+[15:25:01.0689] <liam_g>
+Right. PROXY_CLASS_DEF if really helpful for this--I can kind of see how it will work.
+
+[15:25:03.0370] <arai>
+it doesn't fir into slot.  and I haven't seen any case that single struct spans across multiple slots
+
+[15:25:20.0068] <arai>
+ * it doesn't fit into slot.  and I haven't seen any case that single struct spans across multiple slots
+
+[15:26:29.0567] <liam_g>
+You mean by doing JSCLASS_HAS_RESERVED_SLOTS()? Or are you thinking about something different?
+
+[15:26:52.0275] <arai>
+the reserved slot
+
+[15:31:28.0403] <liam_g>
+Wait, now I'm not sure what you mean. My plan was to create a JSClassusing PROXY_CLASS_DEF, and give it JSCLASS_HAS_RESERVED_SLOTS(1). Then in that reserve slot, I would add a JSValue with the weak_ptr set as private. Will this work?
+
+[15:33:08.0809] <arai>
+the JSValue holds a raw pointer to the `weak_ptr` allocated somewhere else, right?
+
+[15:33:23.0049] <liam_g>
+yes
+
+[15:33:24.0998] <arai>
+if so, I think it works
+
+[15:33:34.0825] <liam_g>
+it's worked in my tests
+
+[15:35:29.0826] <liam_g>
+Ugh, now I have another problem. ForwardingProxyHandler doesn't seem to have a constructor. Is this intentional? I'm not able to derive from it.
+
+[15:37:33.0795] <liam_g>
+Wrapper has a constexpr constructor which calls a constructor for ForwardingProxyHandler, but I'm not able to find that constructor. And when I try the same thing, it gives me a linker error.
+
+[15:44:32.0660] <liam_g>
+Oh I guess the `using BaseProxyHandler::BaseProxyHandler;` is the constructor. Not sure why I'm getting a linker error though? 
+
+[15:46:49.0212] <arai>
+what's the linker error?
+
+[15:48:40.0399] <liam_g>
+https://paste.mozilla.org/fuNi4JDe
+
+[15:51:08.0515] <arai>
+getting linker error there sounds strange
+
+[15:51:19.0361] <arai>
+all constructor should be `constexpr`
+
+[15:51:27.0621] <arai>
+is yours also constexpr?
+
+[15:53:08.0282] <arai>
+also, is your handler's instance also constexpr?
+
+[15:55:22.0223] <arai>
+I think, your handler instance somehow isn't `constexpr`, and it results in non-const code, that requires the function in DLL
+
+[15:55:41.0352] <arai>
+ * I think, your handler instance somehow isn't `constexpr`, and it results in non-compile-time code, that requires the function in DLL
+
+[16:01:48.0126] <liam_g>
+Looks like it is a problem with constexpr. Here's a minimum failing example: https://paste.mozilla.org/dtKWom1V
+
+[16:28:04.0248] <arai>
+what if you use BaseProxyHandler there?
+
+[16:28:32.0354] <arai>
+it has explicit constexpr constructor
+
+
+2022-06-10
+[22:02:45.0272] <liam_g>
+> <@arai:mozilla.org> what if you use BaseProxyHandler there?
+
+Sorry for the delay. BaseProxyHandler definitely works. So does Wrapper. I think it's the constructor inheritance that's causing the problem.
+
+[22:03:15.0082] <liam_g>
+I'll file a bug report...
+
+[22:03:22.0769] <arai>
+thanks!
+
+[22:41:27.0512] <liam_g>
+Scratch that, I've got it working.
+
+[22:42:21.0308] <liam_g>
+I have subclasses of my proxy classes, and I'd forgotten to make their constructors constexpr.
+
+[22:42:31.0495] <liam_g>
+Sorry for the noise.
+
+[07:03:44.0297] <nbp>
+jseward, Ryan Hunt, mgaudet: https://cfallin.org/blog/2022/06/09/cranelift-regalloc2/
+
+[13:35:26.0190] <pastah>
+Where is the API documentation for SpiderMonkey? Like where can I find docs on `JS::ToNumber`?
+
+[13:38:55.0887] <arai>
+there itsn't up-to-date separate doc.  Please refer the comments in the header, and feel free to ask here if there isn't comment, or it's unclear
+
+[13:39:53.0489] <arai>
+https://searchfox.org/mozilla-central/rev/97c13320e56884daf14016048e9d2182c880f8a9/js/public/Conversions.h#131-132
+```cpp
+/* ES6 draft 20141224, 7.1.3. */
+MOZ_ALWAYS_INLINE bool ToNumber(JSContext* cx, HandleValue v, double* out) {
+```
+
+[13:40:22.0074] <arai>
+in this case, the comment is very short...
+
+[13:40:34.0713] <arai>
+basically it means it's direct implementation of the spec steps
+
+[13:40:37.0467] <arai>
+https://tc39.es/ecma262/#sec-tonumber
+
+
+2022-06-11
+[00:43:18.0394] <liam_g>
+When is BaseProxyHandler::enter() called? I had assumed that it was called before any get / set operation on the proxy, but this doesn't seem to be the case.
+
+
+2022-06-14
+[08:51:59.0527] <nchevobbe>
+Tim: I'm looking into DevTools support for Tuples, and I'm not sure I'm getting this right (I'm not used to read specs): https://tc39.es/proposal-record-tuple/#sec-tuple-exotic-objects-getownproperty-p . Does this mean that `Object.getOwnPropertyDescriptor(#[], "length")` should return `undefined` ?
+
+[08:54:32.0597] <evilpie>
+> <@nchevobbe:mozilla.org> Tim: I'm looking into DevTools support for Tuples, and I'm not sure I'm getting this right (I'm not used to read specs): https://tc39.es/proposal-record-tuple/#sec-tuple-exotic-objects-getownproperty-p . Does this mean that `Object.getOwnPropertyDescriptor(#[], "length")` should return `undefined` ?
+
+Yeah. length is a getter on the prototype: https://tc39.es/proposal-record-tuple/#sec-tuple.prototype.length
+
+[10:01:33.0345] <edoput>
+Hi all. I'm having some trouble implementing callbacks in a spidermonkey embedding. Are there some examples I can take a look at? The big question I have right now is what is the right type for storing callback functions in a C++ container. I need to call the JS supplied functions later so it looks like they should be JSValue but I'm also reading that I should store JSObject instead of JSFunction because JSFunction does not hold on to the callback closure.
+
+My current implementation stores callbacks as JSObjects but then I'm not sure how to actually use them in a JS_CallFunctionX settings.
+
+```
+static std::vector<JS::Heap<JSObject*>> listeners = {};
+```
+
+Apologies if it's unclear. First timer with both C++ and spidermonkey :)
+
+[10:02:27.0653] <edoput>
+Also please for the love of God can someone ping the MDN folks and port the JSAPI pages to the new MDN?
+
+[10:06:49.0369] <mgaudet>
+> <@edoput:mozilla.org> Hi all. I'm having some trouble implementing callbacks in a spidermonkey embedding. Are there some examples I can take a look at? The big question I have right now is what is the right type for storing callback functions in a C++ container. I need to call the JS supplied functions later so it looks like they should be JSValue but I'm also reading that I should store JSObject instead of JSFunction because JSFunction does not hold on to the callback closure.
+> 
+> My current implementation stores callbacks as JSObjects but then I'm not sure how to actually use them in a JS_CallFunctionX settings.
+> 
+> ```
+> static std::vector<JS::Heap<JSObject*>> listeners = {};
+> ```
+> 
+> Apologies if it's unclear. First timer with both C++ and spidermonkey :)
+
+Erm. The bit about JSobject vs JSFunction* doesn't sound right
+
+[10:08:23.0453] <mgaudet>
+which is to say, `JSFunction` is the public interface type, and as you've seen, `JS_CallFunction` expects a `JSFunction`, so you probably should store it as that type. 
+
+[10:09:47.0219] <mgaudet>
+> <@edoput:mozilla.org> Also please for the love of God can someone ping the MDN folks and port the JSAPI pages to the new MDN?
+
+Unfortunately, the API docs won't be going back to MDN. They were pretty out of date to start with, and MDN is trying to be a cross-engine-whole-web resource these days. 
+
+We do have https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/ which has worked out examples of a lot of the embedding API
+
+[10:10:46.0456] <edoput>
+> <@mgaudet:mozilla.org> which is to say, `JSFunction` is the public interface type, and as you've seen, `JS_CallFunction` expects a `JSFunction`, so you probably should store it as that type.
+
+Ok, thanks for the help. Most likely I was reading some older docs from around the net.
+
+[10:11:48.0966] <edoput>
+> <@mgaudet:mozilla.org> Unfortunately, the API docs won't be going back to MDN. They were pretty out of date to start with, and MDN is trying to be a cross-engine-whole-web resource these days. 
+> 
+> We do have https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/ which has worked out examples of a lot of the embedding API
+
+Yeah unfortunately it's never enough :(. Are PR welcome if I ever get callbacks to work?
+
+[10:12:36.0688] <mgaudet>
+To the embedding examples repo, they would be a huge help
+
+[10:16:39.0723] <edoput>
+Also, is it possible to just rely the default behavior of a JSClass for callbacks? Say `socket.addEventListener("foo", () => {})` just sets `socket.onfoo` totally in JS land and I can just dispatch the callback in C++ land using the property setters and getters? Properties of the global object (socket in this case) should persist after spidermonkey returns control to C++ right? 
+
+[10:17:11.0968] <edoput>
+This way I would not have to store JSFunctions and trace them right?
+
+[10:18:37.0814] <mgaudet>
+yes; you'd still want them rooted while they're referenced from C++, but once they're hooked into an object that's part of the object graph starting from the global object, things should just work after that
+
+[10:19:22.0127] <edoput>
+Ok, thanks again for the help :)
+
+[10:37:14.0330] <Tim>
+> <@nchevobbe:mozilla.org> Tim: I'm looking into DevTools support for Tuples, and I'm not sure I'm getting this right (I'm not used to read specs): https://tc39.es/proposal-record-tuple/#sec-tuple-exotic-objects-getownproperty-p . Does this mean that `Object.getOwnPropertyDescriptor(#[], "length")` should return `undefined` ?
+
+@evilpie's answer was correct with respect to the current spec, but there's an open bug for changing the spec: https://github.com/tc39/proposal-record-tuple/issues/282
+
+[10:40:19.0710] <Tim>
+> <@tjc:igalia.com> @evilpie's answer was correct with respect to the current spec, but there's an open bug for changing the spec: https://github.com/tc39/proposal-record-tuple/issues/282
+
+So at this moment, the SpiderMonkey implementation complies with the current version of the proposal that you referenced, so any code should rely on `Object.getOwnPropertyDescriptor(#[], "length")` returning `undefined`. Once the spec issue is resolved, one of us (me or one of the proposal champions) should file a bug to change the implementation to conform to the updated spec. LMK if that makes sense or not
+
+[10:42:04.0561] <Tim>
+nchevobbe: Also, do you have any suggestions re: testing for https://phabricator.services.mozilla.com/D148062 ? (see my comment at https://phabricator.services.mozilla.com/D148062#4837347#4837347 ) -- if there's a better channel for discussing that, let me know!
+
+
+2022-06-15
+[22:17:22.0100] <nchevobbe>
+okay thanks, I'll keep an eye on it
+
+[22:22:27.0657] <nchevobbe>
+Since the implementation is behind a config, I don't know if there's something special to add in the ini file. Maybe we could simply do a feature detection. I'll try to come-up with something and answer you on phabricator
+
+[23:51:52.0761] <nchevobbe>
+I'm hitting a wall again, trying to retrieve the prototype of a Tuple from the Debugger API. In [Object.cpp](https://searchfox.org/mozilla-central/rev/2398ab33adcea896838b3da678ff6480dbb98b9a/js/src/debugger/Object.cpp#1952), `GetPrototype` is returning `null`. I don't think there's issue with `GetPrototype` itself as I do get the Tuple prototype in JS with `Object.getPrototypeOf(#[])`. Any idea what could be wrong in `DebuggerObject::getPrototypeOf` ?
+
+[23:52:30.0587] <nchevobbe>
+added a comment in Phabricator. Don't hesitate to DM me here if you have any question :)
+
+[00:19:42.0278] <Tim>
+> <@nchevobbe:mozilla.org> Since the implementation is behind a config, I don't know if there's something special to add in the ini file. Maybe we could simply do a feature detection. I'll try to come-up with something and answer you on phabricator
+
+When I was trying it out, I enabled records and tuples unconditionally in my local branch, so that wasn't the reason why the test wasn't running. I can look it again, likely not till next week
+
+[00:21:38.0672] <Tim>
+> <@nchevobbe:mozilla.org> I'm hitting a wall again, trying to retrieve the prototype of a Tuple from the Debugger API. In [Object.cpp](https://searchfox.org/mozilla-central/rev/2398ab33adcea896838b3da678ff6480dbb98b9a/js/src/debugger/Object.cpp#1952), `GetPrototype` is returning `null`. I don't think there's issue with `GetPrototype` itself as I do get the Tuple prototype in JS with `Object.getPrototypeOf(#[])`. Any idea what could be wrong in `DebuggerObject::getPrototypeOf` ?
+
+Not sure offhand. As far as I know, the DebuggerObject code hasn't been exercised for records/tuples, so it wouldn't be surprising if it didn't work. I don't have time to look at it right away (we have our Igalia summit this week), so could you file a bug and assign it to me so it doesn't get forgotten?
+
+[00:22:37.0937] <nchevobbe>
+I created a small test and was able to run it locally. It has an early exit when we don't have Records/Tuples support, so it shouldn't fail on CI
+
+[00:23:21.0105] <nchevobbe>
+> <@tjc:igalia.com> Not sure offhand. As far as I know, the DebuggerObject code hasn't been exercised for records/tuples, so it wouldn't be surprising if it didn't work. I don't have time to look at it right away (we have our Igalia summit this week), so could you file a bug and assign it to me so it doesn't get forgotten?
+
+sure, will do
+
+[00:23:30.0842] <Tim>
+thanks!
+
+[06:32:08.0577] <pastah>
+Is there a way to multithread these? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/
+
+[06:51:32.0155] <arai>
+what kind of multithread are you thinking about?
+
+[07:03:01.0923] <yury>
+What is the schedule for updating https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples ? I needed to poke it a little and there is plenty of breaking stuff with 103 version: e.g. SetPrivate or JSID_TO_LINEAR_STRING
+
+[07:04:19.0252] <pastah>
+> <@arai:mozilla.org> what kind of multithread are you thinking about?
+
+multithreading with multiple contexts running concurrently where if one crashes the others won't be affected
+
+[07:04:43.0236] <yury>
+ * What is the schedule for updating https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples ? I needed to [poke it](https://github.com/yurydelendik/spidermonkey-embedding-examples/commit/6ee0d597d8c322ef9e7d2f95b83e0d73f38c1c92) a little and there is plenty of breaking stuff with 103 version: e.g. SetPrivate or JSID\_TO\_LINEAR\_STRING
+
+[07:07:02.0389] <arai>
+crash there means exception in JavaScript, or real crash like segmentation fault?
+
+[07:07:54.0441] <arai>
+running concurrently is possible
+
+[07:09:06.0843] <arai>
+if it's about exception in JavaScript, it's also possible.  if it's about segmentation fault etc, multithread doesn't achieve it, and you'll want multi-process
+
+[07:13:41.0047] <arai>
+I'll create a multithread example
+
+[07:16:46.0216] <pastah>
+I'm getting a segfault from running 2 std C++ threads on 2 functions running RunExample
+
+[07:19:50.0828] <arai>
+try building SpiderMonkey with --enable-debug and link against it.  assertions there will catch something
+
+[07:20:07.0323] <pastah>
+I'm using ubuntu's libmozjs68 and libmozjs68-dev
+
+[07:20:13.0904] <pastah>
+ * I'm using ubuntu's packages libmozjs68 and libmozjs68-dev
+
+[07:20:33.0414] <pastah>
+ * I'm using ubuntu's (20.04) packages libmozjs68 and libmozjs68-dev
+
+[07:20:54.0378] <pastah>
+ * I'm using ubuntu's (20.04) packages libmozjs68-0 and libmozjs68-0-dev
+
+[07:21:21.0751] <pastah>
+ * I'm using ubuntu's (20.04) packages libmozjs68-0 and libmozjs68-dev
+
+[07:22:28.0250] <pastah>
+I'll look into building and linking against the compiled spidermonkey, though not sure how to link against the compiled one vs package manager's one
+
+[07:24:16.0683] <pastah>
+As I'm not familiar with building SpiderMonkey libraries or using meson and ninja
+
+[07:24:50.0503] <pastah>
+ * I'll look into building and linking against the compiled spidermonkey, though not sure how to link against the compiled one vs package manager's one (libmozjs68-dev
+
+[07:25:04.0908] <pastah>
+ * I'm using ubuntu's (20.04) packages libmozjs-68-0 and libmozjs-68-dev
+
+[07:25:08.0427] <arai>
+I also don't know meson, but installing your own one in custom directory and passing `-I /path/to/the/directory/include/` and `-L /path/to/the/directory/lib/` to the compiler should work
+
+[07:25:11.0312] <pastah>
+ * I'll look into building and linking against the compiled spidermonkey, though not sure how to link against the compiled one vs package manager's one (libmozjs-68-dev
+
+[07:25:22.0915] <arai>
+so, maybe here https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/d9a734321de9394ac4cd30cb2889970622c12136/meson.build#L7
+
+[08:13:04.0587] <mgaudet>
+> <@yury:mozilla.org> What is the schedule for updating https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples ? I needed to [poke it](https://github.com/yurydelendik/spidermonkey-embedding-examples/commit/6ee0d597d8c322ef9e7d2f95b83e0d73f38c1c92) a little and there is plenty of breaking stuff with 103 version: e.g. SetPrivate or JSID\_TO\_LINEAR\_STRING
+
+There's a `next` branch that I think you can just submit changes for tip to https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/tree/next 
+
+[08:37:20.0421] <pastah>
+I'm not finding any .lib files in my spidermonkey build utilizing `mach`, i.e. no results for `find -iname "*.lib"`
+
+[08:38:14.0407] <pastah>
+ah nevermind, just had to search for .so files...
+
+[08:38:54.0818] <arai>
+if you've installed your spidermonkey build into custom directory, this PR contains how to specify it https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/54
+
+[09:17:20.0364] <sfink>
+I wonder if it would be possible to have the debug library available on ubuntu. Either in a mozjsdebug{,-dev} set of packages, or if it would make sense to have mozjs-dev include the debug .so using the argument that you can't really develop against spidermonkey without a debug build lying around. (But maybe -dev packages are restricted to headers?)
+
+[09:19:42.0005] <arai>
+pastah: here's example with multithread https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/55
+
+[09:22:51.0328] <arai>
+let me know if the example makes sense
+
+[10:21:52.0562] <jdescottes>
+hi! I'm currently working on adding a script evaluation feature for WebDriver BiDi (https://w3c.github.io/webdriver-bidi/#command-script-evaluate).
+tldr, that's a command used by automation tools to execute a JS expression in a given browsing context (similar to what the DevTools console does).
+
+To do that I SpiderMonkey's Debugger APIs to do that and it works fine. For my basic use case, I simply use Debugger's `makeGlobalObjectReference`, and then execute my expression with `executeInGlobal`. But I have an issue in order to retrieve the async error stack in case the expression returns a promise.
+
+In DevTools we normally use `promiseResolutionSite` to get that information. But in my implementation it's unavailable, and I realized it's because I use `makeGlobalObjectReference` instead of `addDebuggee` to create my global reference. I was trying to avoid using `addDebuggee`, because in theory I don't need anything related to setting breakpoints here, I just want to execute code. And I heard that using `addDebuggee` might have a performance cost for the page compared to `makeGlobalObjectReference`.
+
+[10:22:04.0894] <jdescottes>
+ * hi! I'm currently working on adding a script evaluation feature for WebDriver BiDi (https://w3c.github.io/webdriver-bidi/#command-script-evaluate).
+tldr, that's a command used by automation tools to execute a JS expression in a given browsing context (similar to what the DevTools console does).
+
+To do that I use SpiderMonkey's Debugger APIs. For my basic use case, I simply use Debugger's `makeGlobalObjectReference`, and then execute my expression with `executeInGlobal`. But I have an issue in order to retrieve the async error stack in case the expression returns a promise.
+
+In DevTools we normally use `promiseResolutionSite` to get that information. But in my implementation it's unavailable, and I realized it's because I use `makeGlobalObjectReference` instead of `addDebuggee` to create my global reference. I was trying to avoid using `addDebuggee`, because in theory I don't need anything related to setting breakpoints here, I just want to execute code. And I heard that using `addDebuggee` might have a performance cost for the page compared to `makeGlobalObjectReference`.
+
+[10:23:48.0040] <jdescottes>
+I sent the message while I was still editing, but most of the content is there. My question boils down to: is it expected that `promiseResolutionSite` is unavailable unless I used `addDebuggee`, and if yes, should I be concerned about the performance impact of using `addDebuggee` compared to `makeGlobalObjectReference`.
+
+(hope that makes sense :))
+
+[10:24:33.0554] <jdescottes>
+my current stack of patches is at https://phabricator.services.mozilla.com/D149413 for more context
+
+[10:31:11.0394] <ochameau>
+jdescottes: it probably boils down to this very specific code: https://searchfox.org/mozilla-central/rev/2398ab33adcea896838b3da678ff6480dbb98b9a/js/src/builtin/Promise.cpp#477-489 and https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#4581-4588 And so in theory you might be able to avoid having to register a debugger thanks to this pref https://searchfox.org/mozilla-central/source/modules/libpref/init/all.js#994-996
+
+[11:07:04.0403] <pastah>
+> <@arai:mozilla.org> let me know if the example makes sense
+
+I'm a bit confused, you make a context in your main thread then create 2 more contexts for those 2 threads?
+
+[11:07:34.0402] <pastah>
+Also, are you not able to just use `RunExample` as 2 separate threads instead?
+
+[11:08:37.0454] <arai>
+in the example, the main thread and 2 threads run js code
+
+[11:08:55.0929] <arai>
+so, each of them need its own context 
+
+[11:09:44.0914] <arai>
+but the JSContext in non-main thread needs to use the main thread's context's JSRuntime as parent
+
+[11:10:18.0988] <arai>
+(it might not be required, but I don't know if there's different use case)
+
+[11:11:50.0563] <arai>
+what's RunExample?
+
+[11:12:20.0234] <arai>
+oh, boilerplate 
+
+[11:12:54.0339] <arai>
+it might be possible, but I thought it's better be explicit
+
+[11:13:18.0827] <arai>
+given it focuses mostly on that part
+
+[11:19:38.0234] <arai>
+note that, RunExample does some more thing than worker, e.g. JS_Init, and also the 2nd parameter for JS_NewContext is different 
+
+[11:20:00.0595] <arai>
+the 1st parameter can be aligned to boilerplate 
+
+[11:20:13.0308] <arai>
+(it's just copied from js shell
+
+[11:27:07.0951] <arai>
+JS_Init and JS_Shutdown need to be called only once from main thread 
+
+[11:34:04.0256] <pastah>
+that's probably what's causing my segfault then
+
+[11:34:14.0004] <pastah>
+since i'm doing that in the 2 created threads, init and shutdown
+
+[11:35:11.0822] <pastah>
+in your example, if one thread crashes or the javascript crashes will it affect the rest of the threads?
+
+[11:35:27.0084] <pastah>
+or if you have some kind of infinite loop
+
+[11:41:07.0557] <pastah>
+arai: also `PKG_CONFIG_PATH=PATH/TO/MOZJS-91/lib/pkgconfig/ meson _build` doesn't seem to be changing the pkg-config and keeps using `/usr/bin/pkg-config` and defaulting to my package manager's libmozjs-68
+
+[11:41:11.0815] <pastah>
+ * arai: also `PKG_CONFIG_PATH=PATH/TO/MOZJS-91/lib/pkgconfig/ meson _build` doesn't seem to be changing the pkg-config and keeps using `/usr/bin/pkg-config` and defaulting to my package manager's `libmozjs-68`
+
+[11:45:05.0764] <arai>
+js execution in one thread doesn't affect other threads
+
+[11:45:45.0567] <arai>
+segfault affects entire process. this is not specific to jsapi
+
+[11:46:44.0702] <arai>
+hm, maybe you need to tweak the pkg config part for your system.  I've tested it on macOS
+
+[11:47:32.0971] <arai>
+just to make sure, have you replaced the path in the env var to match your installation?
+
+[11:47:53.0270] <arai>
+PATH/TO/... is just an example 
+
+[12:00:02.0113] <pastah>
+i've linked it to the one in `$HOME/spiderMonkey/mozilla-unified/obj-debug/config.statusd/substs/PKG_CONFIG`
+
+[12:04:15.0226] <arai>
+I think you need to install it to custom directory 
+
+[12:04:35.0073] <arai>
+I don't think files in obj dir works
+
+[12:04:51.0878] <jdescottes>
+ochameau: that was it, flipping the pref makes it work with `makeGlobalObjectReference`!  Thanks :) 
+
+[12:06:01.0858] <arai>
+lib/pkg-config directory is created inside installation, and tgat directory contains mozjs config file
+
+[12:06:10.0593] <arai>
+* lib/pkg-config directory is created inside installation, and that directory contains mozjs config file
+
+[12:08:23.0847] <pastah>
+> <@arai:mozilla.org> lib/pkg-config directory is created inside installation, and that directory contains mozjs config file
+
+I only get these for a `find -iname "pkg-config" https://termbin.com/bep8b
+
+[12:08:39.0954] <pastah>
+> <@arai:mozilla.org> lib/pkg-config directory is created inside installation, and that directory contains mozjs config file
+
+ * I only get these for a \`find -iname "pkg-config"` https://termbin.com/bep8b
+
+[12:08:46.0070] <pastah>
+ * I only get these for a `find -iname "pkg-config"\` https://termbin.com/bep8b
+
+[12:08:52.0109] <pastah>
+ * I only get these for a `find -iname "pkg-config"` https://termbin.com/bep8b
+
+[12:09:07.0395] <arai>
+the embedding example has commands to build and install 
+
+[12:09:34.0757] <arai>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md
+
+[12:10:06.0827] <arai>
+note that configure file doesn't exist and you need to copy configure.in
+
+[12:10:10.0460] <pastah>
+but I don't have that with the `mach` version I have https://firefox-source-docs.mozilla.org/js/build.html
+
+[12:10:14.0865] <arai>
+* note that configure file doesn't exist and you need to copy configure .in
+
+[12:10:47.0615] <arai>
+yeah, I think you still need to use configure+make
+
+[12:11:02.0066] <arai>
+to get the make install work
+
+[12:11:12.0324] <arai>
+I don't know the equivalent for mach
+
+[12:11:52.0611] <arai>
+then pass --prefix=... to configure
+
+[12:12:01.0570] <pastah>
+arai: there's no `configure` in `js/src`
+
+[12:12:11.0593] <sfink>
+I think `mach build install` works. In general, `mach build ...` is a replacement for `make ...`
+
+[12:12:12.0022] <arai>
+to install it into custom directory 
+
+[12:12:45.0602] <arai>
+copy configure .in file
+
+[12:13:02.0594] <arai>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/54
+
+[12:13:31.0382] <arai>
+I'll check workflow with mach build install when I get home
+
+[13:04:56.0867] <pastah>
+> <@arai:mozilla.org> pastah: here's example with multithread https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/55
+
+Trying these still don't work with make install with my prefix. I have set the spidermonkey dependency to `mozjs-103.0a1`
+
+[13:06:11.0663] <pastah>
+and LD_LIBRARY_PATH and PKG_CONFIG_PATH is also set correctly. however it fails the sanity check saying it can't find the header files
+
+[13:07:18.0594] <pastah>
+it finds mozjs-103a1 from the `make install` though
+
+[13:11:05.0781] <arai>
+what exact command did you do?
+
+[13:12:06.0101] <pastah>
+export PKG_CONFIG_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig; export LD_LIBRARY_PATH=/home/dj/spiderMonkey/install/lib; meson _build
+
+[13:12:10.0251] <pastah>
+ * `export PKG\_CONFIG\_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig; export LD\_LIBRARY\_PATH=/home/dj/spiderMonkey/install/lib; meson \_build`
+
+[13:12:25.0154] <pastah>
+ * ```bash
+export PKG\_CONFIG\_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig
+export LD\_LIBRARY\_PATH=/home/dj/spiderMonkey/install/lib
+meson \_build
+```
+
+[13:12:30.0590] <pastah>
+ * ```bash
+export PKG\_CONFIG\_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig
+export LD\_LIBRARY\_PATH=/home/dj/spiderMonkey/install/lib
+meson _build
+```
+
+[13:12:39.0828] <pastah>
+ * ```bash
+export PKG_CONFIG_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig
+export LD_LIBRARY_PATH=/home/dj/spiderMonkey/install/lib
+meson _build
+```
+
+[13:12:55.0015] <arai>
+what's in `/lib/pkgconfig` directory?
+
+[13:13:00.0125] <arai>
+ * what's in `.../lib/pkgconfig` directory?
+
+[13:13:09.0840] <pastah>
+`mozjs-103a1.pc`
+
+[13:13:21.0768] <arai>
+and what's output for the command?
+
+[13:13:27.0531] <arai>
+if it's long, please use https://paste.mozilla.org/
+
+[13:15:40.0793] <pastah>
+> <@arai:mozilla.org> if it's long, please use https://paste.mozilla.org/
+
+https://termbin.com/b79t
+
+[13:16:02.0623] <arai>
+what's the content of meson-log.txt ?
+
+[13:17:01.0013] <pastah>
+https://termbin.com/q2dc
+
+[13:18:16.0832] <arai>
+does `~/spiderMonkey/install/include/mozjs-103a1/js-config.h` exist?
+
+[13:19:09.0498] <pastah>
+> <@arai:mozilla.org> does `~/spiderMonkey/install/include/mozjs-103a1/js-config.h` exist?
+
+yes
+
+[13:19:42.0970] <arai>
+I wonder if `-isystem` used there is not working
+
+[13:20:06.0473] <arai>
+I haven't used the option.  I often use `-I` instead.  not sure what's the case for pkg-config
+
+[13:20:55.0057] <arai>
+oh, mine also says `-isystem`
+
+[13:23:20.0511] <arai>
+can you try check without ccache?
+
+[13:23:52.0890] <arai>
+to me, the options passed there looks reasonable, so I guess there's some issue with the compiler setup
+
+[13:40:57.0916] <arai>
+`./mach build install` with `ac_add_options --prefix=...` in `mozconfig` seems to work
+
+[13:41:07.0828] <arai>
+I'll update the document in `next` branch
+
+[13:50:26.0803] <arai>
+`./mach bootstrap` doesn't support non-vcs source tree...
+
+[13:50:39.0058] <arai>
+so, downloading a source package doesn't work
+
+[13:51:22.0132] <pastah>
+> <@arai:mozilla.org> can you try check without ccache?
+
+not sure if i can even disable ccache, it's not in the meson.build
+
+[13:51:54.0172] <arai>
+try manually running the command in the log
+
+[13:52:09.0622] <arai>
+to see if it works
+
+[13:54:13.0098] <evilpie>
+sfink: I think I might move https://phabricator.services.mozilla.com/D136267 to another bug, to make landing all the JS specific stuff self-contained
+
+[14:06:41.0221] <pastah>
+arai: I get different errors running it manually, things like is_const_v is not a member of std. I'll maybe get back to you on this tomorrow
+
+[14:07:18.0465] <pastah>
+i'm not even sure if I should bother jumping through so many hoops to get debugging working as I could just mainly see if I can avoid the segfault all together without debugging symbols on libmozjs
+
+[14:09:17.0294] <pastah>
+i.e. trying your example earlier
+
+[14:09:45.0896] <arai>
+what if you add `-std=c++17` to the command?
+
+[14:11:10.0624] <pastah>
+it just says it cannot find -lmozjs-103a1 even though I already exported LD library path and pkg config path. i'm going to head out to exercise
+
+[14:11:25.0468] <pastah>
+thank you for all the help
+
+[14:11:43.0558] <arai>
+LD_LIBRARY_PATH is for runtime
+
+[14:11:48.0755] <arai>
+not for compile/link time
+
+[14:12:15.0401] <arai>
+linker needs `-L path/to/lib` option
+
+[16:36:11.0633] <sfink>
+evilpie: sorry, just saw this. But that makes sense. I commented on the isNumber/isInt32 thing. I'd like a quick check to be sure I'm not just being stupid before I try landing it. And it may need a followup bug for the ErrorObject fields' types, I'm not sure.
+
+
+2022-06-16
+[01:19:49.0717] <jandem>
+is anyone using our gdb unwind script? now that we have frame pointers it should be possible to also unwind stacks when crashing in JIT code for example
+
+[01:21:55.0411] <jandem>
+we can't easily distinguish JS vs Wasm code I think but at least we should be able to unwind frames to EnterJit
+
+[08:50:54.0810] <evilpie>
+> <@sfink:mozilla.org> evilpie: sorry, just saw this. But that makes sense. I commented on the isNumber/isInt32 thing. I'd like a quick check to be sure I'm not just being stupid before I try landing it. And it may need a followup bug for the ErrorObject fields' types, I'm not sure.
+
+I don't see anything new
+
+[08:54:05.0752] <sfink>
+evilpie: argh, my usual problem with not submitting comments in phabricator.
+
+[08:54:58.0744] <sfink>
+I was asking for you to check my logic in the comment I just now posted.
+
+[08:55:56.0139] <sfink>
+I'm really not sure how these values should be handled, given that we're already doing something weird in JS. From JS-land, it's totally treated as a signed int32. But the actual field is unsigned.
+
+[08:56:28.0171] <sfink>
+and yet, that doesn't necessarily matter for serialization, as long as we can round-trip it.
+
+[09:01:41.0667] <sfink>
+whoa, it appears that twitch.tv uses WeakMap quite a bit. bug 1773944 has a content process with 123MB worth of WeakMaps (and that would just be the storage for the hashtable itself, iiuc.)
+
+[09:01:42.0934] <botzilla>
+https://bugzil.la/1773944 — UNCONFIRMED (nobody) — Memory increase in backgrounded (paused) twitch.tv tab
+
+[09:13:38.0900] <evilpie>
+@sfink as long as we correctly roundtrip we are good. I can't check the code myself before tomorrow.
+
+[09:14:06.0207] <sfink>
+ok, thanks
+
+[11:02:08.0984] <pastah>
+Is `JS_NewContext` available for libmozjs-68?
+
+[11:02:43.0345] <arai>
+yes
+
+[11:03:01.0861] <arai>
+but the parameters are different than 103
+
+[11:03:04.0445] <pastah>
+getting an error about invalid conversion from JSRuntime* to uint32_t
+
+[11:03:24.0543] <arai>
+https://searchfox.org/mozilla-esr60/rev/02b4ae79b24aae2346b1338e2bf095a571192061/js/src/jsapi.h#751-753
+```cpp
+extern JS_PUBLIC_API JSContext* JS_NewContext(
+    uint32_t maxbytes, uint32_t maxNurseryBytes = JS::DefaultNurseryBytes,
+    JSRuntime* parentRuntime = nullptr);
+```
+
+[11:03:56.0179] <arai>
+just passing `JS::DefaultNurseryBytes` as 2nd parameter should work
+
+[11:39:58.0938] <pastah>
+Seems like if a context/thread crashes then the entire program fails https://termbin.com/66sz
+
+[11:40:38.0306] <pastah>
+Is it not possible to keep the entire program going even if you crash a thread or javascript context?
+
+[11:43:41.0843] <arai>
+javascript context does nothing to do with it
+
+[11:45:12.0463] <arai>
+maybe better clarify what specific "crash" you're thinking about
+
+[11:45:20.0656] <arai>
+* javascript context has nothing to do with it
+
+[11:47:00.0309] <pastah>
+it's probably my inexperience then, sorry. I'm getting a segfault after I get "Recurse thread, i=341953"
+
+[11:47:32.0761] <pastah>
+ideally I would like to run a bunch of abitrary JS files where if a bad JS file executes and results in a crash then the whole program won't crash
+
+[11:49:03.0795] <arai>
+what you want here is to figure out why the segfault happens, and prevent it
+
+[11:49:46.0798] <arai>
+so, making bad program not possible to cause process crash
+
+[11:52:33.0099] <arai>
+then, if the crash happens inside spidermonkey, using a debug build will help.  there are a bunch of assertions and some of them will catch what went wrong
+
+[11:52:47.0128] <arai>
+before hitting actual segfault
+
+[11:53:39.0321] <sfink>
+shouldn't that example have thrown a Too Much Recursion error? I'm wondering if it's missing some stack size initialization.
+
+[11:53:51.0365] <arai>
+try running your application with debugger.  it will stop at the segfault, and you can see the backtrace
+
+[11:55:33.0519] <arai>
+yeah, the example code omits error handling and some initialization 
+
+[11:56:09.0462] <arai>
+maybe better having another example with too much recursion 
+
+[11:56:29.0512] <arai>
+* yeah, most of the example code omits error handling and some initialization
+
+[11:58:10.0200] <arai>
+or, maybe better not omitting error handling in all case?
+
+[12:03:42.0996] <sfink>
+having a basic example that skips some error checking seems ok, but then I guess that example isn't useful for exploring things like pastah's questions around isolation. It would require an example that does all of the initialization and error checking.
+
+[12:06:09.0479] <sfink>
+for the most part, it *should* be possible to have an embedding where one thread running JS can't crash the whole process. With some limitations: if you run out of memory, you might end up crashing the process (though we'll try to catch it, so much less often than in eg v8). And you can certainly spin an infinite loop and DDOS everything else. And any native code crash will crash the whole process, because of how the OS manages threads & processes.
+
+[16:01:57.0808] <evilpie>
+🎉 thanks sfink for finishing up the work here
+
+[16:02:23.0785] <sfink>
+sorry for sitting on it so long. It's great stuff, thank you!
+
+[16:03:01.0536] <evilpie>
+I hope I can get the browser changes in a reviewable state soon
+
+
+2022-06-17
+[19:56:28.0295] <Caspy7>
+just saw the most recent post about Cranelift https://cfallin.org/blog/2022/06/09/cranelift-regalloc2/
+Do I recall there was a possibility of it shipping on Mac or something?
+
+[21:52:14.0802] <greg>
+https://firefox-source-docs.mozilla.org/js/index.html
+
+[21:52:17.0750] <greg>
+ARM64
+
+[21:52:36.0075] <greg>
+ * https://firefox-source-docs.mozilla.org/js/index.html#cranelift
+
+[21:54:28.0724] <Caspy7>
+greg: thanks
+
+[21:55:33.0444] <Caspy7>
+curious if it might expand to x86 in the future? 
+
+[21:55:41.0237] <iain>
+Caspy7: Actually, that's out of date. We should update it.
+
+[21:55:46.0383] <Caspy7>
+is it on its way to being comparable?
+
+[21:55:54.0460] <Caspy7>
+oh?
+
+[21:55:56.0886] <iain>
+We currently don't use cranelift in production at all
+
+[21:56:18.0212] <Caspy7>
+gotcha
+
+[03:00:56.0622] <yulia>
+hm, how do permissions for try get set again? I'm struggling to find the documentation
+
+[03:01:22.0429] <yulia>
+I added my ssh key, but im still getting the permission denied message for my laptop, and I haven't done this for a while so i completely forgot what i needed to do this
+
+[03:02:34.0027] <yulia>
+apparently you can't use the ed25519 key? at least i failed to add it and fell back on rsa... just wondering where all of this is written down
+
+[03:07:42.0870] <yulia>
+maybe it just takes time. I'll be back at my computer on monday anyway so i guess it doesn't matter
+
+[03:08:11.0646] <yulia>
+ * I guess it just takes time and hasn't propogated yet. I'll be back at my computer on monday anyway so i guess it doesn't matter
+
+[03:08:23.0548] <yulia>
+ * I guess it just takes time and hasn't propagated yet. I'll be back at my computer on monday anyway so i guess it doesn't matter
+
+[03:12:04.0834] <liam_g>
+If a JSObject is an array object, how do I get that array and iterate over it?
+
+[03:15:35.0961] <arai>
+there are multiple functions around array
+
+[03:15:59.0444] <arai>
+https://searchfox.org/mozilla-central/source/js/public/Array.h contains functions that checks if a JSObject is an array
+
+[03:16:12.0012] <arai>
+https://searchfox.org/mozilla-central/source/js/public/PropertyAndElement.h
+
+[03:16:49.0312] <arai>
+it contains element access on array-like object with `uint32_t` index: `JS_GetElement`
+
+[03:17:09.0452] <arai>
+and `JS_SetElement`
+
+[03:18:07.0286] <arai>
+ * https://searchfox.org/mozilla-central/source/js/public/Array.h contains functions that checks if a JSObject is an array, and get the length
+
+[03:18:26.0469] <liam_g>
+I guess that JS_GetElement() is probably the best suited for me here.
+
+[03:18:30.0428] <arai>
+if you want length and index-based iteration, `GetArrayLength` and `JS_GetElement` should work
+
+[03:18:42.0791] <liam_g>
+Perfect, that's what I was about to ask.
+
+[03:18:49.0341] <liam_g>
+Thanks!
+
+[03:18:52.0468] <arai>
+if you want Symbol.iterator based iteration, https://searchfox.org/mozilla-central/source/js/public/ForOfIterator.h
+
+[03:19:31.0629] <arai>
+the result is same between them for regular array
+
+[03:20:19.0610] <arai>
+ * if you want length and index-based iteration, `JS::GetArrayLength` and `JS_GetElement` should work
+
+[11:31:01.0993] <Cathy Lu>
+Hello, I'm trying to build GeckoView on Android with `./mach build` on the latest mozilla-central default and getting missing dependencies:
+`/third_party/wasm2c/src/common.h:20:10: fatal error: 'algorithm' file not found`
+`.mozbuild/clang/bin/../include/c++/v1/new:91:10: fatal error: 'cstddef' file not found`
+I tried `./mach bootstrap`,`./mach clobber` and clearing the objdir, does anyone know what else I can try?
+
+[11:31:23.0612] <Cathy Lu>
+ * Hello, I'm trying to build GeckoView on Android with `./mach build` on the latest mozilla-central branch and getting missing dependencies:
+`/third_party/wasm2c/src/common.h:20:10: fatal error: 'algorithm' file not found`
+`.mozbuild/clang/bin/../include/c++/v1/new:91:10: fatal error: 'cstddef' file not found`
+I tried `./mach bootstrap`,`./mach clobber` and clearing the objdir, does anyone know what else I can try?
+
+[11:35:05.0848] <iain>
+yulia: Is this helpful? https://mozilla-version-control-tools.readthedocs.io/en/latest/hgmozilla/auth.html
+
+[11:36:03.0446] <mccr8>
+> <@calu:mozilla.org> Hello, I'm trying to build GeckoView on Android with `./mach build` on the latest mozilla-central branch and getting missing dependencies:
+> `/third_party/wasm2c/src/common.h:20:10: fatal error: 'algorithm' file not found`
+> `.mozbuild/clang/bin/../include/c++/v1/new:91:10: fatal error: 'cstddef' file not found`
+> I tried `./mach bootstrap`,`./mach clobber` and clearing the objdir, does anyone know what else I can try?
+
+Could be some kind of unified build issue. You could ask in #rlbox as that looks like rbox code and not SpiderMonkey per se.
+
+
+2022-06-18
+[01:18:22.0087] <edoput>
+Hi all. I'm trying to build ESR91 following the instructions in the README. I downloaded the tarball from https://ftp.mozilla.org/pub/firefox/releases/91.0esr/source/ but there are no configure scripts in the js directory. Is there any instruction on how to generate this script?
+
+
+[01:47:04.0654] <arai>
+edoput: `cp configure.in configure; chmod +x configure`
+
+[01:49:03.0158] <arai>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/56
+
+[01:50:00.0895] <edoput>
+much obliged! :)
+
+[11:38:21.0726] <TheQwertiest>
+hey everyone!
+a small question: what is a proper way to extend the custom js object from the native side?
+i.e. in native-land I have MyJsObjectBase and MyJsObjectImpl and I want MyJsObjectImpl to have inheritance from MyJsObjectBase 
+
+[11:39:45.0357] <TheQwertiest>
+> <@theqwertiest:mozilla.org> hey everyone!
+> a small question: what is a proper way to extend the custom js object from the native side?
+> i.e. in native-land I have MyJsObjectBase and MyJsObjectImpl and I want MyJsObjectImpl to have inheritance from MyJsObjectBase
+
+using esr68 if it matters
+
+[11:41:09.0093] <TheQwertiest>
+ * using esr68 in case it matters
+
+
+2022-06-19
+[17:13:33.0036] <ptomato>
+TheQwertiest: I believe it might be `JS_NewObjectWithGivenProto`
+
+[07:45:49.0382] <TheQwertiest>
+> <@pchimento:igalia.com> TheQwertiest: I believe it might be `JS_NewObjectWithGivenProto`
+
+hm, so I want one prototype (ProtoImpl) to be the extension of another prototype(ProtoBase), I need to use smth like `ProtoImpl = JS_NewObjectWithGivenProto(ProtoBase)`?
+
+[07:47:38.0483] <TheQwertiest>
+> <@pchimento:igalia.com> TheQwertiest: I believe it might be `JS_NewObjectWithGivenProto`
+
+ * hm, so if I want one prototype (ProtoImpl) to be the extension of another prototype(ProtoBase), I need to use smth like `ProtoImpl = JS_NewObjectWithGivenProto(ProtoBase)`?
+
+[07:47:44.0858] <TheQwertiest>
+ * hm, so if I want one prototype (ProtoImpl) to be an extension of another prototype(ProtoBase), I need to use smth like `ProtoImpl = JS_NewObjectWithGivenProto(ProtoBase)`?
+
+[12:43:39.0941] <TheQwertiest>
+and another question: is there a way to check if two JS objects are the same? (as in literally the same object and not just equal by value)
+
+[12:48:56.0282] <TheQwertiest>
+ * and another question: is there a way to check in the native-land if two JS objects are the same? (as in literally the same object and not just equal by value)
+
+[13:10:35.0987] <arai>
+TheQwertiest: there's no single API. you need to manually compare
+
+[13:10:50.0017] <arai>
+here's function used in test harness.  it's in JS tho [shell.js](https://searchfox.org/mozilla-central/rev/81c95e56daabc6b6cd84b65349fc6163c490f957/js/src/tests/non262/shell.js#40-75)
+
+[13:11:00.0231] <arai>
+ * here's function used in test harness.  it's in JS tho: [shell.js](https://searchfox.org/mozilla-central/rev/81c95e56daabc6b6cd84b65349fc6163c490f957/js/src/tests/non262/shell.js#40-75)
+
+[13:14:45.0118] <TheQwertiest>
+> <@arai:mozilla.org> TheQwertiest: there's no single API. you need to manually compare
+
+hm... I'm not sure that's what I'm looking for. What I'm trying to implement is EventTarget interface, which according to spec handles duplicates of EventListeners. E.g. in the following scenario
+```
+function f(...) {}
+target.addEventListener('some_event', f);
+target.addEventListener('some_event', f);
+```
+`f` should be called only once according to spec. Hence I have to somehow implement the deduplication of JS objects.
+Comparing every property seems really expensive for this scenario.
+
+[13:15:12.0985] <TheQwertiest>
+> <@arai:mozilla.org> TheQwertiest: there's no single API. you need to manually compare
+
+ * hm... I'm not sure that's what I'm looking for. What I'm trying to implement is EventTarget interface, which according to spec handles duplicates of EventListeners. E.g. in the following scenario
+
+```
+function f(...) {}
+target.addEventListener('some_event', f);
+target.addEventListener('some_event', f);
+```
+
+`f` should be called only once according to spec for every `some_event` dispatch. Hence I have to somehow implement the deduplication of JS objects.
+Comparing every property seems really expensive for this scenario.
+
+[13:15:25.0726] <arai>
+I think in that case the key is just the function itself
+
+[13:15:49.0751] <arai>
+so, putting the function into `Set` should work
+
+[13:16:36.0508] <arai>
+I mean, "equal by value" would be what you want
+
+[13:17:13.0297] <arai>
+or, maybe you mean different thing than the function, by "JS objects" ?
+
+[13:20:42.0237] <TheQwertiest>
+hm, according to spec listener is `object with a handleEvent() method, or a JavaScript function`
+
+[13:21:00.0136] <arai>
+can you share the URL of the spec?
+
+[13:21:06.0552] <arai>
+which step are you implementing?
+
+[13:22:29.0318] <TheQwertiest>
+spec: https://dom.spec.whatwg.org/#concept-event-listener
+docs: https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
+
+[13:23:04.0640] <TheQwertiest>
+> <@arai:mozilla.org> which step are you implementing?
+
+for now, I'm trying to implement the storage inside EventTarget object (in native-land)
+
+[13:23:19.0995] <TheQwertiest>
+> <@arai:mozilla.org> which step are you implementing?
+
+ * for now, I'm trying to implement the storage for event listeners inside EventTarget object (in native-land)
+
+[13:23:41.0462] <arai>
+hmm, I'd suggest reading the actual spec.  the document on MDN is mostly for consumer. not implementer
+
+[13:24:27.0833] <TheQwertiest>
+right
+
+[13:24:36.0618] <TheQwertiest>
+spec: `The event listener is appended to target’s event listener list and is not appended if it has the same type, callback, and capture.`
+
+[13:25:47.0668] <TheQwertiest>
+so since callback is a function, it means that I can use the set for uniqueness
+
+[13:25:56.0191] <arai>
+oh, that part is also "non-normative"  (see the legend of green box)
+
+[13:27:47.0488] <arai>
+https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+
+[13:27:52.0069] <arai>
+that's the actual definition
+
+[13:28:13.0822] <arai>
+and https://dom.spec.whatwg.org/#add-an-event-listener linked from there
+
+[13:28:21.0237] <arai>
+> 4. If eventTarget’s event listener list does not contain an event listener whose type is listener’s type, callback is listener’s callback, and capture is listener’s capture, then append listener to eventTarget’s event listener list. 
+
+[13:28:45.0842] <arai>
+so, you need to compare 3 values
+
+[13:34:28.0307] <TheQwertiest>
+thanks!
+
+
+2022-06-20
+[22:02:46.0352] <pbone>
+Does anyone know if in Firefox we create any "mirroed" memory mappings for any reason?  Different virtual addresses mapped to the same physical address?  Eg would we map the same phsycal memory as r+x in one place and r+w in another? (that's probably confuse the seperate I & D caches)
+
+[22:02:56.0914] <pbone>
+ * Does anyone know if in Firefox we create any "mirrored" memory mappings for any reason?  Different virtual addresses mapped to the same physical address?  Eg would we map the same phsycal memory as r+x in one place and r+w in another? (that's probably confuse the seperate I & D caches)
+
+[02:02:00.0341] <l11d>
+pbone: while I don't known about the usage of synonymous memory mappings in firefox/spidermonkey I've been using them in the past for implementing pointer tagging. are there any tickets on file describing what you intend to implement?
+
+[04:33:52.0983] <pbone>
+Oh, that's not my goal.  I'm trying to properly calculate our resident unique memory usage from MacOS's APIs and don't want to count aliased memory twice.  But if we don't currently do anything like that then it's okay.
+
+[04:34:08.0784] <pbone>
+ * Oh, that's not my goal.  I'm trying to properly calculate our resident unique memory usage from MacOS's APIs and don't want to count aliased memory twice.  But if we don't currently do anything like that then I don't have to worry about that edge-case.
+
+[04:35:58.0354] <pbone>
+The problem is that in MacOS if you have a mapping for 3 pages, and you `mprotect()` the middle page (eg to create a guard page) then the mappings on either side get changed from private mappings to aliased mappings.  They map different pages but they came from the same original mapping, they should be counted in resident-unique.
+
+[08:21:08.0123] <pastah>
+Does Spidermonkey have a JIT optionality?
+
+[08:28:43.0179] <nbp>
+pbone: I am not aware of us using that. I know this has been used in the past by some moving garbage collector, to move object while making a fault on write for attempts to write on moved objects, to get the relocation address.
+I also tried in the past (12y ago?), using this technique to reduce the overhead induced by memory consistency model of CPU, which did not play nicely with the prefecthing capabilities of modern CPUs.
+
+[08:29:22.0893] <nbp>
+pastah: SpiderMOnkey JIT can be disabled, through the API when embedded, through the command line when using the shell, or with about:config in Firefox.
+
+[08:30:46.0921] <pastah>
+> <@nbp:mozilla.org> pastah: SpiderMOnkey JIT can be disabled, through the API when embedded, through the command line when using the shell, or with about:config in Firefox.
+
+What is the API command for enabling/disabling JIT?
+
+[08:30:52.0608] <pastah>
+> <@nbp:mozilla.org> pastah: SpiderMOnkey JIT can be disabled, through the API when embedded, through the command line when using the shell, or with about:config in Firefox.
+
+ * What is the API function 'for enabling/disabling JIT?
+
+[08:30:55.0034] <pastah>
+ * What is the API function for enabling/disabling JIT?
+
+[08:31:09.0707] <nbp>
+pastah: We also have a configure toggle to disable the JIT, useful for architecture which do not yet have a JIT backend.
+
+[08:31:38.0857] <pastah>
+> <@nbp:mozilla.org> pastah: We also have a configure toggle to disable the JIT, useful for architecture which do not yet have a JIT backend.
+
+configure toggle as in a compilation configure option?
+
+[08:33:05.0624] <nbp>
+[JS::DisableJitBackend](https://searchfox.org/mozilla-central/rev/cc98a15c7327d742d283cddddde712a8a3165006/js/src/vm/Initialization.cpp#341), and [--disable-jit](https://searchfox.org/mozilla-central/source/js/moz.configure#172)
+
+[09:55:41.0625] <pastah>
+Does Spidermonkey have different execution modes like Global and Modules?
+
+[09:56:36.0998] <nbp>
+yes, we have different compile function in our API.
+
+[09:58:52.0113] <pastah>
+does that affect whether you can use `import {sleep} from 'os';`? I notice `import` breaks
+
+[10:01:38.0613] <arai>
+`import` syntax is valid only in module
+
+[10:05:19.0860] <arai>
+can anyone give me write access to https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples ?  or can anyone land my PRs that got r+?
+
+[11:23:03.0969] <ptomato>
+arai: I have the permission bit to land them, so I can do it if you want. I left them unmerged because I wasn't sure whether I count as enough of a reviewer 😄
+
+[11:25:20.0349] <arai>
+I think the configure PR is ready, and it's better merge soon, given it blocks newcomer
+
+[14:22:09.0404] <nick0ve>
+Hi, can anybody point me any resources about js::Nursery? Like an highlevel overview of what it is supposed to achieve / where it is used
+
+[14:23:11.0551] <nick0ve>
+Also any other technical resource about spidermonkey memory management would be appreciated
+
+[14:28:59.0929] <arai>
+nick0ve: there's a paragraph that mentions it https://firefox-source-docs.mozilla.org/js/gc.html#generational-collection
+
+[14:29:52.0174] <arai>
+also a blog post that explains Generational Garbage Collection https://hacks.mozilla.org/2014/09/generational-garbage-collection-in-firefox/
+
+[14:33:44.0085] <nick0ve>
+> <@arai:mozilla.org> nick0ve: there's a paragraph that mentions it https://firefox-source-docs.mozilla.org/js/gc.html#generational-collection
+
+Thank you
+
+[16:23:52.0195] <pbone>
+> <@nbp:mozilla.org> pbone: I am not aware of us using that. I know this has been used in the past by some moving garbage collector, to move object while making a fault on write for attempts to write on moved objects, to get the relocation address.
+> I also tried in the past (12y ago?), using this technique to reduce the overhead induced by memory consistency model of CPU, which did not play nicely with the prefecthing capabilities of modern CPUs.
+
+Thanks, Yeah, I think GC and JIT might be the most common reasons to do this.  (Even though JIT may be totally invalid for I&D caches being seperate)  glandium pointed out that someone could be using it for a circular buffer.  I think I'll take my chance and assume we don't do this (very much).
+
+
+2022-06-21
+[02:22:34.0445] <nbp>
+The circular buffer case is a way to avoid the memory-consistency + prefetching issue like I mentioned, such that the producer can produce without blocking the consumer. When the producer generate content, the core running it will prefect memory, taking the ownership of the memory. If this memory is being read by the consumer, when looping back, then the consumer has to re-take the ownership of the memory before reading it, which adds extra core synchronizations.  Using multiple virtual addresses for the same memory region is a way to avoid this aliasing and let the producer owns the prefetched virtual addresses, while the consumer owns its space of virtual addresses. locks are then used to either swap memory regions between the cores.
+
+[06:06:51.0426] <pbone>
+Wow. that seems. like I can't beleive that works.  First I just always assumed caching cared about physical addresses.  But then I'm still finding it hard to see why the consumer won't read something inconsistent. I'd have to spend some time staring at it.
+
+[06:08:46.0865] <pbone>
+What I was imagining was a case where according to the instruction cache some line of memory is in one state, and according to the data cache it's in another.  But I suppose there's cache flushes/etc that we'd have to do even if both are using the same virtual addresses.  (the kind of thing you answer for yourself when you go to ask the question.)
+
+[07:29:48.0399] <nbp>
+pbone: the consumer will read inconsistent state, unless you swap the pages between the consumer and producer.
+
+[07:46:59.0340] <Bryan Thrall [:bthrall]>
+I'm exploring adding an interface to `JSContext` but it looks like it doesn't like having a vtable (see [here](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#1023)). Does anyone know the reasoning behind this assertion?
+
+[07:54:23.0091] <jandem>
+outside the engine, `JSContext` is an opaque type that's reinterpret-casted to/from `RootingContext` (a base class)
+
+[07:59:47.0488] <Bryan Thrall [:bthrall]>
+ok. Thanks!
+
+[08:00:30.0298] <jandem>
+I was hoping the frontend could be separate. Does that get annoying with error handling or alloc policies?
+
+[08:02:06.0578] <Bryan Thrall [:bthrall]>
+I think it could be separate at the end, but during the transition, I was trying to reuse JSContext
+
+[08:02:12.0586] <nbp>
+Bryan Thrall [:bthrall]: could this be solved with a `final` keyword on the `JSContext` class definition?
+
+[08:10:46.0021] <Bryan Thrall [:bthrall]>
+Even if `JSContext` is `final`, it would still have a vtable if I make it subclass an interface, so `reinterpret_cast<>()` won't work
+
+[08:11:47.0787] <Bryan Thrall [:bthrall]>
+(I just verified `JSContext final` still segfaults on the first test in jsapi-tests)
+
+[08:20:15.0334] <Bryan Thrall [:bthrall]>
+ * Even if `JSContext` is `final`, it would still have a vtable if I make it subclass an interface, so `reinterpret_cast<>()` won't <del>work</del> return the correct pointer to the object
+
+[08:51:56.0166] <nbp>
+Another option is to have a class which can be derived, and have a derived class which forward calls to the JSContext. This way you can extend the derived class, the JScontext can own the an instance of the forwarding derived class.
+
+[13:30:37.0395] <Ryan Hunt>
+is the pointer identity of a string value ever exposed to JS code? e.g. can JS ever determine if two JS string values are backed by different JSString pointers?
+
+[13:33:45.0971] <iain>
+No
+
+[13:35:35.0545] <iain>
+String comparison bottoms out here in the spec: https://tc39.es/ecma262/#sec-samevaluenonnumeric
+
+[13:36:41.0277] <iain>
+(Including ==, ===, and Object.is)
+
+[13:36:54.0954] <iain>
+(If there are other comparison operations I've forgotten, they should have the same behaviour)
+
+[13:37:06.0686] <Ryan Hunt>
+Yeah, that seems reasonable. There's a proposal to add a stringref type to wasm that would be expected to map to a JS string, and it's ambiguous if pointer equality would be an allowed operation. Sounds like it should not be then
+
+[13:37:09.0791] <iain>
+ * (I checked ==, ===, and Object.is)
+
+[13:38:40.0334] <iain>
+Sounds right
+
+[13:39:36.0425] <Ryan Hunt>
+Thanks!
+
+[13:41:10.0873] <iain>
+You can compare strings for equality in Rust by casting them to pointers (see the last paragraph here https://stackoverflow.com/a/70648961)
+
+[13:41:24.0573] <iain>
+But Rust definitely pushes towards comparing content
+
+
+2022-06-22
+[10:48:22.0126] <yury>
+When trying to compiling SM for embedding, on Mac, "./configure" returns `ERROR: *** The pkg-config script could not be found.`, and `pkg-config` exists. What shall I check next?
+
+[10:48:49.0507] <yury>
+ * When trying to [compiling SM for embedding](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md), on Mac, "./configure" returns `ERROR: *** The pkg-config script could not be found.`, and `pkg-config` exists. What shall I check next?
+
+[10:49:03.0362] <yury>
+ * When trying to [build SM for embedding](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md), on Mac, "./configure" returns `ERROR: *** The pkg-config script could not be found.`, and `pkg-config` exists. What shall I check next?
+
+[15:54:17.0930] <r3st>
+meowdy all, does anyone know how I can get the full call tree of an JavaScript that's executed? 
+
+[15:54:52.0899] <r3st>
+ * meowdy all, does anyone know how I can get the full call tree of any JavaScript that's executed? 
+
+[16:13:16.0645] <arai>
+r3st: can you provide more context about what the data you want and what are you going to use it for?
+
+[16:13:28.0112] <arai>
+do you need code coverage information?
+
+[16:14:11.0113] <arai>
+or you want to visualize the call graph?
+
+[16:21:54.0798] <arai>
+also, what's the environment?  website loaded in browser, or browser's UI, or inside SpiderMonkey embedding?
+
+[16:24:30.0789] <r3st>
+Hello arai ! Thanks for taking the time! I'm trying to understand exactly how a Firefox browser extension works. I'm hoping to get the entire thread of execution in order to reach that goal. I've used the Firefox profiler, but I was wondering if there was a way to get a perfect call tree, instead of a sampled one ( if you catch my drift ). 
+
+[16:31:05.0886] <arai>
+so, you want to see the trace of the execution.  let me think
+
+[16:31:52.0742] <r3st>
+Fingers crossed its something like: $ make build spidermonkey --extreme-verbosity --rest-in-peace-performance
+
+[16:32:39.0878] <r3st>
+ * Fingers crossed its something like: $ make build spidermonkey -vvvvv --extreme-verbosity --rest-in-peace-performance
+
+[16:32:50.0949] <r3st>
+ * Fingers crossed its something like: $ make build spidermonkey --vvvvv --extreme-verbosity --rest-in-peace-performance
+
+[16:38:46.0990] <arai>
+there are 2 things I can think of.  one is tracelogger ([TraceLoggerAPI.h](https://searchfox.org/mozilla-central/rev/c30349265c87047a324a471d2f39a216b6749262/js/public/TraceLoggerAPI.h)), and another is tweaking code coverage ([CodeCoverage.h](https://searchfox.org/mozilla-central/rev/c30349265c87047a324a471d2f39a216b6749262/js/src/vm/CodeCoverage.h))
+
+[16:38:59.0727] <arai>
+but I don't know much about the details of them
+
+[16:39:35.0941] <arai>
+let's wait for someone who knows better.  meanwhile, try looking into the above and related code
+
+[16:40:19.0521] <r3st>
+Will do! Thank you for the help! 
+
+
+2022-06-23
+[23:53:31.0343] <arai>
+note that TraceLogger is not maintained, and you might hit issue, and also not sure if it can directly generate the data you want.  but still, you could modify the code to output related data and process it manually to generate the data you want
+
+[02:08:28.0048] <ochameau>
+r3st: I'm wondering if that prototype could help you:
+https://phabricator.services.mozilla.com/D129035
+(You would have to apply the two patches)
+
+We have been wondering in Devtools team if such feature could be helpful.
+That's something we can land and actively maintain as that's based on the API used to debug JavaScript.
+
+arai: I was also wondering if this could possibly help remove unaintained tracing code. But may be the tracing code exposes more information?
+
+[02:16:46.0414] <arai>
+I don't know what tracelogger provides.  here's related repository https://github.com/h4writer/tracelogger if it helps
+
+[02:18:46.0208] <arai>
+but yeah, having an devtools integration for the trace logging sounds nice.  I guess it can help investigating issue, e.g. webcompat issue, by showing what function is executed on specific action on webpage, and how it's different between good/bad cases, etc
+
+[02:19:52.0981] <arai>
+it's often difficult and/or time consuming task to investigate how website is working, and figure out how and where the issue is caused
+
+[04:32:48.0004] <ochameau>
+Oh wait, TraceLogger goes much beyond Javascript. It also expose native calls and spidermonkey internals. I though it was a javascript-only tracer. We used to have such API in spidermonkey, used by DevTools a long time ago. But may be it was removed.
+
+[04:32:57.0778] <ochameau>
+ * Oh wait, TraceLogger goes much beyond Javascript. It also exposes native calls and spidermonkey internals. I though it was a javascript-only tracer. We used to have such API in spidermonkey, used by DevTools a long time ago. But may be it was removed.
+
+[06:00:32.0694] <tcampbell>
+TIL, the macro list trick has a name: https://en.wikipedia.org/wiki/X_Macro
+
+[09:08:31.0123] <nbp>
+“but remains relatively unknown.” — the name of it, yes. The feature, well …
+
+[10:32:34.0129] <tcampbell>
+I'm experimenting with cleaning up our telemetry to be slightly less annoying to add. One aspect of that is experimenting with replacing `rt->addTelemetry(JS_TELEMETRY_GC_MINOR_REASON, uint32_t(reason)` with `rt->metrics().gc_minor_reason(uint32_t(reason))`. This gets us in the general direction of where Glean/FOG is going. V8 also uses a very similar approach and it seems to work well enough there.
+
+[10:34:57.0980] <Pastah>
+When running scripts in parallel in different contexts under the same runtime is it guaranteed they will not interfere with each other?
+
+[10:38:48.0920] <tcampbell>
+To run in parallel, you'd need multiple runtimes, which is how Web Workers are implemented.
+
+[10:40:02.0266] <tcampbell>
+The JSContext these days is a little weird. It is usually 1:1 with a JSRuntime, but there are also a handful of JSContext used on other things for things like off-main-thread JIT compile though you largely can ignore them.
+
+[10:41:18.0622] <tcampbell>
+If you are talking about `JS_NewContext`, then yes those create their private JSRuntime internally that might itself reference a "parent runtime", but that is all thread safe.
+
+[10:43:38.0259] <tcampbell>
+You'd need to parse the script into the correct runtime though. The `JSScript*` can't be handed between threads. There are some optimizations you could do using `JS::Stencil` which is shareable between threads and then each thread can call something like `InstantiateGlobalStencil`
+
+[10:44:35.0401] <Pastah>
+> <@arai:mozilla.org> pastah: here's example with multithread https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/55
+
+What about this?
+
+[10:44:55.0560] <Pastah>
+ah yes JSRuntime
+
+[10:44:59.0803] <Pastah>
+ * ah yes `JSRuntime`
+
+[10:45:27.0329] <tcampbell>
+Pastah: yeah, that example is good. You'll note that it uses `ExecuteCode` which takes a string, then internally parses and executes it
+
+[10:46:20.0548] <tcampbell>
+roughly, you can imagine that each thread/worker has it's own GC heap, so things like JSObject / JSScript cannot be shared
+
+[10:47:22.0442] <tcampbell>
+(In a web browser, sending a JS object to a Worker would use `postMessage` and then would serialize and deserialize to make a _copy_ of the object in the worker that is _mostly_ the same)
+
+[10:51:35.0965] <tcampbell>
+So, going back to your original question, I believe the simple answer is probably that yes, they are independant.
+
+[10:52:20.0942] <Pastah>
+Thank you
+
+[10:57:50.0236] <nbp>
+tcampbell: don't we already have something like that for the telemetry. I recall adding some JS shell interface where one could add telemetry like any other, but it does not necessarily require it to be implemented as part of Firefox.
+
+[10:58:34.0623] <nbp>
+> <@drpastah:matrix.org> When running scripts in parallel in different contexts under the same runtime is it guaranteed they will not interfere with each other?
+
+We have UseCounter for that, which are aggregated by document, within Firefox.
+
+[11:02:41.0758] <tcampbell>
+Right now we always use `addTelemetry` and then an enum value. Part of the motivation people have for the generated structure approach is that you can build in better typing instead of just uint32_t raw values.
+
+[11:10:02.0946] <tcampbell>
+(I believe the parallel scripts question is unrelated to telemetery discussion)
+
+[12:40:18.0926] <Pastah>
+> <@nbp:mozilla.org> [JS::DisableJitBackend](https://searchfox.org/mozilla-central/rev/cc98a15c7327d742d283cddddde712a8a3165006/js/src/vm/Initialization.cpp#341), and [--disable-jit](https://searchfox.org/mozilla-central/source/js/moz.configure#172)
+
+I don't think I have `JS::DisableJitBackend()` in libmozjs 68.0
+
+[12:41:26.0235] <Pastah>
+yeah, I don't see it in searchfox
+
+[13:07:51.0847] <djvj2>
+Where is the ScriptSourceObject's methods/fields/interface defined?
+
+[13:08:32.0374] <djvj2>
+Want to add a js-exposed method to hash the contents with a fast hash without extracting a jsstring, then utf8-converting it, then hashing it.
+
+[13:17:11.0767] <tcampbell>
+djvj2: Hey!
+
+[13:17:21.0192] <tcampbell>
+I think there just are not any methods on it right now
+
+[13:18:34.0129] <tcampbell>
+(I don't think there is a prototype either to shove it on unfortunately)
+
+[13:19:49.0094] <tcampbell>
+ * (I don't think there is a prototype either to shove it on unfortunately. https://searchfox.org/mozilla-central/rev/45ecfdfaa2f74083b11c1414ddb4c1a640b0d19d/js/src/vm/JSScript.cpp#725)
+
+[13:44:05.0371] <djvj2>
+tcampbell: I'm willing to do some minor violence here.  I can gate on whether recording is on and precompute a hash to store on the script source object.  Need to get my hands on that source in a relatively pure form for hashing though.
+
+[13:46:34.0287] <djvj2>
+Our fork is running into this major perf issue where we spend multiple seconds hashing some js source files of around 15mb or so.  Just converting that _to_ a JSString, then utf8-encoding that into a byte array, then hashing that byte array..
+
+[13:49:42.0728] <djvj2>
+15mb is too much javascript
+
+[13:53:10.0626] <djvj2>
+I can't figure out how the fields are mapped either.  ScriptSourceObject sets a bunch of inner slots, but where's the property map and shape definition done?
+
+[14:23:30.0957] <tcampbell>
+djvj2: ScriptSourceObject has no exposed properties so it is just a default empty-shape-with-a-couple-reserved-slots
+
+[14:24:00.0470] <tcampbell>
+We generally are using C++ / self-hosting that knows the concrete type and the slot-index enum
+
+[14:25:02.0465] <tcampbell>
+Does having the hash on ScriptSource (the non-object, C++ type) make it easier?
+
+[14:25:47.0996] <tcampbell>
+For example, if you were using Debugger API for this stuff, you'd have a DebuggerScript instead of a raw ScriptSourceObject, and that would be a good place to shove the hash function
+
+
+2022-06-24
+[17:44:26.0370] <djvj2>
+> <@tcampbell:mozilla.org> For example, if you were using Debugger API for this stuff, you'd have a DebuggerScript instead of a raw ScriptSourceObject, and that would be a good place to shove the hash function
+
+I have been looking at the wrong object then.
+
+[17:44:35.0881] <djvj2>
+thanks!  I'll look at DebuggerScript
+
+[18:07:50.0007] <tcampbell>
+Oops, DebuggerSource, but same concept
+
+[06:10:33.0844] <djvj2>
+Yeah I found it yesterday.  Hacked up an ugly-ish solution.  Testing it now by just having DebuggerSource.hash return a unique generated string each time.
+
+[06:10:59.0940] <djvj2>
+Thanks for the help!
+
+[06:38:57.0584] <tcampbell>
+Glad it was straightforward :)
+
+[09:42:21.0438] <jakechampion>
+Is there a way to raise a TypeError instead of an Error with `JS_ReportErrorASCII` ?
+
+[09:48:52.0539] <jakechampion>
+I found ErrorResult has ThrowTypeError but I'm not sure how to construct an ErrorResult from the public JS API
+
+[09:53:20.0536] <elliottt>
+what's the best way to determine if lazy loading is disabled in spidermonkey? a colleague at fastly mentioned that spidermonkey uses lazy loading to improve performance on the web, but for our uses here it would be really great to ensure that all code is eagerly translated to bytecode.
+
+[09:55:16.0951] <jakechampion>
+> <@elliottt:mozilla.org> what's the best way to determine if lazy loading is disabled in spidermonkey? a colleague at fastly mentioned that spidermonkey uses lazy loading to improve performance on the web, but for our uses here it would be really great to ensure that all code is eagerly translated to bytecode.
+
+If it helps, this was about disabling the lazy compilation of Regular Expressions in particular
+
+[09:58:15.0178] <elliottt>
+exactly right. i think there's currently no option to disable lazy compilation of regular expressions, but following the existing implementation for conditional lazy loading seemed like a good way to understand next steps for allowing lazy regex compilation to be disabled as well.
+
+[09:59:26.0872] <mgaudet>
+iain: ^ (regarding regex compilation) 
+
+[09:59:52.0811] <nbp>
+Sounds like one more thing we could off-load the compilation of :)
+
+[10:01:33.0786] <mgaudet>
+> <@jakechampion:mozilla.org> I found ErrorResult has ThrowTypeError but I'm not sure how to construct an ErrorResult from the public JS API
+
+Hmm. Looks like your best bet would be JS::CreateError
+
+[10:02:05.0365] <mgaudet>
+but not sure yet how to throw that
+
+[10:02:30.0289] <evilpie>
+jakechampion: depends on where your code lives
+
+[10:02:49.0907] <mgaudet>
+> <@elliottt:mozilla.org> what's the best way to determine if lazy loading is disabled in spidermonkey? a colleague at fastly mentioned that spidermonkey uses lazy loading to improve performance on the web, but for our uses here it would be really great to ensure that all code is eagerly translated to bytecode.
+
+I will note, regex compilation is largely separate from script compilation, and I think follow different heuristics too 
+
+[10:03:59.0850] <elliottt>
+that's good to know, thank you. my interest in lazy loading was twofold: following an existing implementation through the codebase to understand conventions for flags like this, and verifying that we're successfully disabling lazy loading in our own use of spidermonkey.
+
+[10:07:04.0157] <mgaudet>
+> <@mgaudet:mozilla.org> Hmm. Looks like your best bet would be JS::CreateError
+
+Oh, 🤦‍♂️ then JS_SetPendingException should work
+
+[10:07:54.0967] <evilpie>
+So JS_ReportErrorNumberASCII is the version of JS_ReportErrorASCII that would allow you to select the type of error to throw
+
+[10:08:01.0104] <evilpie>
+but the setup for this isn't easy
+
+[10:09:29.0041] <mgaudet>
+I guess we must be able to add external numbers; because we have https://searchfox.org/mozilla-central/source/js/src/jsshell.msg which contains the shell messages 
+
+[10:09:38.0753] <mgaudet>
+Never tried to figure out how that worked tho
+
+[10:10:36.0403] <mgaudet>
+Oh. That's acctually less complicated than I worried; https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#10063-10077 
+
+[10:10:38.0275] <evilpie>
+You would implement a custom JSErrorCallback https://searchfox.org/mozilla-central/source/js/public/ErrorReport.h#92
+
+[10:10:43.0099] <mgaudet>
+ * Oh. That's actually less complicated than I worried; https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#10063-10077 
+
+[10:20:12.0446] <elliottt>
+this looks like the option that controls lazy loading, and it does appear to be `false` by default: https://searchfox.org/mozilla-central/source/js/public/CompileOptions.h#183
+
+[10:27:46.0760] <iain>
+elliottt: Regular expressions are compiled when they are first used. By default, we initially compile them to a bytecode format that can be interpreted. After the tenth use, we compile them to native code.
+
+[10:29:47.0317] <elliottt>
+thanks! for our uses, it would be great to ensure that they're eagerly compiled to bytecode so that we're not paying the cost to re-compile the regex everytime the spidermonkey instances is reloaded fresh.
+
+[10:31:10.0023] <iain>
+The relevant flags are `--no-native-regexp` (to force execution in the interpreter) and `--regexp-warmup-threshold=COUNT` (set to 0 to jump straight to native code)
+
+[10:32:04.0282] <elliottt>
+we're unable to generate native code in this case, as we're running spidermonkey compiled to wasm. will setting the warmup threshold to 0 also force eager compilation to bytecode when the source is first compiled?
+
+[10:33:03.0598] <iain>
+No, the warmup threshold only affects what happens when we first execute
+
+[10:34:51.0399] <iain>
+In general it isn't possible to precompile every regexp, because `Regexp(someStringVariable)` is a valid way to create a regexp
+
+[10:35:28.0988] <elliottt>
+that's a good point. what about the case where we have a regex literal?
+
+[10:36:57.0892] <iain>
+Right now we run it through the regex parser to emit syntax errors, then throw away the parse tree
+
+[10:37:58.0710] <iain>
+(The spec says that regex syntax errors should happen when you parse the script, although v8 just ignores that part of the spec and doesn't parse at all until the regex runs)
+
+[10:43:33.0773] <iain>
+Here is the parser code: https://searchfox.org/mozilla-central/source/js/src/frontend/Parser.cpp#11053-11118
+
+[10:45:13.0716] <iain>
+I think it would technically be possible to force the creation of regexp bytecode at that point, and save it in the stencil for later, but it would require plumbing changes through quite a few layers
+
+[10:45:53.0673] <iain>
+elliottt: Have you measured any problems with the cost of regexps, or is this problem hypothetical
+
+[10:45:59.0902] <iain>
+ * elliottt: Have you measured any problems with the cost of regexps, or is this problem hypothetical?
+
+[10:49:57.0720] <iain>
+There are definitely some patterns where the regexp parser is slow, but in some of those cases you can work around it by modifying the regexp
+
+[10:50:06.0459] <iain>
+So if you have concrete examples I can take a look
+
+[10:53:50.0381] <elliottt>
+the problem isn't hypothetical for us: we load the js to execute into spidermonkey, run it so that it registers callbacks, and then freeze the wasm memory at that point. we then re-run the wasm from that point whenever we're running the javascript, which means that every time a regex is used that wasn't evaluated in the top-level of the script, it's as though it's used for the first time
+
+[10:54:46.0166] <elliottt>
+we' like to eagerly compile all regexes when the script is first loaded to avoid having to refactor programs to use global regex objects that live at the top-level of the program
+
+[10:55:20.0659] <iain>
+So, one thing to mention is that regexp compilation is shared between all regexps with the same source
+
+[10:55:55.0540] <iain>
+So if you execute a regexp once, then another regexp with the same source will not need compilation
+
+[10:57:39.0379] <elliottt>
+oh interesting! so it's enough to replicate the textual pattern of the regex at the top-level of the script?
+
+[10:57:46.0446] <iain>
+Yep
+
+[10:58:01.0910] <iain>
+Well, you also need to run it on something
+
+[10:58:31.0463] <iain>
+Ideally you would run it on two strings, one with only latin1 characters, and another with two-byte characters
+
+[10:58:32.0045] <elliottt>
+that might be a good short-term fix, but longer-term we would like to optimize usage patterns as well, most likely yielding new regexes as a result.
+
+[10:59:30.0524] <iain>
+Strings inside SM can be stored with 1-byte or 2-byte encodings, so we (lazily) compile a separate regexp for each
+
+[11:11:26.0399] <iain>
+elliottt: Right now, regexp compilation relies heavily on the existence of a RegExpShared, which is the garbage-collected object storing data that can be shared between different regexps with the same source
+
+[11:13:37.0609] <iain>
+The parser doesn't interact with GC things, so a lot of the code in `RegExpAPI.cpp` would have to be refactored (particularly `CompilePattern` and `Assemble`)
+
+[11:18:05.0180] <iain>
+After creating a GC-free interface for the parser to call (returning the bytecode plus any other necessary metadata), you'd have to store that data in the regexp stencil, and then modify the code that consumes the stencil to create a RegExpObject to prepopulate the bytecode field of the associated RegExpShared
+
+[11:18:21.0866] <iain>
+Which is a little tricky, since I think normally we allocate the RegExpShared lazily as well, but doable
+
+[11:18:51.0857] <elliottt>
+thank you so much for the explanation, this is really helpful :)
+
+[11:26:00.0332] <iain>
+In the short term, my advice would be to add something like `function precompileRegex(r) { r.exec("a"); r.exec("\u1000"); }` to your scripts and call it at the top level on any regexps you want precompiled
+
+[11:28:49.0895] <Pastah>
+> <@pastah:mozilla.org> ```bash
+> export PKG_CONFIG_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig
+> export LD_LIBRARY_PATH=/home/dj/spiderMonkey/install/lib
+> meson _build
+> ```
+
+returning back to this
+
+[11:28:54.0820] <elliottt>
+the difficulty is that we're handling arbitrary javascript, and don't have much control over the dependencies our customers choose to use. we can potentially pre-process the javascript to add calls like that automatically at the top-level, but it would be great in the longer-term to implement something like you've suggested above, where we can pre-compile regexes
+
+[11:29:35.0729] <Pastah>
+> <@drpastah:matrix.org> returning back to this
+
+`libmozjs-103a1` isn't being found even though I see `libmozjs-103a1 .so` and `mozjs-103a1.pc` in those directories
+
+[11:30:21.0699] <Pastah>
+i.e. the dependency isn't being found: "Dependency 'mibmozjs-103a1' not found, tried pkgconfig and cmake". I exported those paths
+
+[11:33:16.0416] <Pastah>
+ * i.e. the dependency isn't being found: "Dependency 'libmozjs-103a1' not found, tried pkgconfig and cmake". I exported those paths
+
+[11:33:57.0566] <Pastah>
+actually it works now with `mozjs-103a1` instead as the dependency. but it's saying that cannot compile the tests in the `meson.build`
+
+
+2022-06-25
+[17:30:56.0066] <TheQwertiest>
+has anyone tried building SM on Windows lately?
+I remember a while ago `mozmake` was used to build it, but it's not available anymore with the latest MozillaBuild
+
+[17:31:41.0831] <TheQwertiest>
+MozillaBuild version: 4.1
+Mozilla repo src version: ESR 91.10
+
+[17:31:59.0829] <TheQwertiest>
+ * MozillaBuild version: 4.0.1
+Mozilla repo src version: ESR 91.10
+
+[17:37:32.0169] <arai>
+TheQwertiest: iiuc, mozmake is downloaded during mach bootstrap or mach build, into ~/.mozbuild
+
+[17:38:27.0845] <arai>
+Pastah: can you pastebin the error details?
+
+[17:41:06.0676] <arai>
+the exact output in the terminal, and the content of log files pointed there, etc
+
+[05:14:49.0375] <TheQwertiest>
+arai: I've tried on the clean branch checkout and now it's broken completely :D
+is there anyone I could poke who can help me with Win build?
+
+[05:23:35.0837] <TheQwertiest>
+Various ways I've tried (all on clean checkout):
+0. (same for all ways) Exec start-shell.bat from windows cmd
+1. Build by mach (based on https://firefox-source-docs.mozilla.org/setup/windows_build.html):
+  - `export MOZBUILD_STATE_PATH=SOME_PATH`
+  - `./mach bootstrap`: choose SM, opt out of telemetry and commiting
+  - `./mach build` 
+  - fails with `FileNotFoundError: [WinError 2]` (full log will be attached in the next msg)
+2. Build from js/src (based on):
+ - `cd js/src`
+ - `cp ./configure.in ./configure`
+ - `chmod +x ./configure`
+ - `mkdir _build`
+ - `cd _build`
+ - `../configure --enable-nspr-build --disable-jemalloc --disable-js-shell --disable-tests --target=i686-pc-mingw32 --host=i686-pc-mingw32`
+- fails during `checking for host system type` (full log in the ntex msg)
+
+[05:25:41.0144] <TheQwertiest>
+ * Various ways I've tried (all on clean checkout):
+0. (same for all ways) Exec start-shell.bat from windows cmd
+
+1. Build by mach (based on https://firefox-source-docs.mozilla.org/setup/windows\_build.html):
+
+- `export MOZBUILD_STATE_PATH=SOME_PATH`
+- `./mach bootstrap`: choose SM, opt out of telemetry and commiting
+- `./mach build`
+- fails with `FileNotFoundError: [WinError 2]` (full log will be attached in the next msg)
+
+2. Build from js/src (based on https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md):
+
+- `cd js/src`
+- `cp ./configure.in ./configure`
+- `chmod +x ./configure`
+- `mkdir _build`
+- `cd _build`
+- `../configure --enable-nspr-build --disable-jemalloc --disable-js-shell --disable-tests --target=i686-pc-mingw32 --host=i686-pc-mingw32`
+- fails during `checking for host system type` (full log in the ntex msg)
+
+[05:26:12.0587] <TheQwertiest>
+ * Various ways I've tried (all on clean checkout):
+0. (same for all ways) Exec start-shell.bat from windows cmd
+
+1. Build by mach (based on https://firefox-source-docs.mozilla.org/setup/windows\_build.html):
+
+- `export MOZBUILD_STATE_PATH=SOME_PATH`
+- `./mach bootstrap`: choose SM, opt out of telemetry and commiting
+- `./mach build`
+- fails with `FileNotFoundError: [WinError 2]` (full log will be attached in the next msg)
+
+2. Build from js/src (based on https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md):
+
+- `cd js/src`
+- `cp ./configure.in ./configure`
+- `chmod +x ./configure`
+- `mkdir _build`
+- `cd _build`
+- `../configure --enable-nspr-build --disable-jemalloc --disable-js-shell --disable-tests --target=i686-pc-mingw32 --host=i686-pc-mingw32`
+- fails during `checking for host system type` (full log in the next msg)
+
+[06:15:12.0449] <TheQwertiest>
+> <@theqwertiest:mozilla.org> Various ways I've tried (all on clean checkout):
+> 0. (same for all ways) Exec start-shell.bat from windows cmd
+> 
+> 1. Build by mach (based on https://firefox-source-docs.mozilla.org/setup/windows\_build.html):
+> 
+> - `export MOZBUILD_STATE_PATH=SOME_PATH`
+> - `./mach bootstrap`: choose SM, opt out of telemetry and commiting
+> - `./mach build`
+> - fails with `FileNotFoundError: [WinError 2]` (full log will be attached in the next msg)
+> 
+> 2. Build from js/src (based on https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md):
+> 
+> - `cd js/src`
+> - `cp ./configure.in ./configure`
+> - `chmod +x ./configure`
+> - `mkdir _build`
+> - `cd _build`
+> - `../configure --enable-nspr-build --disable-jemalloc --disable-js-shell --disable-tests --target=i686-pc-mingw32 --host=i686-pc-mingw32`
+> - fails during `checking for host system type` (full log in the next msg)
+
+narrowed down a bit the crash in case 2: it seems that the `shell` object here is not set (i.e. None) - https://github.com/mozilla/gecko-dev/blob/7dcf573525/build/moz.configure/init.configure#L834
+
+[06:16:55.0443] <TheQwertiest>
+ * narrowed down a bit the crash in case 2: it seems that the `shell` argument here is not set (i.e. None) - https://github.com/mozilla/gecko-dev/blob/7dcf573525/build/moz.configure/init.configure#L834
+
+[06:26:26.0287] <TheQwertiest>
+ok, I've figured it out: it seems that esr 91.10 is incompatible with the latest MozillaBuild:
+- MozillaBuild 4.01 uses msys2
+- esr branch expects msys
+
+[06:27:46.0217] <TheQwertiest>
+ * ok, I've figured it out: it seems that esr 91.10 is incompatible with the latest MozillaBuild:
+
+- MozillaBuild 4.01 uses msys2
+- esr branch expects msys (https://github.com/mozilla/gecko-dev/blob/7dcf573525/build/moz.configure/init.configure#L199)
+
+[06:30:42.0868] <TheQwertiest>
+ * ok, I've figured it out: it seems that esr 91.10 is incompatible with the latest MozillaBuild:
+
+- MozillaBuild 4.01 uses msys2
+- esr branch expects msys (https://github.com/mozilla/gecko-dev/blob/7dcf573525/build/moz.configure/init.configure#L199 , https://github.com/mozilla/gecko-dev/blob/7dcf573525/python/mozbuild/mozbuild/mozconfig.py#L135)
+
+[06:31:04.0834] <TheQwertiest>
+Changing corresponding lines to msys2/usr/bin fixed the build
+
+[06:32:03.0140] <TheQwertiest>
+sigh, I don't think I've ever had a SM version upgrade that didn't involve debugging Win build related problems...
+
+[06:33:07.0990] <TheQwertiest>
+ps: probably that's the same reason why it couldn't find mozmake
+
+[06:36:05.0081] <TheQwertiest>
+ * Changing corresponding lines to msys2/usr/bin fixed (one part of) the build
+
+[08:55:00.0280] <arai>
+people in #build:mozilla.org would know better about MozillaBuild and requirement
+
+
+2022-06-27
+[06:06:20.0236] <jakechampion>
+> <@evilpie:mozilla.org> So JS_ReportErrorNumberASCII is the version of JS_ReportErrorASCII that would allow you to select the type of error to throw
+
+I went with this in the end, it works perfectly, thank you all for the advice ☺️
+
+[10:37:59.0452] <davidj361>
+> <@arai:mozilla.org> the exact output in the terminal, and the content of log files pointed there, etc
+
+On a different account
+I noticed that my `meson-log.txt` has `ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+but it works with `ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[10:39:25.0558] <davidj361>
+My `meson-log.txt` https://termbin.com/jlzk
+
+[10:39:48.0453] <davidj361>
+> <@arai:mozilla.org> the exact output in the terminal, and the content of log files pointed there, etc
+
+ * On a different account
+I noticed that my `meson-log.txt` has `ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` and **ran it manually from CLI where it failed**
+but it works with `ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[10:46:56.0292] <davidj361>
+ * On a different matrix account
+I noticed that my `meson-log.txt` has `ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` and **ran it manually from CLI where it failed**
+but it works with `ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[10:47:36.0099] <davidj361>
+i did change the `test.cpp` and `test.exe` as the code it was testing was temporary from `meson.build` which gets deleted
+
+[10:48:21.0773] <davidj361>
+The meson command: `LD_LIBRARY_PATH=/home/dj/spiderMonkey/install/lib PKG_CONFIG_PATH=/home/dj/spiderMonkey/install/lib/pkgconfig meson _build`
+I did try with `export` as well
+
+[10:48:56.0640] <davidj361>
+ * i did change the `test.cpp` and `test.exe` as the code it was testing was temporary from `meson.build` which gets deleted
+I.e. I copy pasted the test code from `meson.build` and made it as `test.cpp`
+
+[10:55:16.0476] <davidj361>
+ * On a different matrix account
+I noticed that my `meson-log.txt` has `ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` and **ran it manually from CLI where it failed**
+but it **works** with `ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[11:55:04.0418] <davidj361>
+ * i did change the manual execution to `test.cpp` and `test.exe` as the code it was testing via `meson` was temporary from `meson.build` which gets deleted
+I.e. I copy pasted the test code from `meson.build` and made it as `test.cpp`
+
+[11:55:19.0020] <davidj361>
+ * On a different matrix account
+I noticed that my `meson-log.txt` has (modified for manual CLI execution) `ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` and **ran it manually from CLI where it failed**
+but it **works** with `ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[11:55:42.0701] <davidj361>
+ * On a different matrix account
+I noticed that my `meson-log.txt` has (modified for manual CLI execution)
+`ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` and **ran it manually from CLI where it failed**
+but it **works** with 
+`ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[11:56:34.0161] <davidj361>
+ * On a different matrix account
+I noticed that my `meson-log.txt` has (**modified to ran manually from CLI**)
+`ccache c++ -L/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/~/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group` 
+and **where it failed** but it **works** with
+`ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group`
+i.e. I deleted `/home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/` from `-L`
+
+[12:36:49.0587] <davidj361>
+trying this without a prefix on the install still gives the same errors...
+
+[12:39:24.0383] <davidj361>
+but running the command that's failing and changing:
+`ccache c++ -L/home/dj/spiderMonkey/install/lib /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem ~/spiderMonkey/install/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group -lmozjs-103a1 -Wl,--end-group `
+to
+`ccache c++ /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem /usr/local/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group /usr/local/lib/libmozjs-103a1.so -Wl,--end-group `
+**works**....
+
+[12:40:07.0852] <davidj361>
+ * but running the command that's failing and changing:
+`ccache c++ /home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/meson-private/tmp4xako0ph/testfile.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/meson-private/tmp4xako0ph/output.exe -pipe -isystem /usr/local/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group /usr/local/lib/libmozjs-103a1.so -Wl,--end-group `
+to
+`ccache c++ /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.cpp -o /home/dj/workspace/scriptingService/POC/SpiderMonkey/test.exe -pipe -isystem /usr/local/include/mozjs-103a1 -D_FILE_OFFSET_BITS=64 -O0 -fpermissive -std=c++17 -DDEBUG=1 -Wl,--start-group /usr/local/lib/libmozjs-103a1.so -Wl,--end-group `
+**works**....
+
+[12:40:15.0841] <davidj361>
+was a typo above, fixed
+
+[12:42:15.0906] <davidj361>
+The error I get: /home/dj/workspace/scriptingService/POC/SpiderMonkey/_build/meson-private/tmp4xako0ph/output.exe: error while loading shared libraries: libmozjs-103a1.so: cannot open shared object file: No such file or directory
+https://termbin.com/grh1
+
+[12:42:23.0072] <davidj361>
+ * The error I get:
+`/home/dj/workspace/scriptingService/POC/SpiderMonkey/\_build/meson-private/tmp4xako0ph/output.exe: error while loading shared libraries: libmozjs-103a1.so: cannot open shared object file: No such file or directory`
+https://termbin.com/grh1
+
+[12:42:25.0650] <mgaudet>
+davidj361: Given Meson is only used in the embedding examples, I'd suggest you'd find the most help by opening an issue there
+
+[12:42:28.0979] <davidj361>
+ * The error I get is differentthis time:
+`/home/dj/workspace/scriptingService/POC/SpiderMonkey/\_build/meson-private/tmp4xako0ph/output.exe: error while loading shared libraries: libmozjs-103a1.so: cannot open shared object file: No such file or directory`
+https://termbin.com/grh1
+
+[12:42:39.0096] <davidj361>
+ * The error I get is different this time:
+`/home/dj/workspace/scriptingService/POC/SpiderMonkey/\_build/meson-private/tmp4xako0ph/output.exe: error while loading shared libraries: libmozjs-103a1.so: cannot open shared object file: No such file or directory`
+https://termbin.com/grh1
+
+[12:44:24.0623] <davidj361>
+ * The error I get is different this time:
+`/home/dj/workspace/scriptingService/POC/SpiderMonkey/\_build/meson-private/tmp4xako0ph/output.exe: error while loading shared libraries: libmozjs-103a1.so: cannot open shared object file: No such file or directory`
+https://termbin.com/grh1
+I do have a `libmozjs-103a1.so` in `/usr/local/lib`
+
+[12:45:39.0520] <davidj361>
+> <@mgaudet:mozilla.org> davidj361: Given Meson is only used in the embedding examples, I'd suggest you'd find the most help by opening an issue there
+
+on the embedding example repo as a github issue right?
+
+[12:46:02.0207] <mgaudet>
+Yeah; something seems to be particular about paths
+
+[12:46:19.0236] <davidj361>
+it almost seems like a pkg-config or meson issue
+
+[12:46:24.0888] <davidj361>
+ * it almost seems like a pkg-config or meson inherent issue
+
+[12:46:26.0400] <mgaudet>
+but I don't understand meson, or how it composes these things so I feel like you're not getting enough help here
+
+[12:52:43.0575] <davidj361>
+maybe i can just manually compile an example or 2 manually via `g++`?
+
+[12:52:51.0410] <davidj361>
+ * maybe i can just manually compile an example or 2  via `g++`?
+
+[12:54:51.0512] <mgaudet>
+probably! For your own project, if you're not already into meson, you'd likely use something else (Makefiles/Cmake etc) to manage your builds, so not the worst idea to figure that out
+
+[13:08:43.0200] <liam_g>
+What's the easiest way of copying all of one object's properties to another?
+
+[13:11:04.0072] <liam_g>
+Context: I've created an object with a given prototype, and before I return it, I want to clear the prototype. But the `JS_SetPrototype()` function has all sorts of warnings. So I thought it might be easier just to create a clone of that object, but without the prototype.
+
+[13:14:44.0620] <mgaudet>
+liam_g: What happens to the newly created object? Just dropped on the floor for GC? 
+
+Can you just create the object at the start will a null prototype? 
+
+[13:19:32.0960] <liam_g>
+I need the prototype in the middle though.
+
+[13:20:15.0947] <liam_g>
+I know this sounds fishy. Maybe there's another way around. But if there's a simple way of copying, it might work.
+
+[13:20:47.0999] <liam_g>
+ * I know this sounds fishy. Maybe there's another way of doing what I'm trying to do. But if there's a simple way of copying, it might work.
+
+[13:22:24.0785] <iain>
+Why do you need the prototype at all?
+
+[13:23:23.0816] <mgaudet>
+(To your question though, there's [this ](https://searchfox.org/mozilla-central/source/js/src/jsfriendapi.h#175-176) which will do what you want I suspect) 
+
+[13:24:09.0359] <iain>
+If you want to call a method on an object, you can always use `theProto.method.call(yourObject, some, arguments)`
+
+[13:25:00.0799] <iain>
+(Although that could run into problems depending on what those methods are doing, and whether they expect the object to have other methods available)
+
+[13:26:48.0953] <liam_g>
+> <@iain:mozilla.org> If you want to call a method on an object, you can always use `theProto.method.call(yourObject, some, arguments)`
+
+Is this Javascript code or C++ / Spidermonkey code?
+
+[13:27:25.0087] <iain>
+JS
+
+[13:29:45.0663] <liam_g>
+I'm working on embedding Spidermonkey into an audio application. My use case is a bit unusual, and I'm using the prototype in a bit of a non-standard way.
+
+[13:30:03.0906] <iain>
+The equivalent in C++ would be something like [JS_CallFunction](https://searchfox.org/mozilla-central/source/js/public/CallAndConstruct.h#68-72)
+
+[13:31:54.0665] <iain>
+(But this is just me guessing about what you are using the prototype for)
+
+[13:34:33.0424] <liam_g>
+Basically, there is a hierarchy of special objects called Cells which I'm implementing as JSProxies. Each Cell has its parent object set as the prototype. This is something that I'm implementing in C++, and the user will not be able to change it in JS. The idea is that when the user looks up a property in a Cell that doesn't exist in that Cell, it will (always) search in all parent Cells also, because the prototype chain matches the Cell hierarchy.
+
+[13:34:48.0876] <liam_g>
+ * Basically, in my app, there is a hierarchy of special objects called Cells which I'm implementing as JSProxies. Each Cell has its parent object set as the prototype. This is something that I'm implementing in C++, and the user will not be able to change it in JS. The idea is that when the user looks up a property in a Cell that doesn't exist in that Cell, it will (always) search in all parent Cells also, because the prototype chain matches the Cell hierarchy.
+
+[13:35:51.0396] <iain>
+If you're not exposing an object to JS before changing its prototype, then the big warnings on JS_Prototype shouldn't apply
+
+[13:36:12.0313] <liam_g>
+Oh, that is good to know.
+
+[13:36:18.0286] <iain>
+Unless you're changing the prototype of something that is already prototype for something else
+
+[13:36:42.0990] <iain>
+ * Unless you're changing the prototype of something that is already a prototype for something else
+
+[13:37:04.0050] <liam_g>
+Right.
+
+[13:37:11.0758] <liam_g>
+I think that answers my question.
+
+[13:37:43.0043] <iain>
+Note also that proxies are themselves kind of slow
+
+[13:38:10.0677] <iain>
+So if you can find a way to solve your problem that doesn't use them, that might be good for performance
+
+[13:38:19.0403] <iain>
+But it's probably best to get something working and then measure
+
+[13:38:37.0730] <liam_g>
+yeah, but it's much smoother programming than the other method using virtual functions.
+
+[13:39:33.0018] <liam_g>
+Thanks for the warning though. I'll keep it in mind.
+
+[13:44:21.0667] <liam_g>
+Since you know about proxies, maybe you can help me with another question. When is the BaseProxyHandler::enter() virtual method called? I had assumed that it was called before any get / set operation on the proxy, but this doesn't seem to be the case. And in fact, I haven't yet found any conditions under which it gets called.
+
+[14:06:39.0795] <iain>
+Not super familiar with that code, but it looks like it's used for implementing security boundaries
+
+[14:07:29.0279] <iain>
+You can see that in `AutoEnterPolicy` [here](https://searchfox.org/mozilla-central/source/js/public/Proxy.h#612-614), we only call the `enter` method if the `hasSecurityPolicy` [flag](https://searchfox.org/mozilla-central/source/js/public/Proxy.h#190-196) is set
+
+[15:16:16.0778] <liam_g>
+I see. So if I'm not using security boundaries I can ignore it then.
+
+[15:16:23.0305] <liam_g>
+Thanks for your help!
+
+
+2022-06-28
+[06:36:09.0014] <davidj361>
+Trying to manually compile some of the embedding examples with a `make install` of spider monkey 103 a1, i get this error:
+`/home/dj/spiderMonkey/install/include/mozjs-103a1/js/ProfilingCategory.h:13:10: fatal error: js/ProfilingCategoryList.h: No such file or directory`
+
+[06:40:21.0310] <arai>
+sounds like bug 1768629
+
+[06:40:22.0870] <botzilla>
+https://bugzil.la/1768629 — UNCONFIRMED (nobody) — ProfilingCategory.h missing on fresh SpiderMonkey make
+
+[06:41:37.0834] <arai>
+or bug 1776254
+
+[06:41:39.0218] <botzilla>
+https://bugzil.la/1776254 — NEW (nobody) — Cannot build library for SM embedding examples, missing ProfilingCategoryList.h
+
+[06:41:40.0260] <arai>
+maybe the same issue
+
+[07:01:38.0340] <davidj361>
+do you have a recommended download to get this feature? https://searchfox.org/mozilla-central/rev/cc98a15c7327d742d283cddddde712a8a3165006/js/src/vm/Initialization.cpp#341
+
+[07:02:04.0943] <davidj361>
+i.e. `make install` of a certain branch will work with the embedding examples?
+
+[07:02:19.0533] <davidj361>
+ * i.e. `make install` of a certain branch will work with the embedding examples?
+as 103 a1 seems broken
+
+[07:05:29.0740] <davidj361>
+as `Firefox ESR 91` doens't have that feature which is recommended here: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md
+
+[07:08:09.0882] <davidj361>
+this? https://ftp.mozilla.org/pub/firefox/releases/99.0/source/ it's not ESR though
+
+[07:19:12.0875] <evilpie>
+maybe https://ftp.mozilla.org/pub/firefox/releases/102.0esr/source/
+
+[07:33:43.0294] <davidj361>
+> <@evilpie:mozilla.org> maybe https://ftp.mozilla.org/pub/firefox/releases/102.0esr/source/
+
+but 102 was the version that this bug was reported on (which I'm getting) https://bugzilla.mozilla.org/show_bug.cgi?id=1768629
+
+[07:34:32.0371] <evilpie>
+I didn't read the backscroll. I would suggest just fixing it yourself
+
+[07:39:09.0264] <davidj361>
+btw is version 68 on ubuntu 20.04 considered JIT or no?
+
+[07:39:25.0405] <davidj361>
+i know version 88 introduced `--enable-jit`
+
+[07:59:38.0499] <jandem>
+the JIT should be enabled by default if the platform supports it, also back in 68
+
+[08:03:14.0497] <jandem>
+ * the JIT should be enabled by default if the platform is supported, also in 68
+
+[12:19:38.0307] <mgaudet>
+ sfink Are you around? I am getting beaten up by a hazard, and would love some expertise. 
+
+[12:35:19.0171] <sfink>
+mgaudet: PTO today, but I may have time in a half hour.
+
+[12:36:17.0913] <mgaudet>
+sfink: Nope, don't worry about it. I think I've got it now (in this case, the hazard isn't real, but the general case is, in which case boy oh boy am I happy the hazard analysis runs :P ) 
+
+[12:36:40.0253] <mgaudet>
+(I'll know for sure in about 1.5 h when the hazard build finishes :) ) 
+
+[12:37:36.0896] <sfink>
+it doesn't happen to reproduce in the JS shell? That one goes a lot faster. And if you're on linux, it's relatively easy to run now.
+
+[12:40:18.0155] <mgaudet>
+sfink: browser only, I should try local build... will do if this one fails. 
+
+[12:40:22.0809] <mgaudet>
+sfink: back to PTO you!
+
+
+2022-06-29
+[07:38:30.0039] <mgaudet>
+confession: Initial ShadowRealms prototype is landed.
+
+[07:38:33.0420] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[08:45:45.0812] <@allstarschh>
+jonco: just replied the mail, I will be 15mins late or we can cancel the meeting today
+
+[12:51:43.0471] <jimb>
+Say, does anyone know why `JS::NewExternalArrayBuffer` requires `nbytes` to be greater than zero? WebGPU needs to be able to create zero-length GPU buffer 'mappings'.
+
+[12:53:06.0506] <jimb>
+It seems like `AddCellMemory` is ready for a zero `nbytes`.
+
+[12:55:08.0661] <jimb>
+And `ArrayBufferObject::initialize` surely has to be able to cope with zeros, since that's the implementation of the DOM `ArrayBuffer` object, and those can be zero-length.
+
+
+2022-06-30
+[00:23:22.0401] <jandem>
+probably fine to change
+
+[00:25:08.0006] <jandem>
+but `ArrayBuffer` is ours 😠  :-)
+
+[00:46:44.0042] <jandem>
+slightly related, I think it's time to revisit our static buffer limit for {S}AB since people are running into it... bug 1777231
+
+[00:46:45.0532] <botzilla>
+https://bugzil.la/1777231 — UNCONFIRMED (nobody) — SharedArrayBuffer usage leads to out of memory error
+
+[01:00:38.0059] <jandem>
+I think our SAB implementation over-allocates currently, but if people start using many smaller SABs we probably want to change that too
+
+[02:16:24.0975] <nical>
+Hi! (Not sure this is the right place ask, let me know) We have a concept of external ArrayBuffers which are created around a provided pointer and length that is are owned by some other part of gecko. What happens to them when they are sent to a worker thread ?
+
+[02:17:05.0937] <nical>
+Or if you know where to look for the logic around sending array buffers between workers I'm happy to do the searching
+
+[02:22:10.0087] <Ms2ger 💉💉>
+nical: https://searchfox.org/mozilla-central/source/js/src/vm/StructuredClone.cpp#1213 I guess
+
+[02:25:10.0830] <nical>
+Ms2ger 💉💉: thanks
+
+[03:31:58.0433] <liam_g>
+I'm using JS_ExecuteScript() with the envChain argument to specify the scope of the caller. Inside the JSNative, I'm using JS::CallArgs.computeThis() to find the scope object again, but it's not giving me the expected results. It seems to be giving me the global object instead. This is weird because I made a mock-up of my project earlier, and it was working fine. I can't see what the difference is between the two. Does anyone know why computeThis() might fail?
+
+[03:32:05.0922] <liam_g>
+Stepping through, I see that computeThis() first does if (thisv().isObject()). In my case, this evaluates to false. Does this give any clues?
+
+[04:05:49.0837] <Ms2ger 💉💉>
+I don't know why `computeThis` would give something else than the global object
+
+[04:07:31.0750] <Ms2ger 💉💉>
+Might be wrong, though
+
+[04:31:10.0589] <jandem>
+liam_g: `computeThis` will give you the lexical environment's this-value if thisv is null/undefined. For non-syntactic environments, like what you get by passing an env chain to `JS_ExecuteScript`, that should not be the global as far as I can tell
+
+[04:31:28.0665] <jandem>
+are you passing exactly one object in the env chain vector?
+
+[04:33:12.0222] <jandem>
+using custom environment chains like this isn't something we recommend. It has performance implications and we want to move away from using this in the browser
+
+[04:34:58.0178] <liam_g>
+I am using exactly one object in the vector
+
+[04:37:15.0582] <liam_g>
+I know that it's unorthodox, but it's a key feature for me, and the main reason that I chose Spidermonkey over other engines. I need to have code which is interpreted from the scope of a particular object.
+
+[04:37:39.0676] <jandem>
+liam_g: your ExecuteScript should end up [here](https://searchfox.org/mozilla-central/rev/4654ce1e24a6af17bc96ab60f1f70c218755142f/js/src/vm/Realm.cpp#233-234), where key is passed as this-value
+
+[04:40:11.0375] <jandem>
+hm actually `BoxNonStrictThis` uses the global lexical's this-value, so that is the global in your case?
+
+[04:42:54.0987] <jandem>
+so it seems `computeThis` ignores non-syntactic environments. The implementation of `this` in the global scope uses a different mechanism (`GetNonSyntacticGlobalThis`)
+
+[04:44:04.0423] <liam_g>
+what is a non-syntactic environment?
+
+[04:45:29.0094] <jandem>
+when you call `JS_ExecuteScript` with one or more environment objects, we create a "non-syntactic environment object" for each of them
+
+[04:53:07.0133] <liam_g>
+unfortunately I'm not yet following how this helps me compute the "this" of an envChain compiled script. 
+
+[04:54:37.0590] <jandem>
+liam_g: it might be easiest to store this object somewhere before you call ExecuteScript and get it from there
+
+[04:55:09.0465] <jandem>
+or require the callers to pass `this` explicitly to your function
+
+[04:56:37.0956] <liam_g>
+The trouble is that the JSNative function is in global scope, so it's harder for it to access these variables.
+
+[04:57:21.0599] <liam_g>
+It's weird because I could swear that I had the whole thing working when I did it in mock-up.
+
+[04:57:55.0052] <liam_g>
+computeThis() was returning the same object that I had passed in throug hthe envChain.
+
+[04:58:26.0019] <liam_g>
+The only difference I can see is that in my real code, the scope object is a proxy, whereas in my mock-up it was not. Could this make any difference?
+
+[04:59:13.0634] <jandem>
+was it the same spidermonkey version?
+
+[04:59:19.0759] <liam_g>
+yes
+
+[05:00:29.0290] <jandem>
+were you calling it the same way? maybe `this.foo()` vs `foo()` or something?
+
+[05:01:30.0883] <liam_g>
+calling `foo()` instead of `this.foo()` is exactly what I'm trying to achieve.
+
+[05:01:39.0009] <liam_g>
+and yes, it's the same in both
+
+[05:10:58.0951] <jandem>
+liam_g: which SM version? is it a debug build? I wonder if there's a difference with how you compile the script
+
+[05:12:04.0228] <jandem>
+(in modern SM you'd have to use `options.setNonSyntacticScope(true)`)
+
+[05:15:25.0636] <liam_g>
+Oh you're right, I think I am calling options.setNonSyntacticScope(true).
+
+[05:20:02.0753] <liam_g>
+I put it there because I was getting an assertion without it.
+
+[05:20:12.0793] <jandem>
+yeah that makes sense
+
+[05:21:14.0831] <jandem>
+liam_g: were you defining the function you're calling the same way? that's the only other thing I can think of for why you'd see a different result
+
+[05:23:14.0994] <jandem>
+looking at `ImplicitThisOperation`, if you're calling `foo()` then `foo` has to exist on the environment object
+
+[05:24:59.0120] <liam_g>
+I've been defining these functions as global functions, hoping that the function call is found on the global object but then the "this" is still the one I specified with envChain.
+
+[05:25:28.0878] <liam_g>
+I think I had it working like this on the mock-up.
+
+[05:26:17.0343] <liam_g>
+But other options are possible also.
+
+[05:27:41.0039] <liam_g>
+I'm pretty sure that the setNonSyntacticScope(true) is what's causing the discrepancy. Now the question is, can I get it to work without setting this flag?
+
+[05:28:49.0401] <liam_g>
+If I remove the flag, I get an assertion inside ExecuteScript(). This is also weird, because I was doing the same thing in my mock-up without `setNonSyntacticScope` and it was working. So again, I feel like there must be some way of fixing it.
+
+[05:30:20.0865] <jandem>
+yeah we assert that if you pass a custom env to ExecuteScript, the script was compiled for that non-syntactic mode too
+
+[05:35:12.0711] <liam_g>
+Hang on, I was wrong. I'm using setNonSyntacticScope(true) in my mock-up as well, but it's still working.
+
+[05:35:45.0897] <liam_g>
+I can see that I'm not really providing helpful information here. I'll try to get a minimum working example going.
+
+[11:36:26.0580] <davidj361>
+Since SpiderMonkey puts everything to an intermediate language then converts that into bytecode, why isn't SpiderMonkey much slower than V8?
+
+[11:36:52.0675] <davidj361>
+seeing that another step is added before the javascript can actually execute
+
+[12:07:36.0507] <iain>
+davidj361: No engine goes directly from JS source to execution. V8 has the same basic structure as SM: functions are initially compiled to bytecode and interpreted, and only get compiled to native machine code if they are hot enough.
+
+[12:07:56.0058] <iain>
+Here's an article about the V8 interpreter: https://v8.dev/blog/ignition-interpreter
+
+[12:08:58.0479] <iain>
+One difference is that we use the same bytecode that runs in the interpreter as an input to our compilers, whereas I believe that V8 reparses the source JS every time
+
+[12:47:16.0165] <davidj361>
+is there a recommended benchmark aggregator? I only see firefox and not chrome for kraken results here: https://arewefastyet.com/win10/benchmarks/kraken?numDays=365
+
+[12:50:58.0552] <davidj361>
+and octane is defunct afaik so it's not displayed here
+
+[13:06:48.0724] <davidj361>
+so the only one I see is SunSpider for a comparison between V8 and SpiderMonkey
+

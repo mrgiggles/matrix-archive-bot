@@ -1,0 +1,2314 @@
+2023-01-02
+[21:49:44.0292] <liam_g>
+I'm using `JS_Stringify()` to parse a proxy object. I've set up the `ownPropertyKeys()` method in the `js::BaseProxyHandler` class. In the debugger, it calls this function and then correctly visits `getOwnPropertyDescriptor()`. But ultimately the function returns just a blank `{}`. What might I be missing?
+
+[21:50:34.0453] <liam_g>
+For the `replacer` and the `space` arguments, I've just passed in an empty `RootedObject` and `RootedValue` respectively. 
+
+[21:51:13.0578] <liam_g>
+And my `JSONWriteCallback` function seems to be working correctly. So I'm really not sure what the problem is.
+
+[22:05:57.0243] <liam_g>
+Nevermind, I figured it out. The properties hadn't been set to enumerable!
+
+
+2023-01-03
+[21:41:03.0656] <Redfire>
+from reading <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap>, my impression is that if I have
+```rs
+struct A { obj: Heap<*mut JSObject> }
+``` which is stored in the reserved slot 0 of my instance, I just need to add a trace method to `A` that calls `a.obj.trace()` or something like that? 
+
+[21:41:14.0077] <Redfire>
+* from reading <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap>, my impression is that if I have a
+```rs
+struct A { obj: Heap<*mut JSObject> }
+```
+which is stored in the reserved slot 0 of my instance, I just need to add a trace method to `A` that calls `a.obj.trace()` or something like that? 
+
+[21:41:39.0281] <Redfire>
+Is that correct, or am I missing something? 
+
+[21:41:50.0570] <Redfire>
+* from reading <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap>, my impression is that if I have a
+```rs
+struct A { obj: Heap<*mut JSObject> }
+```
+which is stored in the reserved slot 0 of my instance, I just need to add a trace method to `A` that calls `a.obj.trace()`
+
+[23:16:40.0090] <jandem>
+you need to add a trace method to the JSClass that has the reserved slot, yeah
+
+[23:17:45.0142] <jandem>
+if you store the object in a reserved slot, you don't need to trace it yourself
+
+[23:53:16.0001] <liam_g>
+Are there any methods for serialization in Spidermonkey other than JSON? I've got the JSON methods working, but I'm running into the familiar problems with Sets, Symbols and other custom objects, which don't work with JSON. I could use replacers & revivers, but it feels like a bit of a rabbit hole. I'm wondering if there's any more robust solutions built in?
+
+[23:54:51.0465] <liam_g>
+Or even some external adaptors like MessagePack adapted to Spidermonkey?
+
+[23:59:18.0173] <Redfire>
+> <@jandem:mozilla.org> if you store the object in a reserved slot, you don't need to trace it yourself
+
+I saw that, but given how my api works, I can't do that directly
+
+[00:26:42.0034] <jandem>
+liam_g: we have APIs for [structured cloning](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
+
+[00:28:03.0666] <jandem>
+symbols don't work I think but Sets should
+
+[00:28:29.0843] <liam_g>
+I'm trying to save to file though
+
+[00:28:45.0980] <liam_g>
+Either text, or binary.
+
+[00:29:10.0826] <Redfire>
+> you need to add a trace method to the JSClass that has the reserved slot, yeah
+
+Would Rust mangling method names matter at all? I saw mozjs has https://doc.servo.org/mozjs/rust/trait.Trace.html
+
+[00:32:14.0445] <jandem>
+liam_g: that's possible with structured cloning, we use that for IndexedDB for example. See [here](https://searchfox.org/mozilla-central/rev/abf6758ed833c203f84703aa2e3e3d317571b1e9/js/public/StructuredClone.h#142-155)
+
+[00:33:16.0897] <liam_g>
+Great, I'll take a look. Thanks for the tip.
+
+[00:40:27.0798] <jandem>
+liam_g: we have some testing functions for this in the shell, [here's](https://mozilla-spidermonkey.github.io/sm-wasi-demo/?branch=mozilla-central&source=let%20data%20%3D%20serialize(new%20Set(%5B%22foo%22%2C%201%2C%20%7B%7D%5D)%2C%20undefined%2C%20%7Bscope%3A%20%22DifferentProcess%22%7D)%3B%0Aprint(%22bytes%3A%20%22%20%2B%20new%20Uint8Array(data.arraybuffer).toString())%3B%0Aprint(deserialize(data))%3B%0A) an example of serializing a Set
+
+[00:43:03.0869] <jandem>
+Redfire: I'm not sure. Aren't you using callbacks or class hooks elsewhere already?
+
+[00:46:37.0981] <Redfire>
+well yes, but this one seems to rely on such a method existing? I don't know about the details
+
+[04:25:11.0353] <liam_g>
+OK, I've been working on the StructuredCloning stuff all afternoon, and I think I'm getting the hang of it. I have one simple question and one not-so-simple question.
+
+Simple question: in the `WriteStructuredCloneOp()` callback, I'm using `JS_WriteUint32Pair()` to tag the specialized object, and then adding a unique string. The first arg of `JS_WriteUint32Pair()`is the pointer to the writer, and the second one is the tag (which must be larger than `JS_SCTAG_USER`). So what's the third argument? Is it safe to make it 0?
+
+[04:26:32.0637] <liam_g>
+ * OK, I've been working on the StructuredCloning stuff all afternoon, and I think I'm getting the hang of it. I have one simple question and one not-so-simple question.
+
+Simple question: in the `WriteStructuredCloneOp()` callback, I'm using `JS_WriteUint32Pair()` to tag the specialized object, and then adding a unique string (luckily my objects already have this in place). The first arg of `JS_WriteUint32Pair()`is the pointer to the writer, and the second one is the tag (which must be larger than `JS_SCTAG_USER`). So what's the third argument? Is it safe to make it 0?
+
+[04:30:08.0302] <liam_g>
+Not so simple question: the object I'm working with is a JSProxy, called Cell. When I call `JSAutoStructuredCloneBuffer::write()`, the `WriteStructuredCloneOp` callback is called, and I can identify that Cell. But the Cell has other Cells as children, and the `::write()` function isn't getting called recursively, so it just tags the root Cell and then finishes. When I tried the equivalent function with JSON, it went all the way and identified all of the Cell's children, which is what I need here. So how do I get `JSAutoStructuredCloneBuffer::write()` to act recursively?
+
+[05:09:57.0927] <jandem>
+liam_g: the third argument can be 0, but you can also use it to write a relevant uint32 value for your object. it's passed as "data" argument when you deserialize
+
+[05:19:07.0516] <jandem>
+for the recursion, I think you'd want a `JS_WriteObject` API very similar to `JS_WriteTypedArray` but I don't think we have this yet. Hm
+
+[05:21:44.0319] <liam_g>
+It's not `JS_ObjectNotWritten`, is it?
+
+[05:23:50.0057] <jandem>
+no I think that's for when the callback decides to serialize the object as something else
+
+[05:25:52.0005] <jandem>
+depending on your use case, one option could be to copy your object graph before serializing to replace Cells with simple objects that are supported 
+
+[05:27:24.0875] <liam_g>
+How would I copy it without using StructuredClone though?
+
+[05:32:22.0325] <jandem>
+yeah that's probably annoying
+
+[05:33:18.0501] <liam_g>
+Is `JS_WriteObject` in the works? 
+
+[05:34:10.0733] <liam_g>
+ * Is an implementation of `JS_WriteObject` in the works?
+
+[05:34:50.0787] <jandem>
+if you can easily test spidermonkey changes locally, maybe you can try to add it (based on `JS_WriteTypedArray`) and see if it works
+
+[05:40:22.0969] <liam_g>
+I've been too scared to rebuild Spidermonkey 😆. Took me weeks the first time. But looking at `JS_WriteTypedArray` does make the function look trivial.
+
+[05:41:44.0425] <liam_g>
+I'll try giving it a shot.
+
+[09:00:14.0558] <Bryan Thrall [:bthrall]>
+I have a jit-test that's failing when run with `--wasm-compiler=baseline` (but not other wasm-compiler options). It also fails in the same way when my MOZCONFIG contains `ac_add_options --disable-jit`, I think for the same reason.
+
+From what I can tell so far, the `CompilationStencil.asmJS` field is somehow set to `nullptr` when `--wasm-compiler=baseline` is used. Does anyone have any pointers where I should look to track this down?
+
+[09:06:31.0330] <Ryan Hunt>
+Bryan Thrall [:bthrall]: we only support asm.js compilation when wasm-compiler includes ion. so if you only enable baseline, that will disable asm.js. ditto for disable-jit too
+
+[09:06:51.0420] <Ryan Hunt>
+what sort of test is this? does it need wasm-compiler=baseline?
+
+[09:48:10.0501] <tcampbell>
+uh oh. I recently refactored some stuff around that. It is possible that the checks for having an available asmjs compiler are out of sync
+
+[09:49:07.0057] <tcampbell>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1805856 . You might be able to revert that Bryan Thrall [:bthrall] and see if that is problem
+
+[09:56:40.0647] <Bryan Thrall [:bthrall]>
+> <@tcampbell:mozilla.org> uh oh. I recently refactored some stuff around that. It is possible that the checks for having an available asmjs compiler are out of sync
+
+I backed out the changes for bug 1805856 and my test still failed, so I think you are free from blame here 🙂
+
+[09:56:41.0842] <botzilla>
+https://bugzil.la/1805856 — RESOLVED (tcampbell) — Avoid reading wasm options from JSContext while parsing asm.js
+
+[09:57:05.0328] <tcampbell>
+ah interesting...
+
+[09:58:50.0215] <Bryan Thrall [:bthrall]>
+> <@rhunt:mozilla.org> what sort of test is this? does it need wasm-compiler=baseline?
+
+The test is expecting `compileToStencilXDR()` to throw an exception because encoding asm.js is not supported; the test is failing because wasm-compiler=baseline does not throw the exception. Other wasm-compiler settings do throw the exception as expected.
+
+[09:59:08.0421] <tcampbell>
+lol, that is a bad test
+
+[09:59:19.0135] <tcampbell>
+asm.js has a fallback path
+
+[10:00:25.0976] <tcampbell>
+ * asm.js has a fallback path, so if there is no optimizer, it just makes JS which can use XDR fine.
+
+[10:00:32.0370] <Bryan Thrall [:bthrall]>
+Oh? Do tell!
+
+[10:00:35.0423] <tcampbell>
+You can add a check of isAsmJSCompilationAvailable() somewhere in the JS
+
+[10:00:38.0241] <tcampbell>
+ * You can add a check of isAsmJSCompilationAvailable() somewhere in the JS test case
+
+[10:00:45.0710] <tcampbell>
+ * You can add a check of `isAsmJSCompilationAvailable()` somewhere in the JS test case
+
+[10:01:50.0762] <tcampbell>
+(The original design of asm.js was it was actually legal JS to anyone who didn't know what asm.js was. The `"use asm"` marker is just a string literal that is a no-op)
+
+[10:13:06.0222] <Bryan Thrall [:bthrall]>
+That resolves my problem, then: I added `skip-if: !isAsmJSCompilationAvailable()` to the test case.
+Thanks!
+
+[10:17:42.0254] <tcampbell>
+Bryan Thrall [:bthrall]: if there are parts of test case that are still interesting, you can also add the check to the guard the special subtests only
+
+[12:08:26.0761] <kfjvj>
+In the mozjs C++ code, are there any C++ exceptions used?
+
+[12:11:20.0728] <mgaudet>
+kfjvj: No.
+
+[12:11:38.0797] <kfjvj>
+> <@mgaudet:mozilla.org> kfjvj: No.
+
+Thanks.
+
+[12:17:31.0642] <sfink>
+kfjvj: no. We compile with `-fno-exceptions`.
+
+[12:19:31.0992] <kfjvj>
+OK.  I'm trying to find a way to do some more detailed error handling than is possible with just the bool return values of most Jsapi functions.  I was initially using exceptions, but it is generally not a favored solution with my team.
+
+I was looking at js/Result.h, but I'm not entirely sure what features that would add.
+
+[12:28:41.0565] <kfjvj>
+Are there any good examples of code that show how to properly use result?
+
+
+2023-01-04
+[18:29:15.0032] <Redfire>
+> <@kfjvj:mozilla.org> In the mozjs C++ code, are there any C++ exceptions used?
+
+They don't have exceptions, instead they have way too many segfaults, but only when I'm using it *apparently*
+
+[18:29:36.0658] <Redfire>
+Still haven't figured out the issue with promises
+
+[18:29:58.0141] <Redfire>
+* Still haven't figured out the issue with promises (`GetPromiseResult`) hates me
+
+[02:12:28.0109] <jonco>
+jandem: is there only one ForOfPIC::Chain per global then?
+
+[02:16:30.0739] <jandem>
+jonco: yeah, I think it's the `forOfPICChain` in `GlobalObjectData`
+
+[02:20:48.0674] <jonco>
+ok great, purging this somewhere else makes much more sense
+
+[03:37:52.0444] <Redfire>
+> <@redfire75369:mozilla.org> from reading <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap>, my impression is that if I have a
+> ```rs
+> struct A { obj: Heap<*mut JSObject> }
+> ```
+> which is stored in the reserved slot 0 of my instance, I just need to add a trace method to `A` that calls `a.obj.trace()`
+
+How am I supposed to put `A` in the reserved slot? Does a private value work?
+
+[04:04:19.0661] <jandem>
+yes you want a private value to store a pointer to A
+
+[04:24:20.0492] <Redfire>
+so it'll just trace the private value? I see
+
+[04:26:07.0610] <jandem>
+yeah. A private value is encoded as a DoubleValue internally, so the GC will ignore them by default
+
+[04:26:43.0985] <jandem>
+in your `JSClass` trace hook you can then get the `A*` out and trace it
+
+[04:34:14.0239] <Redfire>
+Oh... The trace hook, I didn't think of that one 😅
+
+[08:51:21.0798] <jonco>
+sfink: ping
+
+[11:16:28.0270] <sili>
+Is libclang absolutely necessary to build the mozjs-68.9? I don't see this dependency for version 78.15 (I'm trying to integrate SpiderMonkey to our yocto build).
+
+[12:38:58.0110] <mgaudet>
+sili: Off the top of my head, I'm unsure. I suspect it's quite possible to disable enough features to make it not required, but I'm not sure directly what those features would be (outside of `--enable-clang-plugin`, which is definitely optional)
+
+[12:56:47.0886] <evilpie>
+> <@sili:mozilla.org> Is libclang absolutely necessary to build the mozjs-68.9? I don't see this dependency for version 78.15 (I'm trying to integrate SpiderMonkey to our yocto build).
+
+Are you trying to add mozjs-68 to new code?
+
+
+2023-01-05
+[07:48:23.0034] <jakechampion>
+When using `JS_ExecuteScript(cx, script)` and a JS Error is printed to the console, is there a way to get SpiderMonkey to make use of the `sourceMapURL` on the `script` in the reported stack trace?
+I'm using the `CompileOptions.setSourceMapURL` method but I don't see that making any difference in the output
+
+[07:49:06.0558] <jakechampion>
+ * When using `JS_ExecuteScript(cx, script)` and a JS Error is printed to the console, is there a way to get SpiderMonkey to make use of the `sourceMapURL` on the `script` in the reported stack trace?
+I'm using the `JS::CompileOptions.setSourceMapURL` method but I don't see that making any difference in the output
+
+[07:51:11.0621] <tcampbell>
+the `setSourceMapURL` just stashes away the metadata for the debugger to be able to fetch later. Spidermonkey itself has no understanding of source maps, and it is a thing that the devtools debugger chooses to apply as a transform.
+
+[07:54:55.0385] <tcampbell>
+nchevobbe: since you are lurking.. do you know if the devtools sourcemap libraries are easy to use by thirdparties?
+
+[07:55:29.0129] <jakechampion>
+Thank you - this makes complete sense now - I'll need to implement the sourcemap logic myself it seems, that should be fun :D 
+
+[07:55:53.0322] <jakechampion>
+I've always wondered how they work, now I will find out ha
+
+[07:56:31.0311] <nchevobbe>
+> <@tcampbell:mozilla.org> nchevobbe: since you are lurking.. do you know if the devtools sourcemap libraries are easy to use by thirdparties?
+
+it should yes: https://github.com/mozilla/source-map
+
+[08:03:25.0813] <tcampbell>
+jakechampion: ^ there are some libraries you can leverage
+
+[14:50:57.0067] <mgaudet>
+confession: Array.fromAsync seems to pass the newly created test262 tests. In other news... I think I have given up on my unsafe idea for reducing parser atomization, as i don't think it can be fixed and fast.
+
+[14:51:00.0023] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2023-01-06
+[23:47:57.0696] <nchevobbe>
+is this something we could do or should we close this bug https://bugzilla.mozilla.org/show_bug.cgi?id=1249175 ?
+
+[23:52:38.0603] <nchevobbe>
+asking because I came across `DebuggerObject::forceLexicalInitializationByName` (https://searchfox.org/mozilla-central/rev/4ebfb48f7e82251145afa4a822f970931dd06c68/js/src/debugger/Object.cpp#2382), and I was wondering if that could be extended somehow to allow to "re-declare" let/const  from the webconsole (https://bugzilla.mozilla.org/show_bug.cgi?id=1257088).
+It looks like `forceLexicalInitializationByName` was added to tackle a similar issue (https://bugzilla.mozilla.org/show_bug.cgi?id=1246215), but the provided value seems quite low in the end, without the ability to actually re-declare variables
+
+[00:11:18.0773] <jandem>
+nchevobbe: see also bug 1580891. I think that's the best way to do this, have a special parse mode for console/REPL use
+
+[00:11:19.0829] <botzilla>
+https://bugzil.la/1580891 — NEW (nobody) — Console expressions should allow let/const variables and classes to be redeclared
+
+[00:12:04.0986] <nchevobbe>
+yeah, I found it after I posted the message and saw we had similar discussion already a couple months ago ^^
+
+[00:16:52.0640] <jandem>
+yeah, it would be nice to fix this
+
+[00:17:04.0230] <jandem>
+ * yeah it would be nice to fix this
+
+[05:37:49.0144] <niedziolka_michal>
+Do you guys know how any effective way of triggering garbage collection in SpiderMonkey? I am trying to make interactive example for WeakRef in MDN. When I push very large array into weakly referenced object, I can quickly reach 5GB of memory usage without actual collection. On the other hand, when I push smaller array or simply let objects be created and not placed anywhere, I get GC after 10-120 seconds. I am looking for some action, because of which article reader won't have to wait 2 minutes to see the result.
+
+[05:40:21.0759] <Redfire>
+If you create a `JSClass` with a parent class through `JS_InitClass` and the parent class has reserved slots, do you have to ensure the reserved slots exclusive to the child class don't overlap?
+
+[05:46:56.0923] <jandem>
+Redfire: do you need reserved slots for both the prototype and the instance object?
+
+[05:47:59.0650] <jandem>
+(bug 1808171 landed a few days ago and changed `JS_InitClass` to make it much easier to use different JSClasses for prototype and instance objects.. unfortunately that's Nightly-only still)
+
+[05:48:00.0825] <botzilla>
+https://bugzil.la/1808171 — RESOLVED (jandem) — Add a protoClass argument to JS_InitClass
+
+[06:01:29.0436] <Redfire>
+Just the instance
+
+[06:06:36.0339] <Redfire>
+Also, given I'm still on SM 107, it'll probably be a while before I get that change anyways
+
+
+[06:13:57.0468] <tcampbell>
+jonco: ^ do you have any tips for inducing a GC in a content script for purpose of writing an MDN demo?
+
+[06:17:15.0743] <jonco>
+We don't have APIs to trigger a GC because it's generally a bad idea to do this
+
+[06:17:36.0200] <jonco>
+You can trigger one manually with about:memory of course
+
+[06:18:34.0516] <jonco>
+niedziolka_michal: "When I push very large array into weakly referenced object, I can quickly reach 5GB of memory usage without actual collection" - that sounds bad, can you share your code that does this?
+
+[06:19:07.0111] <jonco>
+We trigger GC based on allocated memory so if that's happening it's a bug
+
+[06:28:01.0893] <niedziolka_michal>
+jonco: https://codepen.io/NiedziolkaMichal/pen/yLqVqyj
+
+[06:28:24.0704] <niedziolka_michal>
+Sometimes I get "Uncaught out of memory" before object in WeakRef is collected
+
+[06:29:36.0814] <jandem>
+Redfire: the strategy then usually is to just leave the reserved slots set to UndefinedValue() (the default) for the prototype object. When you access the slot, you can check it it's undefined and throw an exception about the prototype being invalid 
+
+[06:30:04.0671] <jandem>
+it's a bit of a pain and the spec now prefers plain objects for the prototype for that reason
+
+[06:31:19.0211] <Redfire>
+We're not talking about the same thing I think 
+
+[06:31:36.0233] <Redfire>
+I meant the `parentProto` argument in `JS_InitClass`
+
+[06:32:47.0953] <jandem>
+Redfire: that's the object that's used as the prototype for the newly created prototype object. It can be any object
+
+[06:37:30.0379] <Redfire>
+oh, so it's not the same as what the `extends` keyword does for classes?
+
+[06:38:31.0422] <jonco>
+niedziolka_michal: I expect GC is being triggered by the array allocation, but since the target of the weak ref is live there it's not being collected
+
+[06:39:41.0399] <jonco>
+niedziolka_michal: In this case we would need a GC to happen after the end of the current job to collect this.  See the first note here: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef#notes_on_weakrefs
+
+[06:40:15.0765] <jandem>
+Redfire: the `parentProto` object will be on the proto chain of your instances: `instance => prototype (created by JS_InitClass) => parentProto`, so it is like inheriting from it
+
+[06:41:01.0800] <Redfire>
+oh, I never realised the term prototype chain was literal 🤦
+
+[06:41:18.0137] <Redfire>
+For some reason, I thought inheritance just shoved it on its own prototype
+
+[06:41:33.0215] <Redfire>
+that explains how `HasOwnProperty` works then
+
+[06:42:10.0405] <jandem>
+oh yeah
+
+[06:49:43.0658] <niedziolka_michal>
+jonco: Yeah I suppose that's the case. There are about 150 iterations before garbage collection is forced and then sometimes object is correctly released and sometimes Out of memory is thrown.
+
+[06:50:07.0888] <jonco>
+If you continually allocate memory out of memory will occur at some point
+
+[06:50:45.0205] <jonco>
+Sorry I don't suppose this helps with your original question
+
+[07:03:47.0280] <niedziolka_michal>
+Yeah. I think I will just go with simple creation of array with 5000 elements, without assigning it to anything. That surprisingly seems just as likely to trigger GC as other stuff that I have tried
+
+[07:09:07.0134] <jonco>
+niedziolka_michal: this is likely to work differently between browsers so is not great for example code
+
+[07:11:39.0512] <niedziolka_michal>
+If you can think of some code which could show the readers that object held by WeakRef is indeed garbage collected, that I would appreciate it
+
+[07:12:04.0887] <niedziolka_michal>
+Array thing works quite similarly in V8, but I didn't test it on webkit yet
+
+[07:12:51.0826] <jonco>
+OK, forcing GC by allocating objects should work, but doing it before the deref() will work better
+
+[07:13:29.0656] <jonco>
+just allocate 'enough' memory and don't assign it to anything
+
+[07:15:08.0665] <jonco>
+you shouldn't need repeat it with setInterval, but it will need to happen in a separate job so you'll need to use setTimeout or equivalent to get that
+
+[07:16:03.0703] <jonco>
+'enough' will depend on the size of everything allocated by the page and on the browser but you should be able to pick a suitable value
+
+[07:18:25.0945] <niedziolka_michal>
+This should be fine?
+
+[07:21:15.0627] <jonco>
+Yes
+
+[07:23:15.0751] <jonco>
+Please comment not to do this in production code :)
+
+[07:24:52.0006] <niedziolka_michal>
+Alright, I will
+
+[07:24:54.0662] <niedziolka_michal>
+Thanks a lot for help
+
+[07:36:37.0258] <mccr8>
+jonco: I can't make any assumptions about whether GrayOrBlackBit bit is set if BlackBit is set, even if I know a GC isn't active, can I?
+
+[07:37:03.0555] <mccr8>
+It looks like the "extra state" is used for incremental marking, but nothing cleans it up into a canonical mark bit value after, right?
+
+[07:37:21.0974] <mccr8>
+(I'm trying to figure out if I can steal a bit for cycle collection...)
+
+[07:38:26.0415] <jonco>
+mccr8: If something got marked gray and then gray unmarking marked it black then the GrayOrBlack bit will be set
+
+[07:38:59.0689] <jonco>
+this can happen after GC obviously
+
+[07:39:02.0327] <mccr8>
+Ah, that makes sense.
+
+[07:40:17.0312] <mccr8>
+jonco: and white objects are those that have been allocated since the last GC?
+
+[07:40:27.0191] <jonco>
+yes
+
+
+2023-01-07
+[04:23:22.0608] <Redfire>
+How do I turn a `Handle<Value>` into a `Handle<Maybe<Value>>`?
+
+[04:23:32.0073] <Redfire>
+I don't think rerooting should be needed here
+
+[04:29:30.0151] <Redfire>
+Is it just `mozilla::ToMaybe(&val)`?
+
+[09:51:36.0328] <tcampbell>
+Unfortunately I think a root is still needed for that conversion. For the same reasons you can't directly convert `Value&` into `Maybe<Value>&`.
+
+
+2023-01-09
+[02:18:42.0672] <yulia>
+In case anyone is interested in getting started with spidermonkey in the new year, Rolf, a student at UiB has written a great tutorial: https://github.com/polsevev/An-implementation-of-a-feature-for-JavaScript -- this goes from spidermonkey environment setup, reading the spec, and implementing the test262 tests. 
+
+
+2023-01-10
+[17:41:02.0833] <jrmuizel>
+tcampbell: have you looked at getting matrix-react-bench running in the v8 shell?
+
+[17:42:57.0419] <tcampbell>
+> <@jrmuizel:mozilla.org> tcampbell: have you looked at getting matrix-react-bench running in the v8 shell?
+
+I have not. Main problem was around flushing the microtask queue. That is probably easier on v8 shell since I think they have working setTimeout, but I never tried it. I think dthayer was also looking at cleaning up the test to run more than 1 iteration on jsshell too
+
+[17:43:42.0062] <jrmuizel>
+tcampbell: yeah, that happened here: https://github.com/squarewave/matrix-react-bench/commits/main
+
+[17:48:09.0879] <jrmuizel>
+tcampbell: it looks like they have a setTimeout that just runs the function immediately
+
+[17:48:36.0042] <tcampbell>
+hmm
+
+[17:51:44.0715] <jrmuizel>
+tcampbell: how do things get put in the microtask queue in the shell?
+
+[17:53:11.0730] <tcampbell>
+Promises are the main thing.
+
+[18:11:55.0397] <jrmuizel>
+tcampbell: looks like `%PerformMicrotaskCheckpoint()` is the V8 equivalent to `drainJobQueue()`
+
+[07:17:03.0457] <jrmuizel>
+tcampbell: https://github.com/jrmuizel/matrix-react-bench/tree/other-shells adds support for v8 and not quite working support for JSC
+
+[07:18:07.0387] <tcampbell>
+jrmuizel: were you able to just use `setTimeout` for it?
+
+[07:29:10.0423] <jrmuizel>
+tcampbell: no I used `%PerformMicrotaskCheckpoint()` in V8 and `drainMicrotasks` in JSC
+
+[07:29:16.0236] <jrmuizel>
+ * tcampbell: no, I used `%PerformMicrotaskCheckpoint()` in V8 and `drainMicrotasks` in JSC
+
+[07:30:00.0291] <tcampbell>
+oh, I was in the wrong branch in github somehow
+
+[07:30:35.0292] <tcampbell>
+cool. thanks for investigating that
+
+[12:50:50.0683] <smaug>
+tcampbell: I guess you meant https://searchfox.org/mozilla-central/rev/a156a65ced2dae5913ae35a68e9445b8ee7ca457/modules/libpref/init/StaticPrefList.yaml#1883-1887 
+
+[12:52:45.0000] <tcampbell>
+smaug:  yeah. here are the profiles: https://bugzilla.mozilla.org/show_bug.cgi?id=1808824
+
+[12:53:46.0956] <tcampbell>
+the initial-paint delay means we ignore vsync, and then we get spend 400ms processing JS before we look at vsync again
+
+[13:03:29.0331] <smaug>
+I guess I could do some try runs with different values. As I said in the bug, it is possible that speedindex regresses, if one paints too often
+
+[13:03:44.0979] <smaug>
+react sites just tend to do too much stuff in rAF callbacks
+
+[13:09:54.0752] <smaug>
+But all those prefs are really old. They were designed to optimize page load time over anything visual. Gecko would show the old page way longer and then once most of the new page was loaded, the new page was painted - or that was the idea, I think. (Didn't perhaps work too well always)
+
+[14:24:03.0506] <smaug>
+tcampbell: FWIW, I pushed a tweak to the pref value to see how it affects page load metrics.  At some point I had added check which would yield if there was a pending vsync, but that didn't affect anything too much, so it was removed.
+
+[14:25:49.0841] <tcampbell>
+Your point about SpeedIndex makes sense. I tried to play with lowering it to 50ms and didn't see other pageload tests improve beyond the yahoomail case.
+
+[14:26:20.0214] <tcampbell>
+ * Your point about SpeedIndex makes sense. I tried to play with lowering it to 50ms and didn't see other pageload tests improve beyond the *gslides
+
+[14:26:23.0606] <tcampbell>
+ * Your point about SpeedIndex makes sense. I tried to play with lowering it to 50ms and didn't see other pageload tests improve beyond the \*gslides case
+
+[14:27:54.0903] <tcampbell>
+The whole mechanism seemed surprising to still exist after our focus on pageload, but since in practice it doesn't seem to directly have huge impact I can see why it remained untouched
+
+[14:28:40.0298] <smaug>
+well, some of that mechanism was removed in bug 1804295
+
+[14:28:41.0415] <botzilla>
+https://bugzil.la/1804295 — RESOLVED (smaug) — Remove the current use of favorPerformanceHint and change the mechanism to have a short burst of Gecko tasks over native tasks
+
+[14:29:07.0088] <smaug>
+one just needs to go through the prefs one by one and hopefully not regress anything
+
+[14:29:47.0393] <tcampbell>
+Is the initial-paint.delay stuff still meaningful?
+
+[14:30:04.0121] <tcampbell>
+Some comments seemed to suggest it was about css background flashing, but wouldn'
+
+[14:30:16.0490] <tcampbell>
+ * Some comments seemed to suggest it was about css background flashing, but wouldn't we rather then target that directly over a timer
+
+[14:31:07.0816] <tcampbell>
+(I haven't looked in much depth to this script scheduling stuff before now, so I am definitely behind on a lot of the history)
+
+[14:33:16.0439] <tcampbell>
+ah, that framerate-between-fcp-and-pageload thing is interesting
+
+[14:33:26.0303] <smaug>
+paint suppression is tricky, also, it is just 5ms these days
+
+[14:33:32.0381] <smaug>
+it used to be something like 200ms
+
+[14:34:14.0056] <smaug>
+we do paint rather soon, we explicitly try to have refreshdriver up and running very early
+
+
+2023-01-11
+[02:35:08.0421] <smaug>
+tcampbell: scheduling is hard: the pref change regresses  Reddit speedindex ~16%, but improves Amazon Speedindex ~20%.  Most sites are unaffected.
+
+[07:56:28.0239] <whimboo>
+Hi, could someone confirm that the SpiderMonkey version is now in alignment with the version of Firefox for all releases?  https://en.wikipedia.org/wiki/SpiderMonkey#Versions might be a bit outdated
+
+[07:57:14.0062] <whimboo>
+or is there an API that can be called from within JavaScript to get the version?
+
+[08:38:19.0313] <@allstarschh>
+joncosfink : I'll join the meeting later as I need to be with the kids now 
+
+[09:21:55.0108] <dbezhetskov>
+where to find a recent CI build for SM on wasi?
+
+[09:22:00.0840] <dbezhetskov>
+ * Hi, where to find a recent CI build for SM on wasi?
+
+[11:24:22.0037] <tcampbell>
+whimboo: yes, spidermonkey version numbers the Firefox release numbers of mozilla-central. For embedders we generally recommend people follow the Firefox ESR schedule (eg 60, 68, 78, 91, 102)
+
+[11:24:57.0635] <tcampbell>
+which I guess is what that table implicitly shows
+
+[11:25:13.0038] <tcampbell>
+ * which I guess is what that table implicitly shows. definitely confusing
+
+[11:27:15.0324] <tcampbell>
+smaug: thanks for looking into the `perf_parse_time` pref. 30ms seems like a reasonable improvement on the status quo
+
+[11:28:07.0574] <smaug>
+tcampbell: thanks for hinting about it. I thought I had played with that, but maybe it was when we didn't have all the speedindex testing up and running on ci
+
+[11:28:36.0333] <smaug>
+crossing fingers the change doesn't break too many tests, which just happen to rely on some specific timing
+
+[11:28:47.0092] <tcampbell>
+😬
+
+[13:17:46.0366] <tcampbell>
+If I haven't mentioned this recently enough, I recommend playing with [samply](https://github.com/mstange/samply) for profile jsshell builds. The integeration with geckoprofiler ui is really slick. If you are using VSCode remoting, then samply will automatically start a server which vscode will port forward and open the url on your local machine. Inline call frames and source view (double-click on a C++ function) work too which is really nice.
+
+[13:19:10.0469] <tcampbell>
+ * If I haven't mentioned this recently enough, I recommend playing with [samply](https://github.com/mstange/samply) for profiling jsshell builds. The integeration with geckoprofiler ui is really slick. If you are using VSCode remoting, then samply will automatically start a server which vscode will port forward and open the url on your local machine. Inline call frames and source view (double-click on a C++ function) work too which is really nice.
+
+[14:20:48.0476] <mgaudet>
+Oh interesting :) 
+
+[14:21:00.0759] <jrmuizel>
+is there a way to debug js running in the shell?
+
+[14:22:45.0436] <jrmuizel>
+tcampbell: were you the person that got matrix-react-bench running in the shell?
+
+[14:25:05.0160] <tcampbell>
+Yeah, I wrote the original polyfill for shell. The shell has a sample debugger (jorendb.js) but I haven't ever used it. 
+
+[14:26:53.0244] <tcampbell>
+Mostly I do printf debugging in shell since  not writing large scripts
+
+
+2023-01-12
+[16:37:32.0076] <jrmuizel>
+sfink: have you used jorendb recently?
+
+[16:37:39.0648] <jrmuizel>
+or anyone else realy
+
+[16:37:46.0978] <jrmuizel>
+it seems sort of broken
+
+[18:29:21.0145] <jrmuizel>
+tcampbell: I got the adding elements part of react-todomvc working in the js shells
+
+[18:29:37.0803] <jrmuizel>
+v8 gets about 150-160ms, spidermonkey is 200-215ms
+
+
+[18:29:48.0975] <jrmuizel>
+https://github.com/jrmuizel/Speedometer/tree/shell-react-todomvc
+
+
+[23:23:33.0388] <whimboo>
+> <@tcampbell:mozilla.org> whimboo: yes, spidermonkey version numbers the Firefox release numbers of mozilla-central. For embedders we generally recommend people follow the Firefox ESR schedule (eg 60, 68, 78, 91, 102)
+
+That's great. So from the version we basically cut off the minor and patch part only only take the major version number. Thanks!
+
+[02:43:48.0708] <evilpie>
+> <@whimboo:mozilla.org> That's great. So from the version we basically cut off the minor and patch part only only take the major version number. Thanks!
+
+I am not sure if that is a intentional decision, I would rather says the version numbers are identical.  
+
+[02:43:50.0713] <evilpie>
+eg. https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#431
+
+[02:59:10.0983] <whimboo>
+> <@evilpie:mozilla.org> I am not sure if that is a intentional decision, I would rather says the version numbers are identical.
+
+that is interesting! So we should be safe then in using `Services.appinfo.version` directly?
+
+[03:00:04.0699] <evilpie>
+I don't understand question, safe to use for what? 
+
+[03:02:50.0288] <whimboo>
+we want to supply the spidermonkey version as part of this CDP API: https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-getVersion for `jsVersion`. At the end it won't matter but having it right would be nice
+
+[03:05:56.0168] <evilpie>
+Ah yeah, I guess v8 has their own version numbers. I would personally just use the same value as firefox
+
+[04:03:25.0219] <l11d>
+I've been building firefox with `-fsanitize=cfi-derived-cast`, which essentially checks base-to-derived casts. one of the reports that comes up when starting firefox is a cast in `js/loader/ScriptLoadRequest.cpp`. from within the destructor of a base class, the object being destructed is downcasted to the derived class. the destructor of the derived class already ran, however the object hasn't been deallocated yet. is this kind of sanitizer report worth filing as bug?
+
+[04:36:17.0438] <jandem>
+l11d: yes please file a bug in DOM: Core
+
+[05:03:53.0306] <jandem>
+l11d: and thanks for looking into this :)
+
+[05:05:11.0654] <l11d>
+sure thing :)
+
+[09:26:25.0780] <sfink>
+> <@jrmuizel:mozilla.org> sfink: have you used jorendb recently?
+
+Yes. As far as I know, I'm the only user of it. I use it through a separate script where I can preface a JS shell command line with `debug --js` and it'll start up in an emacs window, massaging the orignal command line as needed.
+
+[09:46:20.0531] <jrmuizel>
+sfink: how do you start and stop it? I tried throwing an exception and then single stepping and that didn't work
+
+[09:47:48.0213] <sfink>
+Use a `debugger` statement.
+
+[09:48:04.0892] <sfink>
+(in a meeting, will say more later)
+
+[11:29:07.0450] <sfink>
+huh, when I try a dirt-simple example, it runs forever even with `debugger`. Ok, I'll have to look at how I actually use it. I must have broken it for other usage. :-(
+
+[11:41:54.0341] <sfink>
+jrmuizel: ugh, seems like it's pretty messy to get it to run with the repl. The main thing seems to be to run it with `$JS -f jorendb.js ...` (note the -f) rather than `$JS jorendb.js ...`
+
+[11:42:08.0280] <jrmuizel>
+ah
+
+[11:42:40.0073] <jrmuizel>
+sfink: the source code talks about `-d jorendb.js`. The `-d` flag doesn't seem to exist.
+
+[11:42:44.0587] <jrmuizel>
+Do you know what that's about?
+
+[11:44:12.0577] <sfink>
+that must be stale. I think there was a shell flag that made sure to enable debug mode, but then we made the unnecessary and must have removed it.
+
+[11:47:30.0592] <sfink>
+ * that must be stale. I think there was a shell flag that made sure to enable debug mode, but then we made that unnecessary and must have removed it.
+
+[11:48:34.0988] <sfink>
+it would be fun to do a cleanup pass on this. I actually really like it as a debugger. Even if it doesn't support basic things like setting a breakpoint on a filename:lineno
+
+[11:50:12.0834] <sfink>
+but it's hard to take seriously right now, when `$JS -f jorendb.js -e 'debugger; print("hey!")'` doesn't do anything useful.
+
+[11:51:13.0452] <sfink>
+I guess `$JS -f jorendb.js -- -e 'debugger; print("hey!")'` works, at least.
+
+[11:51:22.0435] <sfink>
+"works"
+
+[11:56:43.0291] <ptomato>
+FWIW, I took jorendb as a starting point for GNOME's JS debugger
+
+[11:58:20.0375] <sfink>
+I'm sorry
+
+[11:58:28.0199] <sfink>
+also, that's really cool
+
+[12:00:29.0733] <sfink>
+I guess I expected that you would add enough networking stuff to be able to serve the JS Debugger API, and then use it remotely.
+
+[12:04:56.0260] <sfink>
+/me is reading https://wiki.gnome.org/Projects/GnomeShell/DebuggingJavaScript
+
+[14:48:36.0754] <shu>
+"I'm sorry" followed by "that's really cool" describes so much of mozilla
+
+[14:49:41.0779] <ptomato>
+OMG that wiki page! it describes a totally different debugger that was never merged, to my knowledge
+
+[14:50:24.0485] <Redfire>
+> <@pchimento:igalia.com> FWIW, I took jorendb as a starting point for GNOME's JS debugger
+
+and I guess I'll look at GNOME's as a starting point for my own 🙃
+
+[14:50:46.0261] <Redfire>
+Mostly because I'm too scared to look at the devtools one
+
+[15:55:28.0119] <smaug>
+sfink: which of the JS::GCReason values map to minor GC? Is it all the ones with *NURSERY* in the name?
+
+[15:57:36.0183] <sfink>
+there are others, eg FULL_WHOLE_CELL_BUFFER
+
+
+2023-01-13
+[16:02:45.0123] <sfink>
+ugh, they really don't seem to be segregated. But as far as I can tell, `*NURSERY*` and `FULL_*_BUFFER` should get them all?
+
+[16:03:52.0584] <sfink>
+some of the reasons (eg `PREPARE_FOR_TRACING`) will cause a minor GC followed by a major GC, but it looks like the reported minor GC reason in that case would be `EVICT_NURSERY`
+
+[16:11:31.0212] <sfink>
+filed bug 1810049
+
+[16:11:32.0686] <botzilla>
+https://bugzil.la/1810049 — NEW (nobody) — Separate out minor GC reasons from major GC reasons
+
+[08:29:44.0881] <mgaudet>
+nbp: Do we have any documentation around the expected workflow for code coverage? 
+
+[08:30:06.0781] <mgaudet>
+(I've reverse engineered a bit, but more description  particularly around browser ones would be appreciated) 
+
+[08:30:53.0962] <nbp>
+No, it was meant to be used with the environment variable at first, to have a minimal usable solution. Then the Debugger API started to become appealing for using it within test cases.
+
+[08:31:29.0059] <nbp>
+The principle was to provide an LCov-like output with minimal burden on config. It is mostly driven by use cases.
+
+[08:32:01.0121] <mgaudet>
+Ok -- I shall continue reversing :) 
+
+[08:32:12.0293] <mgaudet>
+(I'm like 90% to having what I need already) 
+
+[08:32:32.0056] <nbp>
+It should be straight forward, feel free to ping me if there is any pain point in reading the code.
+
+[08:32:54.0191] <mgaudet>
+As per usual, for browser I'll need to disable the sandbox right?
+
+[08:34:04.0998] <nbp>
+I never had to think of it before, but most likely yes if you are using the environment variable approach … but it might not work either as we kill the child processes instead of doing a proper termination.
+
+[08:34:16.0671] <nbp>
+Which is why the Debugger API came to life.
+
+[08:35:15.0825] <nbp>
+The LCov dump happens when everything is being finalized, but we do not do any finalization when the browser is killed :/
+
+[08:37:02.0878] <mgaudet>
+hrm -- gently concerning. Let's see how it goes :) 
+
+[08:38:34.0477] <nbp>
+If you do not want to spawn the Debugger API, there is the `js::GetCodeCoverageSummary` function, which is used in our test suite as well.
+
+[08:39:18.0138] <nbp>
+Which is meant as a way to dump the code coverage at a given point in time.
+
+[08:40:03.0871] <nbp>
+My only wish is that the Debugger, started to use this new Debugger API, … with no luck at the time.
+
+[08:40:10.0927] <nbp>
+ * My only wish was that the Debugger, started to use this new Debugger API, … with no luck at the time.
+
+[08:40:18.0339] <nbp>
+ * My only wish was that the Debugger started to use this new Debugger API, … with no luck at the time.
+
+[09:18:52.0021] <jrmuizel>
+does spidermonkey have an option for dumping the generated assembly with symbolic info? (like d8 --print-opt-code?)
+
+[09:20:04.0465] <iain>
+jrmuizel: Does `IONFLAGS=codegen` do what you want?
+
+[09:21:07.0513] <jrmuizel>
+iain: that doesn't seem to do anything
+
+[09:25:26.0497] <iain>
+jrmuizel: You need either `--enable-debug` or `--enable-jitspew` in your mozconfig
+
+[09:25:58.0297] <jrmuizel>
+ah
+
+[10:01:02.0681] <sili>
+Is there a way to add a version to the built library filename (libmozjs-XXX.so)? Our toolchain only expect versioned libraries (e.g. libmozjs-XXX.so.5.0) and I'm trying to solve it without adding an extra step of rename.
+
+[11:12:05.0714] <sfink>
+sili: I think you'll have to ask in #build:mozilla.org . I tried to chase down how that works, but it now completely goes through mach and the mozbuild system, and I don't understand most of how that works.
+
+[12:50:11.0013] <Bryan Thrall [:bthrall]>
+My understanding is the `js` namespace is for SpiderMonkey internal stuff, so when I'm moving a type to the public API, I need to move it to the `JS` namespace. Is that correct?
+
+[12:55:05.0232] <mgaudet>
+Bryan Thrall [:bthrall]: Yes
+
+[12:56:03.0892] <davidj361>
+Why does it say here SpiderMonkey was written in Rust? https://spidermonkey.dev/
+I see most of it in searchfox is in C/C++
+
+[12:59:43.0608] <davidj361>
+How much Rust is there in SpiderMonkey?
+
+[12:59:58.0664] <davidj361>
+ * Why does it say here SpiderMonkey was written in Rust? https://spidermonkey.dev/
+I see most of the code in searchfox is in C/C++
+
+[13:18:37.0138] <tcampbell>
+There was an effort to rewrite the JS parser in Rust, and an effort to rewrite part of the JIT backend in Rust. Both of these efforts were paused because performance wasn't getting were we wanted fast enough, and the exercises taught us a lot about improving the existing C++ code.
+
+[13:31:54.0498] <davidj361>
+So is that web page incorrect about SpiderMonkey being Rust?
+
+[13:48:08.0189] <tcampbell>
+Probably fair to say there are not currently substantial rust code in SpiderMonkey itself. Rust is still required to build spidermonkey for various small utility libraries though.
+
+
+2023-01-16
+[08:04:33.0527] <davidj361>
+`uint32_t` and `int32_t` fits into JS::NumberValue because it's typically a double, right?
+
+[08:05:34.0921] <davidj361>
+why is it that I cannot do myValue.toDouble() for both `uint32` and `int32` being held within it? Same for `myValue.toInt32()`
+
+[08:06:18.0728] <davidj361>
+I'm finding only `toInt32()` works for everything below `uint32` like `int32` and lower bitwidth integer types
+
+[08:06:41.0642] <davidj361>
+while `toDouble()` only works for `uint32_t` but not for the other integer types that are 32 bitwidth or less
+
+[08:07:35.0765] <davidj361>
+would it be breaking the JS engine if I were to shove a `uint32` into a `JS::NumberValue`?
+
+[08:08:40.0902] <davidj361>
+afaik double can accurately hold all integer types of 32 bitwidth
+
+[08:09:08.0560] <davidj361>
+ * I'm finding `toInt32()` works only for everything below `uint32` like `int32` and lower bitwidth integer types
+
+[08:09:41.0577] <davidj361>
+or was this an unforeseen bug from esr68?
+
+[08:09:49.0953] <Ms2ger>
+`toDouble` works if it's internally represented by a double rather than an `int32`
+
+[08:11:01.0193] <davidj361>
+Is there no proper API function to convert from JS to C++ a JS::NumberValue both `int32` and `uint32`?
+
+[08:11:16.0428] <davidj361>
+ * Is there no proper API function to convert from JS a JS::NumberValue to C++ both `int32` and `uint32`?
+
+[08:11:27.0024] <davidj361>
+ * Is there no proper API function to convert from JS a `JS::NumberValue` to C++ both `int32` and `uint32`?
+
+[08:14:25.0836] <davidj361>
+ * Is there no proper API function to convert from JS a `JS::NumberValue` to C++ both `int32` and `uint32` internally represented?
+
+[08:14:47.0100] <Ms2ger>
+I don't understand the question
+
+[08:15:57.0379] <davidj361>
+ok lets say I have 2 `JS::NumberValue` variables A and B. If A is given a `uint32_t` and B is given a `int32_t`, is there no API function with the same name that can be used on both A and B to convert back from JS to C++?
+
+[08:18:55.0820] <davidj361>
+ok I apologize, I overlooked `JS::NumberValue.toNumber()`....
+
+[08:19:20.0379] <davidj361>
+though I'm still confused why `toInt32()` won't work on `uint32_t` internally represented while `toDouble()` works on it
+
+[08:20:52.0040] <jandem>
+a `NumberValue` is represented as either Int32 or Double. If it's int32, you have to use `toInt32` (or `toNumber`). If it's Double, you have to use `toDouble` (or `toNumber`)
+
+[08:21:27.0272] <davidj361>
+and `uint32_t` won't be represented by an Int32?
+
+[08:21:56.0998] <jandem>
+only if it's in int32 range (<= INT32_MAX)
+
+[08:23:11.0202] <davidj361>
+is it bad practice to put uin32_t into a `JS::NumberValue` instead of a BigInt?
+
+[08:23:26.0533] <davidj361>
+ * is it bad practice to put `uint32_t` into a `JS::NumberValue` instead of a BigInt?
+
+[08:23:50.0845] <davidj361>
+as `uint32_t` > `INT32_MAX`
+
+[08:23:56.0122] <davidj361>
+ * as `uint32_t` RANGE > `INT32_MAX`
+
+[08:24:11.0488] <jandem>
+no. It will be stored in the Value as either int32 or double. It's more efficient than a BigInt (which requires a GC allocation)
+
+[08:24:23.0516] <davidj361>
+Thanks jandem
+
+[11:55:12.0437] <jon4t4n>
+Has the code freeze on central been lifted? Could someone queue [D166879](https://phabricator.services.mozilla.com/D166879) for landing?
+
+[12:17:39.0902] <mgaudet>
+jon4t4n: Good to see you -- Done. 
+
+[12:18:10.0429] <mgaudet>
+(For this sort of thing, we'd land it in code-freeze normally too, as it's low risk cleanup) 
+
+[14:55:04.0204] <mgaudet>
+confession: Oof. Spent all day trying to get code coverage in browser builds working more comprehensively; essentially I was looking for [this block](https://searchfox.org/mozilla-central/source/xpcom/base/nscore.h#154-169); but now I can gather data using `mach raptor`
+
+[14:55:06.0831] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2023-01-17
+[16:41:30.0031] <tcampbell>
+jrmuizel  there are actually patches up now for teaching the jits about that react for-in loop https://bugzilla.mozilla.org/show_bug.cgi?id=1799025
+
+[07:22:56.0434] <jrmuizel>
+How do I see what functions have been inlined?
+
+[07:44:17.0629] <tcampbell>
+`IONFLAGS=inline` should be what is final inline. I think `IONFLAGS=warp-trial-inlining` will give info on earlier passes
+
+[08:03:57.0076] <jrmuizel>
+Is it expected that adding `--enable-jitspew` to the build would negatively impact runtime performance?
+
+[08:08:18.0313] <jrmuizel>
+`IONFLAGS=inline` doesn't seem to print anything
+
+[08:08:27.0867] <jrmuizel>
+`IONFLAGS=warp-trial-inlining` does
+
+[08:27:53.0456] <iain>
+jrmuizel: `--enable-jitspew` shouldn't have a major negative impact, but it does add a bunch of branches where we have to check if we want to print a message
+
+[08:28:17.0351] <iain>
+`warp-trial-inlining` should tell you what we considered inlining and, if we didn't, why not
+
+[08:47:00.0190] <jrmuizel>
+iain: it does have a major negative impact
+
+[08:47:24.0539] <iain>
+jrmuizel: Oh, interesting. Even if you don't enable any output?
+
+[08:47:32.0822] <jrmuizel>
+iain: yeah
+
+[08:47:45.0190] <iain>
+How major are we talking?
+
+[08:48:45.0726] <jrmuizel>
+iain: my shell react-todomvc benchmark goes from 160ms to 200ms when I build with `--enable-jitspew`
+
+[08:49:12.0169] <jrmuizel>
+iain: I will try to get profiles to explain why
+
+[08:57:41.0000] <jrmuizel>
+iain: https://share.firefox.dev/3GJs5pP
+
+[08:58:39.0047] <jrmuizel>
+iain: chooseBundleSplit is calling js::jit::LiveBundle::toString
+
+[08:59:10.0004] <jrmuizel>
+iain: that's an obvious thing that's slowing down ion compiles a lot
+
+[09:00:33.0918] <jrmuizel>
+iain: https://searchfox.org/mozilla-central/source/js/src/jit/BacktrackingAllocator.cpp#3056
+
+[09:04:11.0177] <iain>
+jrmuizel: Yeah, okay, that makes sense
+
+[09:04:24.0408] <iain>
+Looks like I overestimated how much work we'd put into reducing the overhead of jitspew
+
+[09:04:53.0049] <iain>
+It doesn't affect release builds, so I guess there's never been much pressure to optimize it
+
+[09:07:13.0618] <jandem>
+worth filing a bug. We have fixed similar issues in the past
+
+[09:07:16.0057] <iain>
+For particular hotspots, we can wrap them in `if (JitSpewEnabled)` (like [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineIC.cpp#149-166))
+
+[09:07:36.0366] <iain>
+ * For particular hotspots, we can wrap them in `if (JitSpewEnabled(...))` (like [here](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineIC.cpp#149-166))
+
+[10:30:05.0283] <jrmuizel>
+iain: `warp-trial-inlining` doesn't seem to output function names. Would it be easy to make it so it did?
+
+[11:31:33.0693] <iain>
+jrmuizel: Yeah, it's possible
+
+[11:32:28.0831] <iain>
+At least to the extent that functions have names
+
+[11:37:30.0650] <iain>
+But it's just annoying enough to implement that we usually don't
+
+[11:48:57.0877] <jrmuizel>
+iain: as in we don't keep the names in a place that's easy to get to?
+
+[11:50:27.0062] <iain>
+There may be a displayAtom attached to the function, but it's slightly awkward to print it
+
+[11:53:09.0622] <iain>
+jrmuizel: I'll put up a patch
+
+[11:53:18.0844] <jrmuizel>
+iain: sweet
+
+[11:54:12.0258] <kfjvj>
+Regarding Job Queues, I understand that we can provide our own.  I would like to reuse the functionality provided by the internal job queue implementation, but the declaration of the InternalJobQueue class seems like it's not intended to be accessible to API users (https://searchfox.org/mozilla-esr68/source/js/src/vm/JSContext.h#77).
+
+Is there an easy way to reuse the existing job queue behaviour, but with a few minor tweaks?
+
+[12:09:25.0000] <iain>
+jrmuizel: https://phabricator.services.mozilla.com/D167087
+
+[12:09:46.0497] <tcampbell>
+iain: do you know what perf impact for your for-in patch stack was? (eg on speedometer)
+
+[12:11:56.0017] <iain>
+tcampbell: I think the most recent perf run was [this one](https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=396bd00261af24b36204dcc966bdb19175f5f5c6&originalSignature=3451139&newSignature=3451139&framework=13&originalRevision=e532680706131fdee9e66bc7b23a76b04f8f2fd8&page=1&showOnlyComparable=1) that Doug did to verify that our patch stacks weren't solving the same issue in different ways
+
+[12:13:46.0769] <iain>
+Headline number is 2-3% on react/react-redux
+
+[12:14:52.0348] <tcampbell>
+thanks
+
+[13:44:07.0873] <Ryan Hunt>
+What is the purpose of the 'metadata objects that are associated with each JS object'? https://searchfox.org/mozilla-central/source/js/src/vm/Realm.h#257
+
+[13:46:41.0042] <mccr8>
+Looks like it is used to track allocation stacks for devtools? or something? Unless you meant what is the purpose in a more philosophical sense.
+
+[13:51:20.0837] <Ryan Hunt>
+> <@mccr8:mozilla.org> Looks like it is used to track allocation stacks for devtools? or something? Unless you meant what is the purpose in a more philosophical sense.
+
+Yeah that seems to be the only user of it that I can see. It just seemed like a pretty general mechanism, so I wasn't sure if there were other big uses for it
+
+[14:17:36.0125] <iain>
+Looks like this was the original bug: https://bugzilla.mozilla.org/show_bug.cgi?id=850026
+
+
+2023-01-18
+[22:16:39.0713] <arai>
+what's the "shutdown" mentioned in [bug 1762233](https://bugzilla.mozilla.org/show_bug.cgi?id=1762233) ?
+
+[22:16:41.0360] <botzilla>
+https://bugzil.la/1762233 — NEW (nobody) — Reconsider OOM handling in DOM Streams
+
+[22:20:55.0343] <arai>
+oh, the case where browser is shutting down and the global goes away?
+
+[23:08:00.0799] <arai>
+never mind. I think I got it and answered in the bug comment.
+
+[04:45:10.0066] <ochameau>
+Hi there
+
+[04:45:15.0549] <ochameau>
+I was wondering if someone around could shed some light on what `frontIsBreakablePoint` and `frontIsBreakableStepPoint` really mean?
+https://searchfox.org/mozilla-central/rev/9563aef5a0aeaedc73f363172a93b2f10e289c2e/js/src/vm/BytecodeUtil-inl.h#175-183
+
+We have trouble in the debugger stepping on unexpected lines because of these two distinct types of "breakable" positions.
+I wrote some lengthy description of the issue over here: https://phabricator.services.mozilla.com/D165164#5430203
+
+I'd be happy to discuss here, on phabricator or hop on a crash course in 1:1.
+
+[04:53:31.0534] <jandem>
+ochameau: this seems related to `BytecodeEmitter::markStepBreakpoint` and `BytecodeEmitter::markSimpleBreakpoint`. If I understand this correctly, the former corresponds to `frontIsBreakableStepPoint` and is what we usually do. We only use `markSimpleBreakpoint` at the end of the script or right at a function call
+
+[04:54:54.0339] <jandem>
+ * ochameau: this seems related to `BytecodeEmitter::markStepBreakpoint` and `BytecodeEmitter::markSimpleBreakpoint`. If I understand this correctly, the former corresponds to `frontIsBreakableStepPoint` and is what we usually do. We only use `markSimpleBreakpoint` at the end of the script or right before a function call
+
+[06:08:25.0218] <ochameau>
+jandem: Shouldn't makeSimpleBreakpoint be called each time is called markStepBreakpoint given this implementation:
+```
+bool frontIsBreakablePoint() const { return isBreakpoint; }
+bool frontIsBreakableStepPoint() const {
+    return isBreakpoint && seenStepSeparator;
+}
+```
+
+[06:09:57.0321] <ochameau>
+Otherwise I'm wondering if `markSimpleBreakpoint` and `frontIsBreakablePoint` is any useful (for debugger needs)? Should be be able to set a breakpoint anywhere we could possibly step? Any idea why we would need to have two distinct set of "breakable positions"??
+
+[06:10:25.0023] <ochameau>
+ * Otherwise I'm wondering if `markSimpleBreakpoint` and `frontIsBreakablePoint` is any useful (for debugger needs)? Shouldn't we be able to set a breakpoint anywhere we could possibly step? Any idea why we would need to have two distinct set of "breakable positions"??
+
+[06:11:01.0617] <jandem>
+ochameau: `frontIsBreakablePoint` should match both `markStepBreakpoint` and `markSimpleBreakpoint`. `markStepBreakpoint` emits two source notes (step + breakpoint) and `markSimpleBreakpoint` only emits the breakpoint note
+
+[06:11:40.0601] <ochameau>
+ah ok! good catch!
+
+[06:12:35.0440] <jandem>
+ochameau: I think the idea was that you can break on a function call or end-of-script, but breaking in all those places when stepping is a bit too much?
+
+[06:14:41.0098] <ochameau>
+but at the end, we can set breakpoint on many more positions other than function call and end-of-script (BTW, what is the definition of end-of-script? is it end of a <script> tag/file?)
+
+[06:16:55.0985] <jandem>
+ochameau: also closing } in a function, see [this comment](https://searchfox.org/mozilla-central/rev/9563aef5a0aeaedc73f363172a93b2f10e289c2e/js/src/frontend/FunctionEmitter.cpp#624-632) for example
+
+[06:17:50.0254] <jandem>
+so we're not doing this for simple arrow functions like `x => x + 2`
+
+[06:22:05.0042] <ochameau>
+You may set breakpoint on all these lines, except line 120. But none of them are function call or end-of-script right?
+
+[06:22:25.0567] <ochameau>
+So we aren't really using this frontIsBreakablePoint logic, right?
+
+[06:23:29.0029] <jandem>
+ochameau: `frontIsBreakablePoint` also matches where we call `markStepBreakpoint` and that probably happens for all of these statements
+
+[06:25:48.0304] <ochameau>
+so it is rather the other way around frontIsBreakablePoint is a super set of frontIsBreakableStepPoint 
+
+[06:27:21.0128] <ochameau>
+so that it looks like we could set breakpoint in more locations than we can step? we can set breakpoint in function call and end-of-script for not step?? Is that the translation of our current ongoing discussion?
+
+[06:28:43.0068] <jandem>
+correct, there are step-breakpoints (at statements more or less) and additional non-step breakpoints (end of script, function calls)
+
+[07:02:44.0896] <jandem>
+ochameau: (looking at the bugzilla bug.. I could try to repro this in the JS shell with the debugger API if you think it's reporting the wrong source code location to devtools..)
+
+[07:23:49.0183] <ochameau>
+jandem: I can try to provide you a reduce Debugger API testcase for you. Here I was trying to make sense of the existing code. We don't understand enough how the underlying spidermonkey code is working...
+
+[07:29:15.0525] <jandem>
+ochameau: a Debugger API testcase would be nice. I'm happy to take a look or to answer questions if you want to understand the SM side better
+
+[08:16:16.0060] <ochameau>
+jandem: here you go https://phabricator.services.mozilla.com/D167162 hopefully an xpcshell script is ok for you?
+
+[08:16:23.0218] <ochameau>
+ * jandem: here you go https://phabricator.services.mozilla.com/D167162 hopefully a xpcshell script is ok for you?
+
+[08:25:49.0743] <jandem>
+ochameau: should be fine, thanks. I needinfo'd myself on the bug to take a look at this
+
+[08:48:24.0220] <jonco>
+sfink: ping
+
+[09:18:37.0916] <kfjvj>
+Would someone be able to clarify how the executor parameter is used in NewPromiseObject?
+
+It seems that it needs to be callable, but what are the parameters and return value, and when is it called?
+
+[09:22:52.0847] <kfjvj>
+> <@kfjvj:mozilla.org> Would someone be able to clarify how the executor parameter is used in NewPromiseObject?
+> 
+> It seems that it needs to be callable, but what are the parameters and return value, and when is it called?
+
+The reason I'm asking is that I'm trying to make JS promise objects interact with a boost::asio executor.
+
+[09:37:55.0812] <kfjvj>
+> <@kfjvj:mozilla.org> The reason I'm asking is that I'm trying to make JS promise objects interact with a boost::asio executor.
+
+I see now that this is referring to an "executor" parameter in the JS specification for the promise constructorl.
+
+[09:41:18.0604] <Aditi>
+Hey everybody, so I was looking into change array by copy implementation in spidermonkey, has that been shipped yet? 
+
+[09:50:52.0707] <mgaudet>
+Aditi: It appears no, we've not shipped.
+
+[09:54:37.0153] <Aditi>
+Oh, do you know, why that is? 
+
+[09:56:06.0412] <mgaudet>
+Aditi: Just did a bit of bug-tree reorganization to track that a bit better, see Bug 1811054. I don't have a good answer as to why we haven't shipped, I wasn't tracking it particularly closely 
+
+[09:56:07.0717] <botzilla>
+https://bugzil.la/1811054 — NEW (nobody) — [meta] Change Array By Copy proposal
+
+[09:59:00.0625] <mgaudet>
+Aditi: Looks like https://bugzilla.mozilla.org/show_bug.cgi?id=1784092 suggests we were waiting for some test262 tests that have since landed; so we probably could pref-flip this now
+
+[09:59:50.0469] <mgaudet>
+(Having said that, I don't think our implementation has been fuzzed, so I wouldn't really do that right away) 
+
+[10:00:01.0932] <mgaudet>
+The most honest answer here looks like it just got dropped by accident
+
+[10:07:19.0903] <Aditi>
+> <@mgaudet:mozilla.org> (Having said that, I don't think our implementation has been fuzzed, so I wouldn't really do that right away)
+
+Oops! Is that something I can help with, or would you like to take that up? 
+
+[10:08:29.0411] <mgaudet>
+So, if you're going to be keeping an eye on this proposal, next step would be bug https://bugzilla.mozilla.org/show_bug.cgi?id=1811056 -- if you could take care of that, I can tehn email to get fuzzing started; then in a few weeks we can jump to https://bugzilla.mozilla.org/show_bug.cgi?id=1811057 
+
+[10:09:39.0771] <Aditi>
+Okay, thanks!  👍️
+
+
+2023-01-19
+[17:42:23.0338] <jrmuizel>
+tcampbell: we seem to spend noticeably more time in the kernel than d8
+
+[17:42:37.0415] <tcampbell>
+what sort of syscalls?
+
+[17:42:51.0034] <tcampbell>
+malloc, mprotect, other?
+
+[17:43:13.0023] <jrmuizel>
+https://share.firefox.dev/3J3MQ2l
+
+[17:44:09.0135] <jrmuizel>
+page faults and mmap I think
+
+[17:45:01.0243] <jrmuizel>
+tcampbell: actually this shows it well: https://share.firefox.dev/3XIX9wS
+
+[17:45:25.0850] <jrmuizel>
+46% page faults
+
+[17:45:33.0525] <jrmuizel>
+15% mmap
+
+[17:45:37.0731] <jrmuizel>
+ * 15% mprotect
+
+[17:45:45.0362] <jrmuizel>
+7.6% madvise
+
+[17:47:02.0314] <tcampbell>
+interesting...
+
+[17:52:33.0468] <tcampbell>
+In a way it seems like we are churning memory in and out of the process much faster rather than managing free pools
+
+[17:52:55.0187] <jrmuizel>
+yeah
+
+[17:53:13.0197] <jrmuizel>
+I will try disabling jemalloc
+
+[17:53:45.0328] <tcampbell>
+this could also be GC memory
+
+[17:53:57.0676] <tcampbell>
+this interleaved kernel/js profile is nice
+
+[17:54:07.0987] <jrmuizel>
+how is GC memory allocated?
+
+[17:54:21.0252] <jrmuizel>
+with malloc or something else?
+
+[17:54:52.0069] <tcampbell>
+something else
+
+[17:57:26.0709] <tcampbell>
+ah good, sfink has better answers
+
+[17:57:28.0580] <sfink>
+a custom allocator on top of mmap (on linux, osx)
+
+[17:58:47.0522] <tcampbell>
+do we have a free-pool of chunks?
+
+[18:00:17.0322] <jrmuizel>
+here's a view of where we're page faulting: https://share.firefox.dev/3XnLpzN
+
+[18:02:15.0773] <jrmuizel>
+it seems like a lot of it gcish stuff
+
+[18:04:48.0777] <jrmuizel>
+under what conditions would jit code be faulting?
+
+[18:06:29.0829] <jrmuizel>
+I guess when it does an object allocation it will touch fresh pages for the first time?
+
+[18:06:49.0301] <sfink>
+yes, we have a free list, that goes through a lifecycle of being decommited, released, etc.
+
+[18:08:15.0897] <tcampbell>
+yeah, jitcode can setup gc objects directly after getting new pages
+
+[18:08:56.0356] <sfink>
+I think that looks like a new `JitCode*`, which is a GC object itself.
+
+[18:09:02.0000] <sfink>
+(sorry, only half here)
+
+[18:11:04.0150] <jrmuizel>
+here's an example piece of assembly that's faulting:
+```
+mov rdx, -0x6800000000000
+mov qword [rax + 0x18], rdx
+mov qword [rax + 0x20], rdx
+mov qword [rax + 0x28], rdx
+mov qword [rax + 0x30], rdx
+mov qword [rax + 0x38], rdx
+mov qword [rax + 0x40], rdx
+mov qword [rax + 0x48], rdx
+```
+
+[18:11:43.0475] <jrmuizel>
+is `-0x6800000000000` special?
+
+[18:11:51.0540] <tcampbell>
+probably UndefinedValue
+
+[18:12:08.0148] <iain>
+I don't think it is
+
+[18:12:22.0987] <iain>
+Boxed values start with ff
+
+[18:12:34.0996] <iain>
+Oh, wait, ~0x68
+
+[18:12:38.0224] <tcampbell>
+"-" 
+
+[18:12:48.0460] <tcampbell>
+yeah, assembly views are weird
+
+[18:13:06.0011] <jrmuizel>
+0xfff9800000000000
+
+[18:13:17.0496] <iain>
+Yeah, that's undef
+
+[18:13:37.0601] <iain>
+ * Oh, wait, -0x68
+
+[18:13:51.0116] <jrmuizel>
+so the faults there make a lot of sense then? we're basically initializing some object?
+
+[18:15:38.0684] <iain>
+Probably comes from here: https://searchfox.org/mozilla-central/source/js/src/jit/MacroAssembler.cpp#474-477
+
+[18:15:44.0963] <jrmuizel>
+Does it makes sense that `NewCallObject` and `Lambda` ops would be the ones faulting?
+
+[18:16:54.0632] <iain>
+[NewCallObject](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#7238) and [Lambda](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#3532) both generate code to allocate objects
+
+[18:17:45.0114] <iain>
+But that's a hint that maybe we could do better with calls
+
+[18:18:06.0473] <jrmuizel>
+sfink: do we have any knobs that control how aggressively we return pages to the OS?
+
+[18:18:11.0495] <iain>
+In particular with closures
+
+[18:20:00.0256] <jrmuizel>
+the code in question is the self hosted implementation of `bind`.
+
+[18:20:26.0921] <jrmuizel>
+it's the 5th hotest function
+
+[18:20:27.0237] <iain>
+An item floating around near the bottom of my todo list has just made a sudden rise
+
+[18:20:39.0904] <iain>
+This is very useful information
+
+[18:20:39.0991] <jrmuizel>
+but only takes 1.8% of the time
+
+[18:21:19.0272] <iain>
+(Admittedly that item was just "look at function.bind")
+
+[18:21:28.0345] <jrmuizel>
+🙂
+
+[18:22:09.0230] <jrmuizel>
+about 15% of the time in function.bind is page faulting
+
+[18:41:26.0308] <jrmuizel>
+iain: this is running https://github.com/jrmuizel/Speedometer/blob/shell-react-todomvc/resources/todomvc/architecture-examples/react/index.js which is a shell version of the first section of react-todomvc
+
+[18:46:57.0139] <sfink>
+> <@jrmuizel:mozilla.org> sfink: do we have any knobs that control how aggressively we return pages to the OS?
+
+There are prefs (or in the shell, GC parameters) that control the minimum and maximum number of empty 1MB chunks we have lying around. We also skip decommitting empty chunks if the allocation rate is high, and the thresholds for what counts as high are controllable.
+
+[18:47:35.0755] <sfink>
+[empty chunk min/max controls](https://searchfox.org/mozilla-central/rev/daf613efc5c358f3a94961d73b90472c00703838/js/public/GCAPI.h#254-270)
+
+[18:49:45.0208] <sfink>
+I think [javascript.options.mem.gc_min_empty_chunk_count](https://searchfox.org/mozilla-central/rev/daf613efc5c358f3a94961d73b90472c00703838/js/public/GCAPI.h#155-162) controls whether we decide we're in high frequency gc mode
+
+[18:50:26.0218] <sfink>
+ * I think [javascript.options.mem.gc_high_frequency_time_limit_ms](https://searchfox.org/mozilla-central/rev/daf613efc5c358f3a94961d73b90472c00703838/js/public/GCAPI.h#155-162) controls whether we decide we're in high frequency gc mode
+
+[18:51:38.0734] <sfink>
+so maybe bumping up JSGC_MAX_EMPTY_CHUNK_COUNT to something really high might be interesting?
+
+[18:53:51.0877] <sfink>
+in the shell, `gcparam("maxEmptyChunkCount", 10000)` ought to do it.
+
+[19:16:14.0887] <jrmuizel>
+sfink: thanks
+
+[09:20:33.0742] <davidj361>
+When converting an `enum class` to SpiderMonkey, should I just convert it to its underlying type then to the SpiderMonkey equivalent primitive?
+
+[09:21:47.0438] <davidj361>
+I'm already doing so but wasn't sure if that's incorrect
+
+[09:22:03.0076] <davidj361>
+ * I'm already doing so but wasn't sure if that's incorrect where SpiderMonkey as a `enum class` equivalent
+
+[09:22:09.0693] <davidj361>
+ * I'm already doing so but wasn't sure if that's incorrect where SpiderMonkey has a `enum class` equivalent
+
+[09:35:20.0733] <sfink>
+The basic approach will be to store it as an int32. That won't give you a string <-> enum value at all, but you'll have to do that separately if you want it.
+
+[09:35:38.0193] <sfink>
+ Gecko's webidl bindings generator does a bunch of extra stuff.
+
+[09:37:22.0782] <sfink>
+an example fragment is https://searchfox.org/mozilla-central/source/__GENERATED__/__linux64__/dom/bindings/ChromeUtilsBinding.cpp#57-95
+
+[09:38:06.0089] <sfink>
+and https://searchfox.org/mozilla-central/source/__GENERATED__/__linux64__/dist/include/mozilla/dom/ChromeUtilsBinding.h#86-103
+
+[09:38:50.0521] <sfink>
+I thought there was a string -> id lookup generated somehow, but I'm not seeing it.
+
+[12:48:31.0213] <jrmuizel>
+iain: that's ReactElement.createElement before and after your `for in` changes
+
+[12:50:42.0918] <iain>
+jrmuizel: Yeah, that looks correct. We are adding a fastpath guarded by IteratorHasIndicesAndBranch
+
+[12:51:09.0888] <iain>
+Hopefully performance is better?
+
+[12:54:30.0572] <jrmuizel>
+have not tried to measure it yet
+
+[12:56:59.0847] <iain>
+Doug said it looks like Matrix React is hovering around 3-4% faster
+
+[12:57:24.0337] <iain>
+Not sure where he was measuring that
+
+[12:58:29.0708] <kfjvj>
+Does anyone know if there is a way to share JSObjects between different JSContexts?
+
+[12:59:28.0062] <jrmuizel>
+iain: I just ran the test cases from here: https://benediktmeurer.de/2017/09/07/restoring-for-in-peak-performance/
+
+[12:59:41.0331] <jrmuizel>
+it does not seem like performance was improved by your patch
+
+[13:04:46.0714] <iain>
+Ah, right. My optimization only kicks in when we see a variety of object shapes, and in those microbenchmarks there's only one shape
+
+[13:05:11.0369] <iain>
+In the real world I think that probably shouldn't matter much, but maybe I should try fixing it anyway
+
+[13:06:12.0277] <jrmuizel>
+iain: maybe at least have a bug on file about it
+
+[13:06:21.0801] <jrmuizel>
+it may not matter much
+
+[13:07:53.0979] <jrmuizel>
+iain: would it be easy to know when the optimization could fire but isn't currently?
+
+[13:08:56.0440] <jrmuizel>
+i.e. run on react-todomvc and see how often we have unoptimized for..in loops
+
+[13:11:04.0328] <tcampbell>
+kfjvj: There is no way. Generally a different context is a different GC-heap and runs on a different thread, objects cannot be shared. In the browser we use Structured-Clone to serialize and deserialize objects between different JSContext
+
+[13:18:46.0544] <iain>
+jrmuizel: I think it correlates with the number of times we hit [this code](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#3274)
+
+[13:31:00.0832] <jrmuizel>
+iain: running the before and after on react-todomvc don't show a noticeable difference when just eyeballing the numbers
+
+[13:31:27.0834] <iain>
+The quick hacky way to "fix" this is to get rid of `tryAttachNativeIterator` and `tryAttachNullOrUndefined`[here](https://searchfox.org/mozilla-central/source/js/src/jit/CacheIR.cpp#5313-5319) and instead always call `tryAttachMegamorphic` (even in specialized mode)
+
+[13:31:29.0249] <jrmuizel>
+I'll try comparing it more scientifically in the future
+
+[13:32:16.0366] <iain>
+I don't know if that will affect the numbers on react-todomvc, but I *think* it should cause the optimization to kick in on the microbenchmarks
+
+
+2023-01-20
+[10:50:54.0073] <mstange>
+tcampbell: https://web.archive.org/web/20120126212139/http://blog.cdleary.com/
+
+
+2023-01-23
+[09:32:48.0192] <jon4t4n>
+Hi, could someone queue [D167489](https://phabricator.services.mozilla.com/D167489) for landing?
+
+[09:50:15.0840] <jonco>
+jon4t4n: sure, done
+
+[09:51:11.0174] <jon4t4n>
+jonco: Thanks.
+
+
+2023-01-24
+[03:51:19.0725] <smaug>
+Do we have some helper to get string data out of JSRope without flattening? And even to get the data to an existing buffer, so that no allocations would happen.
+
+[05:11:08.0079] <jandem>
+smaug: sounds like you want something like `JSRope::copyCharsInternal` or `StringSegmentRange`
+
+[05:11:54.0521] <jandem>
+I think tcampbell was looking into the rope atomization thing a while ago too so he might have a patch for this already
+
+[05:12:16.0438] <smaug>
+right
+
+[05:13:15.0819] <smaug>
+I was just debugging this a tiny bit, and looks like 1/3 of the strings pass to atomization are JSRopes when running sp2 react-todo
+
+[05:15:22.0169] <smaug>
+JSRope::copyCharsInternal seems to allocate. StringSegmentRange looks promising 
+
+[05:16:04.0359] <jandem>
+yeah that is a lot of flattening we could potentially avoid
+
+[05:16:48.0662] <smaug>
+ * I was just debugging this a tiny bit, and looks like 1/3 of the strings passed to atomization are JSRopes when running sp2 react-todo
+
+[06:23:24.0754] <mconley>
+yulia: Congratulations on closing out bug 1247687!
+
+[06:23:26.0227] <botzilla>
+https://bugzil.la/1247687 — RESOLVED (yulia) — Implement worker modules
+
+[06:27:12.0725] <yulia>
+Thanks! Looks like it may stick this time! I am still looking at it with a bit of side eye...
+
+[06:53:07.0837] <denispal>
+Is there a way to figure out how many operands each JSOp takes?  something like https://searchfox.org/mozilla-central/source/js/src/jit/LIR.h#895 but for JSOp?
+
+[06:53:29.0583] <denispal>
+ * Is there a way to figure out how many operands each JSOp takes?  something like https://searchfox.org/mozilla-central/source/js/src/jit/LIR.h#901 but for JSOp?
+
+[07:14:08.0378] <jandem>
+denispal: do you mean the stack slots? see [here](https://searchfox.org/mozilla-central/rev/cf3af6bb6657278880f8baf38435eeb8f2d5d86c/js/src/vm/BytecodeUtil.h#331-333). For most ops it's statically known but a few ops are variadic 
+
+[07:14:47.0450] <jandem>
+ * denispal: do you mean the stack slots? see [here](https://searchfox.org/mozilla-central/rev/cf3af6bb6657278880f8baf38435eeb8f2d5d86c/js/src/vm/BytecodeUtil.h#331-333). For most ops it's statically known but a few ops are variadic and we need to read the operand
+
+[07:16:38.0713] <denispal>
+jandem: ah interesting.  I want to add operands info to the jitdump, but not sure how many stack values to look at for JSOp opcodes
+
+[07:16:44.0983] <denispal>
+I guess that should tell me?
+
+[07:17:20.0031] <jandem>
+yes I think so
+
+[07:18:01.0587] <denispal>
+perfect, ty!
+
+[07:37:57.0948] <tcampbell>
+smaug: yeah, I'm still looking into the rope thing. I had mixed results so I need to continue tuning more. There is a bit of complexity traversing ropes since we normally do in-place mutation and other tricks. Relevant bugs are under Bug 1803803
+
+[07:37:58.0925] <botzilla>
+https://bugzil.la/1803803 — NEW (nobody) — [meta] JS Perf Experiments - Atoms and Strings
+
+[11:54:19.0111] <dminor>
+It doesn't look like we have a review group for spidermonkey: https://firefox-source-docs.mozilla.org/contributing/reviews.html#review-groups. It came up today that it might be useful to have one for large reviews like Temporal (https://bugzilla.mozilla.org/show_bug.cgi?id=1519167) to make it easier to coordinate reviews across multiple people. This could also make life easier for external contributors. Any thoughts on this?
+
+[11:57:50.0704] <tcampbell>
+dminor: I believe that mgaudet looked into this in the past. I didn't remember why we abandoned it
+
+[12:13:09.0818] <mgaudet>
+Last time I looked into it, we were using bugzlila for review, and support was not great.
+
+Today I definitely think we should look into it again, we will likely have much more success, even the support that we have have in tooling (phabricator)
+
+[12:27:41.0666] <Dale>
+Question from a random discussion, is there any proposals to add some form of sleep / wait / delay into Promises? (ie settimeout, but promise)
+
+[12:33:32.0480] <mgaudet>
+Dale: Off the top of my head I can't really think of anything -- but partially this a side effect of the notion of time not really existing in the spec (everything in the spec really talks in terms of "jobs" which are enqueued onto job queues owned by the embedding host; it is the host responsibility to then kick jobs off at appropriate times) 
+
+[12:33:55.0742] <mgaudet>
+So if that were under consideration, it would have to be done as some part of web spec 
+
+[12:35:17.0263] <mgaudet>
+(I know it's something I've wanted before, so I definitely understand a desire for it; `new Promise((r) => { setTimeout(x, r);}` isn't super satisfying (and IIRC there's some pain in getting it right that I may  be skating over)
+
+[12:36:38.0164] <Dale>
+lol yeh we were discussing how we have a need to write that code almost daily, thanks for the insight 
+
+[12:41:22.0026] <mgaudet>
+(IMO would be a very nice addition to the HTML spec, where I think it would have to belong, but others may disagree :P) 
+
+[12:52:59.0068] <dminor>
+I filed https://bugzilla.mozilla.org/show_bug.cgi?id=1812153 to create a reviewers group for spidermonkey in phabricator. I left needinfos for Jan, Ted and Yulia to sign off on the membership, but if anyone else has any comments (or objections!) please comment in that bug.
+
+
+2023-01-25
+[06:57:43.0955] <mgaudet>
+Tim: 👋 Glad to see you pushing Change Array by Copy forward -- I have pinged our fuzzing team to see if they can get it fuzzed now. 
+
+[06:58:11.0799] <mgaudet>
+I sketched out the meta bug for get this shipped; would you be able to take a look at https://firefox-source-docs.mozilla.org/js/feature_checklist.html and see if there's anything that we've missed. 
+
+[06:59:02.0125] <mgaudet>
+(I am wondering a bit about cross compartment creation) 
+
+[09:39:48.0965] <ochameau>
+Hi there, I crafted a reduced test case highlighting something weird around `TryNoteKind::Catch`. You may find a jit test and lengthy description of my findings over there https://bugzilla.mozilla.org/show_bug.cgi?id=1811199#c4. This ends up confusing the debugger and displaying exception on wrong locations.
+
+[10:20:54.0047] <iain>
+ochameau: Ah, this is an internal detail of the for-of implementation leaking out. We generate a synthetic try-catch block inside the for-of to handle closing the iterator if an exception is thrown.
+
+[10:45:56.0578] <iain>
+ochameau: I think I have a fix that works
+
+[10:58:42.0034] <smaug>
+do we have any telemetry data how often twobytechar strings are used vs latin1 ?
+
+[12:39:50.0420] <ochameau>
+Whooo nice, thanks for jumping in this right away!
+
+
+2023-01-26
+[23:33:08.0391] <jandem>
+smaug: no. It depends a lot on the website, but the majority should be latin1. Especially for the atomization case you were looking at because that's often used for property names etc that are mostly ascii
+
+[23:33:29.0942] <jandem>
+ * smaug: no. It depends a lot on the website, but the majority should be latin1. Especially for the atomization case you were looking at because that's mostly used for property names etc that are mostly ascii
+
+[23:34:49.0703] <jandem>
+ * smaug: no. It depends a lot on the website, but the majority should be latin1. Especially for the atomization case you were looking at because that's mostly used for property names etc that are usually ascii
+
+[00:40:22.0884] <smaug>
+jandem: I wonder if having this extra caching only for latin1 would be ok.  linear strings would still have their own cache, and long strings, I mean they would keep having the existing cache.
+
+[00:41:02.0079] <smaug>
+The new part of the cache seems to help only with react, https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=f48b67239ad1e96c21ae7b30f0e4a00b6cbc51c8&originalSignature=3451139&newSignature=3451139&framework=13&originalRevision=d55602d5d72aafaddc02dec3ee6607e5cd958ffc&page=1&showOnlyImportant=1
+
+[00:43:56.0189] <jandem>
+smaug: nice improvement! I think latin1 only should be ok at least for now
+
+[00:45:08.0412] <smaug>
+In react case the strings are framework internal , I think. They are almost all like ".$00f003de-7a17-4dc9-9b85-96fae6d0402d"
+
+[00:48:00.0696] <jandem>
+yeah
+
+[00:55:40.0694] <jandem>
+frameworks often add their own generated property key to objects
+
+[04:32:02.0994] <l11d>
+is it possible to collect lcov data for selfhosted scripts? the generated lcov reports seem to contain data only for user-supplied inputs
+
+[06:26:09.0322] <mgaudet>
+l11d:  I have been playing with coverage recently, and looking at my own lcov outputs I'm seeing self hosted in there
+
+[06:26:22.0197] <mgaudet>
+if you grep for `SF:self-hosted` do you see any entries? 
+
+[06:27:09.0497] <mgaudet>
+```
+SF:self-hosted
+FN:1,top-level
+FN:2842,Promise_finally/thenFinally/<
+FN:2807,defineProperty
+FN:2742,ObjectOrReflectDefineProperty
+FN:4633,split
+FN:4625,StringProtoHasNoSplit
+FN:241,filter
+FN:707,ArraySpeciesCreate
+FN:703,get [Symbol.species]
+FN:748,concat
+``` 
+
+[06:27:55.0120] <mgaudet>
+(now having said that, mapping the lcov data to source files I totally believe may be broken; but afaict we don't do anything to exclude self-hosting from our code coverage system at the moment) 
+
+[06:38:45.0525] <l11d>
+mgaudet: interesting, I don't see a single `SF: self-hosted`. do you do anything besides setting `JS_CODE_COVERAGE_OUTPUT_DIR` and `--code-coverage`?
+
+[06:41:27.0376] <mgaudet>
+l11d: Hmm. I'm running in the browser, and as a result I'm setting `MOZ_DISABLE_CONTENT_SANDBOX=1` -- looking a little closer though, I'm not seeing self-hosted in files where I'm seeing content scripts; only chrome stuff it seems
+
+[06:41:59.0210] <mgaudet>
+not sure why that is just yet (in principle though, you should be able to see that) 
+
+[06:43:06.0613] <l11d>
+mgaudet: would code belonging to builtin scripts pass this check? https://searchfox.org/mozilla-central/source/js/src/vm/CodeCoverage.cpp#600
+
+[06:43:42.0370] <mgaudet>
+(side note; are you in the shell?) 
+
+[06:43:56.0326] <l11d>
+yes, I'm in the shell
+
+[06:45:21.0280] <mgaudet>
+KK -- I'm going to look into this, and shell makes it a bit easier :) coming up on kiddo breakfast tho, so may be a few hours yet before I have an answer. 
+
+[06:45:47.0606] <l11d>
+mgaudet: much appreciated :) 
+
+[08:59:28.0875] <mgaudet>
+l11d: Try the following patch: 
+
+```
+diff --git a/js/src/vm/CodeCoverage.cpp b/js/src/vm/CodeCoverage.cpp
+--- a/js/src/vm/CodeCoverage.cpp
++++ b/js/src/vm/CodeCoverage.cpp
+@@ -371,7 +371,7 @@ void LCovSource::writeScript(JSScript* s
+   // If this script is the top-level script, then record it such that we can
+   // assume that the code coverage report is complete, as this script has
+   // references on all inner scripts.
+-  if (script->isTopLevel()) {
++  if (script->isTopLevel() || script->selfHosted()) {
+     hasTopLevelScript_ = true;
+   }
+ }
+```
+
+[09:01:45.0087] <mgaudet>
+
+As near as I can tell, the data exists, but [we don't dump it unless something marks the script as 'top-level'](https://searchfox.org/mozilla-central/source/js/src/vm/CodeCoverage.cpp#444-449), which isn't happening for self-hosted code. I'm not entirely sure what the underlying design is -supposed- to be; hopefully that helps
+
+[09:44:49.0207] <mgaudet>
+[Maybe we should look more into MozLog in the next year or so :P](https://groups.google.com/a/mozilla.org/g/dev-platform/c/2Xv74MmiYpI/m/sIrino8gAwAJ?utm_medium=email&utm_source=footer) 
+
+[09:44:57.0059] <mgaudet>
+(That video is a good demo) 
+
+[09:51:00.0077] <l11d>
+mgaudet: I'll give this a try tomorrow (getting late here), many thanks
+
+[09:51:56.0994] <mgaudet>
+l11d: No worries  -- my investigation is fairly incomplete, because I am not sure why sometimes in chrome I get self hosted code, but, it's something and may be sufficient for your needs
+
+
+2023-01-27
+[05:32:57.0724] <yulia>
+Where would i look for how to do a beta build and run on try? Is it the selectors for try? https://firefox-source-docs.mozilla.org/tools/try/selectors/release.html
+
+[05:33:54.0784] <yulia>
+I just want to run a non-nightly build
+
+[05:34:29.0141] <yulia>
+ * I just want to run tests on a non-nightly build
+
+[05:38:00.0776] <yulia>
+ * Where would i look for how to do a beta build and run on try? Is it the selector for release? https://firefox-source-docs.mozilla.org/tools/try/selectors/release.html
+
+[05:39:18.0522] <yulia>
+hm, maybe this is it: https://wiki.mozilla.org/Sheriffing/How_To/Beta_simulations
+
+[05:39:51.0090] <yulia>
+I'll check with the sherrifs
+
+[05:47:10.0634] <smaug>
+jandem: there is something about atom marking being wrong with my patch. But the old cache stuff doesn't do any special  atom marking either. Does it rely on some side effect of something else?
+
+[05:47:16.0280] <smaug>
+or perhaps jonco knows
+
+[05:47:59.0903] <smaug>
+jonco: the background here is bug 1808673 and bug 1811749. The first one has the patch now.
+
+[05:48:00.0962] <botzilla>
+https://bugzil.la/1808673 — NEW (nobody) — Investigate if MruCache would be useful for atom cache
+
+[05:48:01.0339] <botzilla>
+https://bugzil.la/1811749 — NEW (nobody) — Investigate if AtomizeString could avoid JSRope::flatten in the cases when the atom is cached
+
+[05:48:57.0584] <smaug>
+I think the code should do some marking, but also for the existing cache, and I just can't see why it is not needed in that case.
+
+[05:49:06.0914] <jonco>
+*looking*
+
+[05:50:37.0790] <smaug>
+jonco: https://searchfox.org/mozilla-central/rev/3a13c5ad9c1dbd065e484a399af75eb98c235def/js/src/vm/JSAtom.cpp#727,740 why that is ok without any marking? Ah, is it because linear strings live always in a single zone, so the create jsatom is there.... that could be it
+
+[05:51:05.0309] <smaug>
+and my patch doesn't have such guarantee since it just take the string out of JSRope as raw characters
+
+[05:51:18.0626] <smaug>
+ * and my patch doesn't have such guarantee since it just takes the string out of JSRope as raw characters
+
+[05:52:20.0017] <smaug>
+ * jonco: https://searchfox.org/mozilla-central/rev/3a13c5ad9c1dbd065e484a399af75eb98c235def/js/src/vm/JSAtom.cpp#727,740 why that is ok without any marking? Ah, is it because linear strings live always in a single zone, so the created jsatom is there.... that could be it
+
+[05:55:32.0396] <jonco>
+hmm not sure what's going on here - what error are you getting
+
+[05:55:33.0809] <jonco>
+?
+
+[05:56:15.0662] <smaug>
+jonco:  https://treeherder.mozilla.org/logviewer?job_id=403715464&repo=try&lineNumber=20150
+
+[05:56:29.0523] <jandem>
+we do purge the cache on gc, maybe you need to do something similar?
+
+[05:56:44.0974] <jonco>
+The existing cache looks like it's runtime-wide so I think we should mark atoms when return one for a zone 
+
+[05:56:54.0492] <smaug>
+I did add code to purge
+
+[05:57:30.0232] <smaug>
+jonco: the existing cache is runtime wide, but it does JSLinearString -> JSAtom mapping
+
+[05:57:36.0653] <jandem>
+linear strings and ropes can live in any zone, only atoms live in the atoms zone
+
+[05:58:05.0214] <smaug>
+oh, so strings aren't bound to a zone?
+
+[05:58:05.0791] <jandem>
+ * linear strings and ropes can live in any zone. Atoms live in the atoms zone
+
+[05:59:41.0078] <jandem>
+non-atoms strings are bound to a single zone
+
+[05:59:57.0233] <smaug>
+ok, that does explain the current behavior then
+
+[06:00:04.0867] <jandem>
+(I mean, there's not a single zone for them)
+
+[06:00:20.0991] <jandem>
+ * (I mean, there's not a single zone for all of them)
+
+[06:00:36.0427] <jonco>
+all strings live in a single zone; atoms only live in the atoms zone; any zone may have pointers into the atoms zone (but must mark the atoms)
+
+[06:01:20.0883] <jonco>
+jandem: I can't find where we mark atoms for the existing cache - this must happen somewhere right?
+
+[06:01:32.0118] <smaug>
+but ok, the old code is fine, since it does JSLinearString -> atom mapping, and if that isn't found, the underlying code will add the atom to zone's cache
+
+[06:02:04.0831] <smaug>
+https://searchfox.org/mozilla-central/source/js/src/vm/JSAtom.cpp#457-465,485-486 ?
+
+[06:02:04.0892] <jandem>
+jonco: I think that happens as part of the atomization process, for that cache we just take the resulting atom and because we purge on gc it should be ok
+
+[06:03:06.0243] <smaug>
+How slow or fast is marking?
+
+[06:03:07.0539] <jonco>
+oh, we're not testing string equality but identity for the cache?
+
+[06:03:37.0722] <smaug>
+jonco: yeah, and I'm adding string equality, since it seems to help react quite a bit
+
+[06:03:47.0156] <jandem>
+jonco: oh I see what you mean, yeah I think it works because it's based on string identity so the atom is tied to the zone that way
+
+[06:03:55.0387] <jonco>
+ok thanks I understand now :)
+
+[06:04:16.0455] <smaug>
+So, now I wonder if I should do marking, or just limit the cache per zone
+
+[06:04:17.0135] <jonco>
+it's already marked because we marked it when we atomized it originally
+
+[06:04:23.0746] <smaug>
+depends on the speed of the marking
+
+[06:05:44.0364] <jandem>
+maybe checking `cx->zone() == str->zone()` is simplest and fastest?
+
+[06:05:57.0758] <jonco>
+you're going to have to mark an atom one way or another
+
+[06:07:40.0779] <smaug>
+I'd rely on the existing marking. Store zone in the AtomTableKey and when doing comparison, zones would need to match. That is one way
+
+[06:09:04.0473] <jonco>
+atom marking is going to faster than linearising the string if you make your cache miss for different zones
+
+[06:09:33.0103] <smaug>
+but atom marking might slow single zone usage, no?
+
+[06:10:05.0577] <jonco>
+it's just setting a bit, it's definitely fast if the atom's already marked
+
+[06:10:14.0792] <jonco>
+(it might require allocation otherwise)
+
+[06:11:22.0566] <smaug>
+let me try that then
+
+[06:11:48.0422] <smaug>
+jonco: cx->markAtom(atom); ?
+
+[06:12:13.0151] <jonco>
+yes
+
+[06:12:24.0798] <jonco>
+but yeah, try it and see
+
+[06:14:21.0561] <smaug>
+thanks!
+
+[08:54:53.0429] <jrmuizel>
+The following code is noticeably faster in V8 than SM
+```
+function do_extend(o) {
+  var result = Object.assign({}, o, {canvasOriginX: 0, canvasOriginY: 1 });
+  return result;
+}
+
+var o = { w: 0, x: 1, y: 2, z: 3 };
+var n = 1e8;
+
+function test(fn) {
+  var result;
+  for (var i = 0; i < n; ++i) result = fn(o);
+  return result;
+}
+
+```
+
+Is that expected?
+
+
+[08:55:06.0756] <jrmuizel>
+v8: 9397ms
+
+[08:55:13.0511] <jrmuizel>
+ * SM: 9397ms
+
+[08:55:22.0096] <jrmuizel>
+V8: 8671ms
+
+[09:00:38.0012] <jrmuizel>
+the interest in Object.assign comes from the react-stockcharts benchmark
+
+[09:01:00.0041] <jrmuizel>
+and is a pattern that's pretty common in React apps
+
+[09:04:33.0708] <nbp>
+jrmuizel: is this `Object.assign` which is slow, or `do_extend`? Have you looked at the details of what "being slow" means in this test case?
+
+[09:04:53.0951] <jrmuizel>
+nbp: I have not
+
+[09:05:12.0964] <nbp>
+Have you opened a bug?
+
+[09:05:21.0688] <jrmuizel>
+nope
+
+[09:05:25.0811] <jrmuizel>
+I'd be happy to
+
+[09:05:30.0881] <jrmuizel>
+ * I'd be happy to though
+
+[09:06:13.0630] <jrmuizel>
+I hope to have my perf profiling setup working again soon to better answer the question of what part is slow
+
+[09:06:29.0649] <jrmuizel>
+I can file a bug once I have a decent profile
+
+[09:08:20.0372] <nbp>
+That would be great ;) Thanks
+
+[09:18:20.0143] <jrmuizel>
+interestingly enough the version that uses spread is way slower:
+`  var result = {...o, ...{canvasOriginX: 0, canvasOriginY: 1 }};`
+`v8: 84219 ms`
+`sm: 16306 ms`
+
+[09:20:12.0411] <iain>
+Huh, it's interesting that v8 is so much slower than we are there. That's a case we don't optimize very much.
+
+[09:22:38.0830] <jrmuizel>
+is spread intrinsically more expensive or just not something that anybody has cared about making fast?
+
+[09:22:56.0983] <jrmuizel>
+https://babeljs.io/docs/en/babel-plugin-transform-react-jsx#usespread
+
+[09:24:52.0867] <nbp>
+It is possible that the spread operator, using the iterator pattern, benefit from scalar replacement to get rid of the iterator allocations.
+
+[09:25:29.0232] <nbp>
+ * It is possible that the spread operator, using the iterator pattern, benefit from scalar replacement & escape analysis to get rid of the iterator allocations.
+
+[09:32:23.0823] <jrmuizel>
+nbp: is that a reason spread would be faster than Object.assign or a reason it should be slower?
+
+[09:36:33.0659] <iain>
+Spread is somewhat tricky to optimize because you can spread anything that supports the Iterator protocol
+
+[09:37:57.0932] <iain>
+So you have to support everything from an array to a generator
+
+[09:42:35.0983] <iain>
+Oh, apparently we have some code to handle that spread case when creating an object. I was thinking about spread calls, where we don't do anything fancy unless there's a single spread parameter and nothing else.
+
+[10:00:35.0984] <nbp>
+jrmuizel: using scalar replacement would make us faster once in Ion/Warp.
+
+[10:41:03.0856] <sfink>
+one part of `Object.assign` was looked at in bug 1648546
+
+[10:41:05.0273] <botzilla>
+https://bugzil.la/1648546 — NEW (nobody) — Optimize Object.assign in CacheIR
+
+[10:42:43.0760] <sfink>
+I would expect `Object.assign` to be very common. And I expect spread to take over from other things pretty rapidly with new code. It's a lot nicer to use than the alternatives.
+
+[10:52:21.0339] <iain>
+I ran an experiment a while ago to see how often spread calls were used on the web, to see if we should expand our coverage of spread calls beyond `foo(...oneArray)`, and it turned out that they barely showed up at all
+
+[10:52:42.0627] <iain>
+But that was spread calls, not initializing objects using spread syntax
+
+[14:39:51.0496] <Tim>
+> <@mgaudet:mozilla.org> Tim: 👋 Glad to see you pushing Change Array by Copy forward -- I have pinged our fuzzing team to see if they can get it fuzzed now.
+
+Based on the checklist, it seems like the only thing left to do is the "Intent to Ship" email and filing a follow-up bug to remove the preference/command-line flag?
+
+[14:40:43.0440] <mgaudet>
+That seems plausible -- I haven't heard back from our fuzzing team, so I'd give it a week or so, but we can probably ship on nightly week after next (and yes, send the intent to ship) 
+
+[14:41:19.0457] <Tim>
+also, you asked about cross-compartment creation -- I'm still thinking about that
+
+[14:44:20.0844] <Tim>
+Where would I look for an example of how that's tested for in another existing builtin? (I'm assuming there are no examples for array methods since there aren't any other array methods that copy an array, as far as I can see)
+
+[14:46:42.0631] <mgaudet>
+Yeah -- the kind of test cases I'm thinking about are (in the shell) something along the lines of 
+
+```
+g = newGlobal({newCompartment: true})
+w = g.eval([].with)
+w.call([1,2,3], 1, 3)
+``` 
+
+There's a couple of things of interest there: 
+1. Did it work; 
+2. Is the resulting array -from the right realm- (the above test case is also interesting for cross-realm testing if you just drop the new compartment thing) 
+
+[14:48:59.0619] <mgaudet>
+(I'm just about to drop for the weekend, but [this searchfox query](https://searchfox.org/mozilla-central/search?q=newGlobal%28%7B&path=js%2Fsrc%2Ftests%2F&case=false&regexp=false) shows a number of tests of the sort I was thinking about) 
+
+[14:49:44.0418] <Tim>
+thanks!
+
+[15:10:10.0186] <Tim>
+> <@mgaudet:mozilla.org> Yeah -- the kind of test cases I'm thinking about are (in the shell) something along the lines of 
+> 
+> ```
+> g = newGlobal({newCompartment: true})
+> w = g.eval([].with)
+> w.call([1,2,3], 1, 3)
+> ``` 
+> 
+> There's a couple of things of interest there: 
+> 1. Did it work; 
+> 2. Is the resulting array -from the right realm- (the above test case is also interesting for cross-realm testing if you just drop the new compartment thing)
+
+Did you mean for line 2 to be `g.eval('[].with
+
+[15:10:25.0176] <Tim>
+ * Did you mean for line 2 to be `g.eval('[].with')`?
+
+[15:27:30.0374] <mgaudet>
+Yep :) 
+
+
+2023-01-30
+[07:57:21.0931] <Bryan Thrall [:bthrall]>
+To clarify my understanding of when rooting is needed a little more: I'm looking at [how `frontend::PrepareForInstantiate() is used`](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#738-739), and it seems like the `gcOutput_` parameter does not need to be rooted. Is it true that this is because there is no possibility that the GC knows about pointers inside `gcOutput_`? For example, `CompilationGCOutput::scopes` is a `GCVector`, but the GC doesn't know about it until instantiation?
+
+[08:25:17.0417] <Bryan Thrall [:bthrall]>
+ * To clarify my understanding of when rooting is needed a little more: I'm looking at [how `frontend::PrepareForInstantiate()` is used](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#738-739), and it seems like the `gcOutput_` parameter does not need to be rooted. Is it true that this is because there is no possibility that the GC knows about pointers inside `gcOutput_`? For example, `CompilationGCOutput::scopes` is a `GCVector`, but the GC doesn't know about it until instantiation?
+
+[08:26:34.0198] <mgaudet>
+Bryan Thrall [:bthrall]: I think it works because we explicitly [provide and call a trace method](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#570,580), which are explicitly traced by the [GlobalHelperThreadState](https://searchfox.org/mozilla-central/source/js/src/vm/HelperThreads.cpp#2645,2689,2692), which is traced [here](https://searchfox.org/mozilla-central/source/js/src/gc/RootMarking.cpp#279,294,345)
+
+[08:28:29.0086] <mgaudet>
+Rooting is (AIUI) essentially a shortcut for saying "this is an object which must be traced by the GC, so please ensure it happens"; but we do have alternative mechanisms which can be used in circumstances which make sense.
+
+[08:28:37.0523] <mgaudet>
+(ie. explicit tracing) 
+
+[08:39:23.0125] <Bryan Thrall [:bthrall]>
+I see the `trace()` now, thanks!
+So it seems like `gcOutput_` needs to be traced by the GC.
+I don't see why it needs to be, though. It doesn't seem like the GC would need to know about that memory until the stencil was instantiated.
+
+[08:44:43.0555] <mgaudet>
+Bryan Thrall [:bthrall]: I'm inclined to agree based on some cursory searchfoxing...
+
+[08:45:04.0345] <mgaudet>
+AFAICT gcOutput_ may be created off thread, but it remains empty until main-thread instantiation happens? 
+
+[08:49:21.0669] <jonco>
+Rooting is generally used for things on the stack, which are known to be live but are not otherwise reachable. The GC marks everything transitively reachable from roots (including the stack but also things associated with the runtime, like the helper thread state). 
+
+[08:54:33.0469] <jonco>
+Maybe we need to trace gcOutput_ in case main-thread instantiation triggers a GC part way through?  
+
+[08:59:22.0402] <Bryan Thrall [:bthrall]>
+Do you mean in case a GC is triggered part way through an instantiation?
+
+[09:00:38.0877] <jonco>
+Yes
+
+[09:03:48.0961] <Bryan Thrall [:bthrall]>
+I can see how that would require tracing gcOutput_.
+Thanks!
+
+[09:37:55.0318] <smaug>
+do we have some easy way to check if there are cross-realm references? Same origin iframe uses the same zone as its parent, so zones don't help here (thinking about some optimizations for the  case when a same origin iframe is removed from the doc).
+
+[09:56:14.0505] <jonco>
+AFAIK we only track pointers between compartments, and cross-realm references may be same-compartment
+
+
+2023-01-31
+[05:45:17.0105] <l11d>
+mgaudet: I tried applying your patch and it does help; however hit counts are limited to the first line per function. Do you have a general idea which function I'll need to change such that I'll get hit counts for each line?
+
+[06:28:20.0085] <caleb.distributive>
+Hey, having some trouble embedding spidermonkey. I've built spidermonkey from the repo and ran "make install" in the built directory to install the headers and library to /usr/local/include and /usr/local/lib, but when I compile my project and attempt to run it I get "undefined symbol: _ZN7mozilla6detail23InvalidArrayIndex_CRASHEmm". Is there anything I should be linking to other than /usr/local/lib/libmozjs-111a1.so?
+
+[06:33:40.0855] <nchevobbe>
+mgaudet: is there a pref or a flag to enable the Change Array by Copy feature ? Asking as we probably need to add those new methods to this list https://searchfox.org/mozilla-central/rev/8e9b4484408154b80d7ede9e1b035819fda48fd2/devtools/server/actors/webconsole/eager-ecma-allowlist.js#26-45
+
+[06:42:49.0711] <l11d>
+nchevobbe: for the shell, there is `--enable-change-array-by-copy`. in the browser, there is `javascript.options.experimental.enable_change_array_by_copy`
+
+[06:43:10.0091] <nchevobbe>
+> <@l11d:mozilla.org> nchevobbe: for the shell, there is `--enable-change-array-by-copy`. in the browser, there is `javascript.options.experimental.enable_change_array_by_copy`
+
+perfect, thanks
+
+[08:07:03.0738] <l11d>
+caleb.distributive: do you mind checking whether the missing symbol is local or global? `nm -D  /usr/local/lib/libmozjs-111a1.so | grep InvalidArrayIndex`. furthermore, did you use ./mach build or the instructions at https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/Building%20SpiderMonkey.md
+
+[08:43:20.0912] <caleb.distributive>
+> <@l11d:mozilla.org> caleb.distributive: do you mind checking whether the missing symbol is local or global? `nm -D  /usr/local/lib/libmozjs-111a1.so | grep InvalidArrayIndex`. furthermore, did you use ./mach build or the instructions at https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr102/docs/Building%20SpiderMonkey.md
+
+"nm -D  /usr/local/lib/libmozjs-111a1.so | grep InvalidArrayIndex" results in "w _ZN7mozilla6detail23InvalidArrayIndex_CRASHEmm". At first I was using the instructions from that page, and my project was successfully working (using firefox-102.2.0esr) until I attempted to use js::Unbox, which led to a similar issue ("undefined symbol: _ZN2js5UnboxEP9JSContextN2JS6HandleIP8JSObjectEENS2_13MutableHandleINS2_5ValueEEE"), at which point I tried building from the repo directly and came to the above problem
+
+[09:02:20.0680] <tcampbell>
+`js::Unbox` seems to be missing a JS_PUBLIC_API annotation (and doesn't seem to be used outside spidermonkey at t moment which might be why it wasn't noticed)
+
+[09:03:23.0269] <caleb.distributive>
+I see! How would I go about dealing with that issue
+
+[09:03:33.0852] <caleb.distributive>
+ * I see! How would I go about dealing with that issue?
+
+[09:09:06.0822] <tcampbell>
+bad answer: don't use js::Unbox since it doesn't really seem to be part of public API
+change-the-code answer: Add `JS_PUBLIC_API` annotation in both JSObject.cpp and Class.h. Could file a bug and we'd fix it upstream eventually. Not sure if we'd uplift to 102 or not.
+
+[09:21:13.0073] <caleb.distributive>
+I'll probably change my local code and file a bug then. Is there some other way to unbox a boxed object in the public API?
+
+[11:13:11.0386] <dminor>
+tcampbell: creation of a spidermonkey reviewers group in phabricator is waiting on your feedback: https://bugzilla.mozilla.org/show_bug.cgi?id=1812153
+
+[11:54:18.0139] <tcampbell>
+dminor: I think this is a good suggestion!
+

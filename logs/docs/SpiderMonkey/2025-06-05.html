@@ -1,0 +1,182 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2025-06-05</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2025-06-05<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2025-06-04" class="nav-link"><span>prev</span></a>
+<a href="2025-06-06" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Wed Jun 04 2025 23:41:07 GMT-0700 (Pacific Daylight Time)">06:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@zjiaz:mozilla.org">z10g</span>&gt;</div></td><td class="msg-cell"><span class="nick-10">jandem</span>: <span class="nick-14">yury</span> Thanks for your information. I submitted my change as <a href="https://phabricator.services.mozilla.com/D252624">D252624</a>, which adds a new <code>ABIKind::WasmToJit</code> for <code>FillArgumentArrayForJitExit</code>. PTAL, thanks!</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Thu Jun 05 2025 01:56:17 GMT-0700 (Pacific Daylight Time)">08:56</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">this is a bit weird: when compacting GC is on, workers do not have access to Date api in jsshell -- is that expected?</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Thu Jun 05 2025 01:59:48 GMT-0700 (Pacific Daylight Time)">08:59</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><span class="nick-10">yulia</span>: What happens with "does not have access" ?  Do you have testcase?</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Thu Jun 05 2025 02:03:20 GMT-0700 (Pacific Daylight Time)">09:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">I see <code>evalInWorker("console.log(<a href="http://Date.now">Date.now</a>());");</code> shows the timestamp even with <code>JS_GC_ZEAL=IncrementalMultipleSlices</code></td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Thu Jun 05 2025 02:03:26 GMT-0700 (Pacific Daylight Time)">09:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">it looks like it has access by default, but something in my test is causing it to fail</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Thu Jun 05 2025 02:03:38 GMT-0700 (Pacific Daylight Time)">09:03</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">if i call date before my test, it works, let me see if i can minimize the test case</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Thu Jun 05 2025 02:06:10 GMT-0700 (Pacific Daylight Time)">09:06</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell"><p>semi-minimized:</p>
+<pre><code>// Each test increments this value by one if it succeeds
+let sab = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+setSharedObject(sab);
+
+// same tests as above but with a worker
+function test5() {
+  evalInWorker(`
+  const i32 = new Int32Array(getSharedObject());
+  function test1() {
+    var o = {};
+    o.sab = new SharedArrayBuffer(4096);
+    o.ia = new Int32Array(o.sab);
+    o.ia[37] = 0x1337;
+
+    var promise = Atomics.waitAsync(o.ia, 37, 0x1337, 1).value;
+    return promise;
+  }
+
+  // Custom Timeout to ensure that we wait until waitAsync times out.
+  function timeout(n) {
+    var start = Date.now();
+    while (Date.now() - start &lt; n) {};
+  }
+
+  result = "";
+
+  test1()
+    .then((v) =&gt; { result = v });
+
+  timeout(10);
+
+  drainJobQueue();
+  if (result == "timed-out") {
+    Atomics.add(i32, 0, 1);
+  }
+  `);
+}
+
+test5();
+let i32 = new Int32Array(sab);
+while (Atomics.load(i32, 0) != 1) {};
+~
+
+</code></pre>
+<p>This fails for me with ./mach jit-test --cgc --verbose testname.js</p>
+</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Thu Jun 05 2025 02:06:50 GMT-0700 (Pacific Daylight Time)">09:06</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell"><p>but this will pass:</p>
+<pre><code>let sab = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
+setSharedObject(sab);
+
+// same tests as above but with a worker
+function test5() {
+  evalInWorker(`
+  const i32 = new Int32Array(getSharedObject());
+  function test1() {
+    var o = {};
+    o.sab = new SharedArrayBuffer(4096);
+    o.ia = new Int32Array(o.sab);
+    o.ia[37] = 0x1337;
+
+    var promise = Atomics.waitAsync(o.ia, 37, 0x1337, 1).value;
+    return promise;
+  }
+
+  // Custom Timeout to ensure that we wait until waitAsync times out.
+  function timeout(n) {
+    var start = Date.now();
+    while (Date.now() - start &lt; n) {};
+  }
+
+  result = "";
+
+  timeout(10);
+
+  test1()
+    .then((v) =&gt; { result = v });
+
+  timeout(10);
+
+  drainJobQueue();
+  if (result == "timed-out") {
+    Atomics.add(i32, 0, 1);
+  }
+  `);
+}
+
+test5();
+let i32 = new Int32Array(sab);
+while (Atomics.load(i32, 0) != 1) {};
+
+</code></pre>
+<p>Only difference is that the call to `timeout() is repeated before the promise</p>
+</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Thu Jun 05 2025 02:07:20 GMT-0700 (Pacific Daylight Time)">09:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">define "fail" ?</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Thu Jun 05 2025 02:07:35 GMT-0700 (Pacific Daylight Time)">09:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell"><pre><code>./mach jit-test --cgc --verbose atomics/waitAsync.js
+
+Exit code: -11
+FAIL - atomics/waitAsync.js
+[0|1|0|0] 100% ==========================================================&gt;|   0.8s
+FAILURES:
+    --setpref=atomics_wait_async=true atomics/waitAsync.js
+TIMEOUTS:
+
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Thu Jun 05 2025 02:07:48 GMT-0700 (Pacific Daylight Time)">09:07</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">Looking into it deeper, Date is undefined</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Thu Jun 05 2025 02:08:37 GMT-0700 (Pacific Daylight Time)">09:08</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">oh wait</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Thu Jun 05 2025 02:08:42 GMT-0700 (Pacific Daylight Time)">09:08</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">just ran with a debugger</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Thu Jun 05 2025 02:09:23 GMT-0700 (Pacific Daylight Time)">09:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">very weird, maybe it is something on my end. ill keep debugging</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Thu Jun 05 2025 02:12:49 GMT-0700 (Pacific Daylight Time)">09:12</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">if it segfaults (-11), then Date being undefined isn't the root cause I think</td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Thu Jun 05 2025 02:14:58 GMT-0700 (Pacific Daylight Time)">09:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">found it, at least the tests are doing what they should</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Thu Jun 05 2025 02:16:02 GMT-0700 (Pacific Daylight Time)">09:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell">How do you check that a module has no TLA in its graph?</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Thu Jun 05 2025 02:16:58 GMT-0700 (Pacific Daylight Time)">09:16</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">in what context?  are you looking for something that does it programatically with JSAPI ?</td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Thu Jun 05 2025 02:17:22 GMT-0700 (Pacific Daylight Time)">09:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">in other words, what's the goal, or the purpose of the check?</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Thu Jun 05 2025 02:18:26 GMT-0700 (Pacific Daylight Time)">09:18</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell"><p><a href="https://www.w3.org/TR/service-workers/#is-async-module-algorithm">https://www.w3.org/TR/service-workers/#is-async-module-algorithm</a><br>Its referred to in the service worker spec.</p><p>I'm not planning to implement it yet, but I just wanted to check.</p></td></tr>
+  <tr class="msg" id="L20"><td class="ts-cell"><a class="ts" href="#L20" alt="Thu Jun 05 2025 02:19:24 GMT-0700 (Pacific Daylight Time)">09:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">maybe you've already hit the issue, but <code>FutexWaiterListHead</code> dtor hits nullptr-dereference for me with <code>iter</code> being nullptr</td></tr>
+  <tr class="msg" id="L21"><td class="ts-cell"><a class="ts" href="#L21" alt="Thu Jun 05 2025 02:19:39 GMT-0700 (Pacific Daylight Time)">09:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">so, the <code>while</code> loop should check <code>iter</code> itself</td></tr>
+  <tr class="msg" id="L22"><td class="ts-cell"><a class="ts" href="#L22" alt="Thu Jun 05 2025 02:21:30 GMT-0700 (Pacific Daylight Time)">09:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">yes, that was what i found as well</td></tr>
+  <tr class="msg" id="L23"><td class="ts-cell"><a class="ts" href="#L23" alt="Thu Jun 05 2025 02:22:35 GMT-0700 (Pacific Daylight Time)">09:22</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">as explained in the spec, you'll need to check the async-ness of each module in the graph.  is the question about the public JSAPI for the corresponding operation ?</td></tr>
+  <tr class="msg" id="L24"><td class="ts-cell"><a class="ts" href="#L24" alt="Thu Jun 05 2025 02:23:16 GMT-0700 (Pacific Daylight Time)">09:23</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell">Thats correct. What's the JSAPI for it.</td></tr>
+  <tr class="msg" id="L25"><td class="ts-cell"><a class="ts" href="#L25" alt="Thu Jun 05 2025 02:24:02 GMT-0700 (Pacific Daylight Time)">09:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">To my understanding, the <code>[[Async]]</code> field mentioned there is <a href="https://searchfox.org/mozilla-central/rev/bd57b566959758d0455c6e37afca00648c8e4ff0/js/src/builtin/ModuleObject.cpp#717">js::CyclicModuleFields::hasTopLevelAwait</a></td></tr>
+  <tr class="msg" id="L26"><td class="ts-cell"><a class="ts" href="#L26" alt="Thu Jun 05 2025 02:24:13 GMT-0700 (Pacific Daylight Time)">09:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">sending another patch your way</td></tr>
+  <tr class="msg" id="L27"><td class="ts-cell"><a class="ts" href="#L27" alt="Thu Jun 05 2025 02:24:26 GMT-0700 (Pacific Daylight Time)">09:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">it is triggered by the existing waitAsync tests</td></tr>
+  <tr class="msg" id="L28"><td class="ts-cell"><a class="ts" href="#L28" alt="Thu Jun 05 2025 02:24:48 GMT-0700 (Pacific Daylight Time)">09:24</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">and apparently there's no public API to directly query it</td></tr>
+  <tr class="msg" id="L29"><td class="ts-cell"><a class="ts" href="#L29" alt="Thu Jun 05 2025 02:27:23 GMT-0700 (Pacific Daylight Time)">09:27</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">actually, I might be wrong, or the spec isn't in sync. there's no <code>[[Async]]</code> field in Cyclic Module Records  <a href="https://tc39.es/ecma262/#table-cyclic-module-fields">https://tc39.es/ecma262/#table-cyclic-module-fields</a></td></tr>
+  <tr class="msg" id="L30"><td class="ts-cell"><a class="ts" href="#L30" alt="Thu Jun 05 2025 02:28:24 GMT-0700 (Pacific Daylight Time)">09:28</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">r+ed!</td></tr>
+  <tr class="msg" id="L31"><td class="ts-cell"><a class="ts" href="#L31" alt="Thu Jun 05 2025 02:37:54 GMT-0700 (Pacific Daylight Time)">09:37</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">if you just want to throw an error if single module script contains TLA, then you can set <a href="https://searchfox.org/mozilla-central/rev/bd57b566959758d0455c6e37afca00648c8e4ff0/js/public/CompileOptions.h#309">JS::TransitiveCompileOptions::topLevelAwait</a> option to <code>false</code>,  but of course this is not for the spec, as it throws SyntaxError</td></tr>
+  <tr class="msg" id="L32"><td class="ts-cell"><a class="ts" href="#L32" alt="Thu Jun 05 2025 02:44:23 GMT-0700 (Pacific Daylight Time)">09:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell">I guess, bug 1360870 is related.  and it sounds like Firefox doesn't support it yet.  Then I assume there's no public API, and we'll need to add it</td></tr>
+  <tr class="msg" id="L33"><td class="ts-cell"><a class="ts" href="#L33" alt="Thu Jun 05 2025 02:44:24 GMT-0700 (Pacific Daylight Time)">09:44</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@botzilla:mozilla.org">botzilla</span>&gt;</div></td><td class="msg-cell"><a href="https://bugzil.la/1360870">https://bugzil.la/1360870</a> — NEW (nobody) — Implement "module" service workers</td></tr>
+  <tr class="msg" id="L34"><td class="ts-cell"><a class="ts" href="#L34" alt="Thu Jun 05 2025 06:46:51 GMT-0700 (Pacific Daylight Time)">13:46</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell">It's possible I could check by running ModuleEvaluate, then seeing if the returned promise is resolved (immediately) or not. (Based on what I'm heard in the <a href="https://webengineshackfest.org/#nodejs">CJS/ESM talk in Web Engines Hackfest</a>)</td></tr>
+  <tr class="msg" id="L35"><td class="ts-cell"><a class="ts" href="#L35" alt="Thu Jun 05 2025 07:14:08 GMT-0700 (Pacific Daylight Time)">14:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-9" title="@nicolo-ribaudo:matrix.org">nicolo-ribaudo</span>&gt;</div></td><td class="msg-cell">In the spec it's now called <code>[[HasTLA]]</code></td></tr>
+  <tr class="msg" id="L36"><td class="ts-cell"><a class="ts" href="#L36" alt="Thu Jun 05 2025 08:21:25 GMT-0700 (Pacific Daylight Time)">15:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">This is an interesting thesis about evaluating garbage collection from a micro-architectural perspective: <a href="https://www.steveblackburn.org/pubs/theses/huang-2025.pdf">https://www.steveblackburn.org/pubs/theses/huang-2025.pdf</a></td></tr>
+  <tr class="msg" id="L37"><td class="ts-cell"><a class="ts" href="#L37" alt="Thu Jun 05 2025 11:19:44 GMT-0700 (Pacific Daylight Time)">18:19</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@mconley:mozilla.org">mconley</span>&gt;</div></td><td class="msg-cell">Hey gang - I asked this in <a href="https://matrix.to/#/#fx-desktop-dev:mozilla.org">#fx-desktop-dev:mozilla.org</a> , but maybe somebody here knows: Does anybody know if xpcshell (the binary) accept arguments or read environment variables that'd help me diagnose why it's just kinda hanging and not executing a script I've handed it?</td></tr>
+  <tr class="msg" id="L38"><td class="ts-cell"><a class="ts" href="#L38" alt="Thu Jun 05 2025 11:20:08 GMT-0700 (Pacific Daylight Time)">18:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@mconley:mozilla.org">mconley</span>&gt;</div></td><td class="msg-cell">More context in that channel - specifically this message and the one after: <a href="https://matrix.to/#/!ykdkAGURCpjeYhwLFB:mozilla.org/$yuTz9FndnvUJ6EXO3K7dSbvSg0FKaiDJN9z2vtHH_jM?via=mozilla.org&amp;via=matrix.org&amp;via=igalia.com">https://matrix.to/#/!ykdkAGURCpjeYhwLFB:mozilla.org/$yuTz9FndnvUJ6EXO3K7dSbvSg0FKaiDJN9z2vtHH_jM?via=mozilla.org&amp;via=matrix.org&amp;via=igalia.com</a></td></tr>
+  <tr class="msg" id="L39"><td class="ts-cell"><a class="ts" href="#L39" alt="Thu Jun 05 2025 11:21:58 GMT-0700 (Pacific Daylight Time)">18:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@mconley:mozilla.org">mconley</span>&gt;</div></td><td class="msg-cell">In case people are curious, I spent the last few days bisecting on try, and the purported culprit is <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1928254">https://bugzilla.mozilla.org/show_bug.cgi?id=1928254</a>, but I have no idea how. (cc <span class="nick-16">pbone (he/him)</span>)</td></tr>
+  <tr class="msg" id="L40"><td class="ts-cell"><a class="ts" href="#L40" alt="Thu Jun 05 2025 11:31:44 GMT-0700 (Pacific Daylight Time)">18:31</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell"><span class="nick-14">mconley</span>: I don't know much about xpcshell. Looking at <a href="https://searchfox.org/mozilla-central/source/js/xpconnect/src/XPCShellImpl.cpp#843-979">the argument handling code</a>, it doesn't look like there's a lot of bells and whistles. Have you tried running it in a debugger to get the backtrace of where it's stuck?</td></tr>
+  <tr class="msg" id="L41"><td class="ts-cell"><a class="ts" href="#L41" alt="Thu Jun 05 2025 11:32:05 GMT-0700 (Pacific Daylight Time)">18:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-4" title="@iain:mozilla.org">iain</span>&gt;</div></td><td class="msg-cell">(Or in rr, or profiling it with something like samply)</td></tr>
+  <tr class="msg" id="L42"><td class="ts-cell"><a class="ts" href="#L42" alt="Thu Jun 05 2025 12:14:03 GMT-0700 (Pacific Daylight Time)">19:14</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@mconley:mozilla.org">mconley</span>&gt;</div></td><td class="msg-cell">Unfortunately, this only appears to happen in CI and on Windows. :/</td></tr>
+  <tr class="msg" id="L43"><td class="ts-cell"><a class="ts" href="#L43" alt="Thu Jun 05 2025 12:39:29 GMT-0700 (Pacific Daylight Time)">19:39</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><span class="nick-14">mconley</span>: So we do have <a href="https://searchfox.org/mozilla-central/search?q=JS_LOG&amp;path="><code>JS_LOG</code></a> which actually pipes into MOZ_LOG... which IIRC should work in XPCshell... now we don't have a lot of logging hooks in the engine at the moment, but if you're game, you could probably add a <code>JS_LOG(debug, Info, "Running script %s:%d", state.script()-&gt;filename(), state.script()-&gt;column)</code> right about here <a href="https://searchfox.org/mozilla-central/source/js/src/vm/Interpreter.cpp#436">https://searchfox.org/mozilla-central/source/js/src/vm/Interpreter.cpp#436</a>; then run with <code>./mach try --env MOZ_LOG=debug:5</code></td></tr>
+  <tr class="msg" id="L44"><td class="ts-cell"><a class="ts" href="#L44" alt="Thu Jun 05 2025 12:40:20 GMT-0700 (Pacific Daylight Time)">19:40</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">(trust but verify locally  regarding MOZ_LOG; I'm reasonably confident this should work but not 100%) </td></tr>
+  <tr class="msg" id="L45"><td class="ts-cell"><a class="ts" href="#L45" alt="Thu Jun 05 2025 12:41:04 GMT-0700 (Pacific Daylight Time)">19:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell"><code>debug</code> is a <a href="https://searchfox.org/mozilla-central/source/js/src/vm/Logging.h#88">predefined log module for the JS engine for casual debugging</a>, so it should just work as is.</td></tr>
+  <tr class="msg" id="L46"><td class="ts-cell"><a class="ts" href="#L46" alt="Thu Jun 05 2025 12:41:11 GMT-0700 (Pacific Daylight Time)">19:41</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-14" title="@mconley:mozilla.org">mconley</span>&gt;</div></td><td class="msg-cell">Ah, thanks!</td></tr>
+  <tr class="msg" id="L47"><td class="ts-cell"><a class="ts" href="#L47" alt="Thu Jun 05 2025 12:42:18 GMT-0700 (Pacific Daylight Time)">19:42</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-2" title="@mgaudet:mozilla.org">mgaudet</span>&gt;</div></td><td class="msg-cell">I'll bet the output will be... copious; and this won't catch JIT to JIT calls, in case that's important, but if it's hanging near the beginning of the task that should help point a finger</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

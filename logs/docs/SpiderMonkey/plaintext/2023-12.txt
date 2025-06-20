@@ -1,0 +1,1545 @@
+2023-12-01
+[12:59:47.0483] <Chris Peterson (:cpeterson)>
+Looks like there might be a GC OOM regression, or at least a new crash signature, starting in 117: https://bugzilla.mozilla.org/show_bug.cgi?id=1867864. 88% of the crash reports are from 32-bit Android devices.
+
+
+2023-12-04
+[23:53:55.0618] <jonco>
+> <@cpeterson:mozilla.org> Looks like there might be a GC OOM regression, or at least a new crash signature, starting in 117: https://bugzilla.mozilla.org/show_bug.cgi?id=1867864. 88% of the crash reports are from 32-bit Android devices.
+
+This is OOM during nursery collection. I've duped it to the catch-all bug for those signatures.
+
+[23:57:16.0416] <jonco>
+There does seem to be a big ramp up in these OOMs in the last couple of weeks which is concerning though.
+
+[09:08:23.0818] <sfink>
+This is a concern I have with nursery string buffers. If we need to malloc a buffer to hold the chars when tenuring, and that malloc fails, we'll get an unhandleable OOM. (The above bug doesn't match, though. It's allocating the Cell, not the buffer, and nursery string buffers landed in 122.)
+
+
+2023-12-05
+[09:16:02.0584] <smaug>
+jonco: sfink: why would we trigger JS::GCReason::COMPARTMENT_REVIVED when running sp3? It just runs tests in same origin iframes
+
+[09:17:04.0832] <smaug>
+The meaning of JS::GCReason::COMPARTMENT_REVIVED has changed from what it was initially 
+
+[09:21:27.0583] <jonco>
+smaug: Interesting.  That means there are compartments the GC thinks should be dead, but have not died.  I don't know why that would be happening.
+
+[09:23:49.0386] <smaug>
+hmm, are we creating compartments for some system code type of thing...
+
+[09:45:59.0087] <jonco>
+smaug: Looking at the JS_GC_PROFILE output we have between 3 and 5 compartments during an sp3 run. We trigger 8 of these COMPARTMENT_REVIVED GCs, and only one destroys a compartment although they do destroy a bunch of dead realms.  I'm not sure what's going on here.
+
+[09:47:02.0120] <jonco>
+We are have > 80 realms live at some points during the run, which I think has improved although it's still not great.
+
+[09:51:18.0633] <jonco>
+ * We have > 80 realms live at some points during the run, which I think has improved although it's still not great.
+
+[09:55:36.0041] <smaug>
+we have lots of realms yet, that is expected
+
+[09:55:49.0379] <smaug>
+Looks like xpc::CreateSandboxObject creates compartments in sp3
+
+[09:56:10.0921] <smaug>
+because event timing stuff needs it for something
+
+[09:58:44.0268] <smaug>
+...needs it to do stuff outside the realm of the web page
+
+[09:59:44.0248] <mstange>
+smaug: We probably also have some calls to it when the harness checks whether sp3 is done running, https://searchfox.org/mozilla-central/rev/78a2c17cc80680a5a82446e4ce7c45a73b935383/testing/raptor/browsertime/speedometer3.js#40,45,48,54
+
+[10:01:26.0344] <mstange>
+In the profile we captured yesterday, we were controlling sp3 from python with webdriver, and these are the stacks with CreateSandboxObject: https://share.firefox.dev/3Nd7TR4
+
+[10:02:16.0665] <mstange>
+https://searchfox.org/mozilla-central/rev/78a2c17cc80680a5a82446e4ce7c45a73b935383/remote/marionette/actors/MarionetteCommandsChild.sys.mjs#221,224
+
+[10:03:03.0188] <smaug>
+I've seen only compartments created because of mozilla::dom::binding_detail::UnprivilegedJunkScopeOrWorkerGlobal
+
+[10:03:14.0985] <smaug>
+at least during sp3. 
+
+[10:03:32.0709] <smaug>
+that is all event timing stuff
+
+[10:03:48.0713] <smaug>
+I guess we keep that webdriver compartment alive
+
+[10:03:56.0413] <smaug>
+but not the other sandboxes 
+
+[10:04:27.0159] <mstange>
+ok
+
+[10:04:40.0200] <mstange>
+have you been running sp3 manually or with browsertime?
+
+[10:07:03.0521] <smaug>
+mstange: oh, silly me. manually
+
+[10:07:19.0072] <smaug>
+but I think anyhow, that webdriver sandbox should stay alive
+
+[10:07:30.0877] <smaug>
+I mean, it is after all kept around by that framework
+
+[10:07:44.0882] <smaug>
+I hope
+
+[10:07:48.0288] <mstange>
+heh
+
+[10:09:13.0404] <smaug>
+but, now, how to fix this... We have those super tiny compartments, their existence shouldn't affect to the rest of the world 
+
+[10:15:46.0420] <smaug>
+invisibleToDebugger flag might be a somewhat reasonable hint that the compartment shouldn't affect global gc
+
+[10:15:48.0982] <smaug>
+or cc
+
+[10:17:09.0406] <jonco>
+I'd like to work out what's going on here. We don't expect any compartment with any roots to die, so I'm not sure why we are expecting that in this case. 
+
+[10:18:07.0562] <jonco>
+Or is there some read barrier we are triggering that is causing these compartments to stay alive?
+
+[10:22:22.0975] <smaug>
+The sandbox is created through [this](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/PerformanceEventTimingBinding.cpp#262)
+
+[10:23:19.0645] <smaug>
+hmm, why are we re-creating it so often
+
+[10:23:32.0652] <smaug>
+because of mozilla::WeakPtr<SandboxPrivate> mUnprivilegedJunkScope;
+
+[10:24:26.0937] <smaug>
+It didn't used to https://bugzilla.mozilla.org/show_bug.cgi?id=1645510
+
+[10:25:27.0322] <jonco>
+OK I think that would explain it
+
+[11:00:22.0775] <jonco>
+smaug: filed bug 1868437
+
+[11:00:43.0732] <botzilla>
+https://bugzil.la/1868437 — NEW (jonco) — Unnecessary COMPARTMENT_REVIVED GCs being triggered during speedometer3 run
+
+[11:00:52.0672] <jonco>
+checking the invisibleToDebugger flag does indeed fix it
+
+[11:01:09.0657] <smaug>
+there was already https://bugzilla.mozilla.org/show_bug.cgi?id=1854652, but I guess they aren't quite the same
+
+[11:01:47.0539] <smaug>
+jonco: yeah, that flag is apparently set only on these junk scopes
+
+[11:04:33.0995] <smaug>
+I guess when the reference was still strong, we ended up doing black marking https://searchfox.org/mozilla-central/rev/413b88689f3ca2a30b3c49465730c0e7d40f9188/js/src/gc/GC.cpp#2907-2909
+
+[11:06:10.0085] <jonco>
+yes
+
+[11:06:13.0168] <smaug>
+Right now the lifetime is somewhat random. It depends on when either unlink or showwhite killer runs, I think
+
+[11:17:17.0240] <smaug>
+hmm, would it be enough have a LastRelease which clears all the references. /me tries
+
+[11:18:54.0589] <smaug>
+jonco: sfink: but I'm fine with the patch attached to the bug too
+
+[11:19:42.0224] <smaug>
+if I manage to get something a bit cleaner to work, we can back out the invisibleToDebugger tweak
+
+[11:26:18.0635] <smaug>
+(and cleaner here means something which can be handled outside js engine so that it doesn't need to have special case for something odd gecko does)
+
+[11:31:44.0860] <smaug>
+ok, LastRelease isn't enough
+
+[13:30:54.0216] <smaug>
+...because we need CC to run to break the cycle between wrapper and SandboxPrivate, but even before that the compartment is not alive from js engine point of view. And since unlink clears weakref, no one can access the sandbox too late, so I think the patch which relies on the existing flag is ok-ish.  
+
+
+2023-12-06
+[06:04:45.0397] <vladyslavy>
+Hello everyone, I'm a user of spidermonkey 102.12.0.
+I'm faced with the fact that the engine creates helper threads and performs some of the work in separate threads (for example, GC). 
+But due to some specifics, I am limited in creating threads and I need all the logic to be in the main thread. 
+Is it possible to achieve this through the public API of the Spidermonkey engine? I will be grateful for your help.
+
+PS: I found the js::DisableExtraThreads function, but unfortunately it is in the non-public part of the engine. 
+
+[06:17:24.0316] <jandem>
+yeah `DisableExtraThreads` is what you'd want, but I don't think there's a way to achieve this with the public API
+
+[06:18:11.0353] <jandem>
+there are flags to disable some of the off-thread tasks like Ion compilation, but probably not for all of them
+
+[06:24:07.0933] <vladyslavy>
+Maybe I can do a trick with `SetHelperThreadTaskTaskCallback`? 
+For example, set a callback that immediately runs `RunHelperThreadTask`. But it crashes because of a ordering violation, is there any way I can avoid it?
+
+[06:24:24.0992] <vladyslavy>
+ * Maybe I can do a trick with `SetHelperThreadTaskTaskCallback`?
+For example, set a callback that immediately runs `RunHelperThreadTask`. But it crashes because of a mutex ordering violation, is there any way I can avoid it?
+
+[06:31:31.0309] <vladyslavy>
+ * Maybe I can do a trick with `SetHelperThreadTaskCallback`?
+For example, set a callback that immediately runs `RunHelperThreadTask`. But it crashes because of a mutex ordering violation, is there any way I can avoid it?
+
+[07:44:30.0023] <jandem>
+I think that's unlikely to work. I'd suggest adding a public API for `js::DisableExtraThreads` in your copy of SM 102
+
+[07:45:19.0062] <jandem>
+ * I think that's unlikely to work well. I'd suggest adding a public API for `js::DisableExtraThreads` in your copy of SM 102
+
+
+2023-12-07
+[07:15:15.0649] <Redfire>
+I'm not sure why this code is failing (test for rust mozjs)
+```rs
+        let chars = Range::new(range.start, range.end);
+        rooted!(in(context) let bigint = StringToBigInt(context, chars));
+```
+`chars` is a `mozilla::Range<u8>
+gdb says that on the latter line, it's
+```rs
+$1 = Range<u8> {mStart: RangedPtr<u8> {mPtr: 0x7ffff0053780, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, mEnd: RangedPtr<u8> {mPtr: 0x7ffff0053790, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, _phantom_0: PhantomData<UnsafeCell<u8>>}
+$2 = {mStart = {mPtr = 0x7ffff0001920 "", mRangeStart = 0x3b9aca00 <error: Cannot access memory at address 0x3b9aca00>,
+    mRangeEnd = 0x555556ca7e10 <core::ops::function::FnOnce::call_once<range::range::{closure_env#0}, ()>+480> "H\211\204$\240"},
+  mEnd = {mPtr = 0x7ffff0053780 "9007199254741001 ", mRangeStart = 0x7ffff0053780 "9007199254741001 ",
+    mRangeEnd = 0x7ffff0053790 " "}}
+```
+which seems very weird, and I'm confused
+
+[07:15:37.0461] <Redfire>
+For reference, this cropped up in https://github.com/servo/mozjs/pull/434
+
+[07:16:03.0420] <Redfire>
+ * I'm not sure why this code is failing (test for rust mozjs)
+
+```rs
+        let chars = Range::new(range.start, range.end);
+        rooted!(in(context) let bigint = StringToBigInt(context, chars));
+```
+
+`chars` is a \`mozilla::Range\<u8>
+gdb says that on the rust side, its `$1`, and in `BigIntToString` its `$2`
+
+```rs
+$1 = Range<u8> {mStart: RangedPtr<u8> {mPtr: 0x7ffff0053780, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, mEnd: RangedPtr<u8> {mPtr: 0x7ffff0053790, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, _phantom_0: PhantomData<UnsafeCell<u8>>}
+$2 = {mStart = {mPtr = 0x7ffff0001920 "", mRangeStart = 0x3b9aca00 <error: Cannot access memory at address 0x3b9aca00>,
+    mRangeEnd = 0x555556ca7e10 <core::ops::function::FnOnce::call_once<range::range::{closure_env#0}, ()>+480> "H\211\204$\240"},
+  mEnd = {mPtr = 0x7ffff0053780 "9007199254741001 ", mRangeStart = 0x7ffff0053780 "9007199254741001 ",
+    mRangeEnd = 0x7ffff0053790 " "}}
+```
+
+which seems very weird, and I'm confused
+
+[07:17:02.0258] <Redfire>
+ * I'm not sure why this code is failing (test for rust mozjs)
+
+```rs
+        let chars = Range::new(range.start, range.end);
+        rooted!(in(context) let bigint = StringToBigInt(context, chars));
+```
+
+`chars` is a `mozilla::Range<u8>`
+gdb says that on the rust side, its `$1`, and in `BigIntToString` its `$2`
+
+```rs
+$1 = Range<u8> {mStart: RangedPtr<u8> {mPtr: 0x7ffff0053780, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, mEnd: RangedPtr<u8> {mPtr: 0x7ffff0053790, mRangeStart: 0x7ffff0053780, mRangeEnd: 0x7ffff0053790, _phantom_0: PhantomData<UnsafeCell<u8>>}, _phantom_0: PhantomData<UnsafeCell<u8>>}
+$2 = {mStart = {mPtr = 0x7ffff0001920 "", mRangeStart = 0x3b9aca00 <error: Cannot access memory at address 0x3b9aca00>,
+    mRangeEnd = 0x555556ca7e10 <core::ops::function::FnOnce::call_once<range::range::{closure_env#0}, ()>+480> "H\211\204$\240"},
+  mEnd = {mPtr = 0x7ffff0053780 "9007199254741001 ", mRangeStart = 0x7ffff0053780 "9007199254741001 ",
+    mRangeEnd = 0x7ffff0053790 " "}}
+```
+
+which seems very weird, and I'm confused
+
+[07:20:32.0578] <Ms2ger>
+Did you mean `StringToBigInt`?
+
+[07:20:53.0455] <Redfire>
+err, yes, my bad
+
+[07:22:34.0416] <Ms2ger>
+I would suspect an API mismatch passing a struct as big as `Range`
+
+[07:24:20.0037] <Redfire>
+also fails without debugmozjs though
+
+[07:24:42.0721] <Redfire>
+which is only 2 u64's
+
+[07:26:12.0327] <arai>
+have you verified that `$1.mStart.mPtr` points the right value?
+
+[07:27:08.0913] <Ms2ger>
+Yeah, 0x7ffff0053780 points to "9007199254741001"
+
+[07:27:09.0733] <arai>
+do you see the same value in C++ side of `JS::StringToBigInt` ?  or it becomes different value?
+
+[07:28:10.0692] <Redfire>
+> <@arai:mozilla.org> do you see the same value in C++ side of `JS::StringToBigInt` ?  or it becomes different value?
+
+`$2.mEnd = $1.mStart` somehow
+
+[07:28:22.0631] <Redfire>
+> <@arai:mozilla.org> do you see the same value in C++ side of `JS::StringToBigInt` ?  or it becomes different value?
+
+that is the C++ side
+
+[07:29:46.0211] <arai>
+do you mean `chars.mStart.mPtr` points the end of the string, at the beginning of C++ side of `JS::StringToBigInt` ?
+
+[07:30:22.0639] <arai>
+err, I misread
+
+[07:31:04.0385] <Redfire>
+`chars.mStart` points at something nonsensical and `chars.mEnd` at the start of the string
+
+[07:31:36.0485] <arai>
+sounds like calling convention issue
+
+[07:33:43.0169] <arai>
+can the nonsensical value be a part of cx?
+
+[07:40:27.0330] <Ms2ger>
+`0x7ffff0001920` seems like a plausible pointer, at least
+
+[07:40:53.0112] <Ms2ger>
+Maybe another question: what does `cx` look like within `JS::StringToBigInt`
+
+[07:42:13.0038] <Redfire>
+`cx` is `0x7ffff0001920` in both
+
+[07:43:07.0931] <arai>
+so, in the C++ side, both `cx` and `chars.mStart.mPtr` point same value?
+
+[07:44:38.0623] <Redfire>
+`cx` and `chars.mStart.mPtr` are the same, but `chars.mStart.mRange{Start,End}` are ???
+
+[07:52:44.0748] <arai>
+I wonder if there's `DEBUG` option mismatch, because `mRangeStart` is defined only on debug build
+
+[07:52:50.0205] <arai>
+[RangedPtr.h](https://searchfox.org/mozilla-central/rev/1a63fee6c2a8ea6846f6f16b85edeb6d19fc9f23/mfbt/RangedPtr.h#50-53)
+
+[07:53:09.0958] <arai>
+not sure if that causes the mismatch in the point of function call tho
+
+[07:54:55.0117] <Redfire>
+This is a debug build, I'm gonna try gdb on a non-debug build in a sec, but that'll take a while
+
+[07:55:01.0827] <Ms2ger>
+But then mEnd.mRangeEnd in C++ couldn't match mStart.mRangeEnd in Rust, right?
+
+[07:56:23.0602] <Redfire>
+`chars` seems to be 24 bytes off where it should be in debug mode
+
+[07:58:10.0444] <padenot>
+`ptype` can help in gdb, to print the struct layout
+
+[07:58:14.0988] <Ms2ger>
+Well, glad this isn't my responsibility anymore. Good luck :)
+
+[08:04:49.0011] <Redfire>
+padenot: 
+```cpp
+(gdb) ptype /o chars
+/* offset      |    size */  type = struct mozjs_sys::generated::root::mozilla::Range<u8> {
+/*      0      |      24 */    mStart: mozjs_sys::generated::root::mozilla::RangedPtr<u8>,
+/*     24      |      24 */    mEnd: mozjs_sys::generated::root::mozilla::RangedPtr<u8>,
+/*     48      |       0 */    _phantom_0: core::marker::PhantomData<core::cell::UnsafeCell<u8>>,
+
+                               /* total size (bytes):   48 */
+                             }
+
+/// Step
+(gdb) ptype /o chars
+/* offset      |    size */  type = class mozilla::Range<unsigned char const> [with T = const unsigned char] {
+                             private:
+/*      0      |      24 */    const class mozilla::RangedPtr<T const> [with T = const T] {
+                                 private:
+/*      0      |       8 */        const T *mPtr;
+/*      8      |       8 */        const T * const mRangeStart;
+/*     16      |       8 */        const T * const mRangeEnd;
+
+                                   /* total size (bytes):   24 */
+                               } mStart;
+/*     24      |      24 */    const class mozilla::RangedPtr<T const> [with T = const T] {
+                                 private:
+/*     24      |       8 */        const T *mPtr;
+/*     32      |       8 */        const T * const mRangeStart;
+/*     40      |       8 */        const T * const mRangeEnd;
+
+                                   /* total size (bytes):   24 */
+                               } mEnd;
+
+                               /* total size (bytes):   48 */
+                             }
+```
+
+[08:06:56.0089] <Redfire>
+Great, non-debug is even worse
+```cpp
+$2 = {mStart = {mPtr = 0x3239393137303039 <error: Cannot access memory at address 0x3239393137303039>}, mEnd = {
+    mPtr = 0x3130303134373435 <error: Cannot access memory at address 0x3130303134373435>}}
+```
+
+[08:07:13.0443] <arai>
+I wonder if the range overlaps both with Rust's `chars` and `range`
+
+[08:07:52.0086] <arai>
+if the struct layout differs, that can happen?
+
+[08:08:46.0807] <arai>
+can you check the address of those fields and local variables?
+
+[08:09:16.0689] <arai>
+(and non-debug build can optimize out some locals, that can make the situation worse)
+
+[08:10:21.0916] <padenot>
+maybe print the type from within C++ and from within rust, sometimes that helps
+
+[08:10:33.0503] <padenot>
+something that should be the same might look different
+
+[08:45:28.0362] <Redfire>
+I added a `dbg!(chars);` and now magically it doesn't trip the assertion. (instead `BigIntToNumber` gives `0.0` which is still wrong)
+
+[08:51:15.0615] <Redfire>
+* it trips the assertion in gdb but not normally
+
+[08:51:21.0106] <Redfire>
+ * \* it trips the assertion in gdb but not normally
+
+[08:55:08.0782] <Redfire>
+```cpp
+(gdb) p chars
+$4 = <optimized out>
+```(if I `stepi` a bunch to `push rbp`)
+
+
+[08:55:18.0495] <Redfire>
+ * ```cpp
+(gdb) p chars
+$4 = <optimized out>
+```
+(if I `stepi` a bunch to `push rbp`)
+
+[08:56:15.0325] <arai>
+can you check `&chars` and `&range` and all addresses of their fields?
+
+[09:00:42.0569] <Redfire>
+`range` has no address, it's optimised out
+
+[09:02:17.0808] <arai>
+what happens if you build everything with `disable-optimize` (or equivalent) ?  does the crash still happen?
+
+[09:02:34.0160] <arai>
+if it still happens there, it would be nice to investigate the issue with that configuration
+
+[09:19:26.0392] <Redfire>
+`Can't take address of "range" which isn't an lvalue.` Not sure how to deal with that
+
+[09:30:22.0675] <arai>
+maybe it's also a name of some internal type?  try renaming the variable and build
+
+[09:31:02.0790] <arai>
+I think I've hit something similar with "id" variable
+
+[09:38:13.0325] <Redfire>
+I dont think there can be any overlap
+```cpp
+(gdb) p &range
+$2 = (*mut core::ops::range::Range<*mut u8>) 0x7ffff7a544c8
+(gdb) p &range.start
+$3 = (*mut *mut u8) 0x7ffff7a544c8
+(gdb) p &range.end
+$4 = (*mut *mut u8) 0x7ffff7a544d0
+(gdb) p &chars
+$5 = (*mut mozjs_sys::generated::root::mozilla::Range<u8>) 0x7ffff7a540e0
+```
+
+[09:40:35.0296] <arai>
+is it the result in Rust side?
+
+[09:41:17.0033] <arai>
+if so, can you check chars addressed on c++ side ?
+
+[09:41:23.0215] <arai>
+* if so, can you check chars addresses on c++ side ?
+
+[09:41:44.0796] <Redfire>
+apparently `chars` is now `0x0`?
+
+[09:44:10.0558] <arai>
+what about cx's values in both side?
+
+[09:45:11.0862] <Redfire>
+same on both `0x7ffff0001920`
+
+[09:48:32.0186] <arai>
+do you see the rust's chars pointer value in the registers, at the beginning of c++ side?
+
+[09:49:18.0427] <Redfire>
+`chars` is passed on the stack because its big
+
+[09:49:42.0240] <Redfire>
+specifically this bit
+
+[09:50:02.0578] <Redfire>
+wait rax
+
+[09:52:12.0255] <arai>
+hm, then it would be better directly checking the stack handling in both side to see what's actually passed
+
+[09:52:45.0905] <Redfire>
+oh wait theres a `mov rax,rsp`
+
+[09:52:49.0666] <Redfire>
+so it is still the stack
+
+[10:22:26.0986] <iain>
+jonco: I linked my document from your tagged pointers bug (bug 1866002) and put up my WIP patches in bug 1868857
+
+[10:22:32.0473] <botzilla>
+https://bugzil.la/1866002 — NEW (nobody) — Investigate adding common infrastructure for handling tagged pointers
+
+[10:22:32.0935] <botzilla>
+https://bugzil.la/1868857 — NEW (nobody) — Suppress deleted properties using low-bit tags instead of removal
+
+[10:48:39.0472] <Redfire>
+ok im fully lost, I'm just going to chock it up to an ABI issue, though I dont see how
+
+[10:49:23.0971] <Redfire>
+I thought it was caused by `ParseStringBigIntLiteral` wanting `Range<const CharT>` while `BigIntToStringHelper` takes in `Range<const CharT>`.
+Then it thinks `rsi` has the `Range<const CharT>&` and passes it to the `Range(const Range<U>& aOther)`, but that's not correct.
+
+[10:53:18.0988] <jonco>
+iain: I think we can make GCPtr inherit MutableWrapperPtrOperations (this only allows you to mutate the thing pointed to, it doesn't allow you to skip barriers by changing the pointer itself)
+
+[10:53:42.0222] <jonco>
+For tracing, you are going to have to do the unwrap/trace/rewrap dance unless we add generic support for tagged pointers in the GC
+
+[10:54:43.0652] <iain>
+I think that dance wasn't too bad
+
+[10:55:02.0372] <jonco>
+Post-barriers are going to be more tricky: either you need to use the whole cell store buffer (which may be overkill) or we need to implement a generic tagged pointer buffer
+
+[10:55:28.0072] <Redfire>
+I think the calling convention expects the `Range<const CharT> chars`  to be passed by reference in `rdi` which my code isn't doing
+
+[10:58:29.0105] <iain>
+Yeah, I was trying to think through the mechanism of what would actually happen when I post-barriered one of these, and I couldn't figure it out. Maybe the whole cell store buffer is the best answer.
+
+[10:59:45.0428] <jonco>
+tbh I think that would be fine
+
+[11:00:07.0241] <iain>
+Is there an explanatory comment somewhere for WrappedPtrOperations/MutableWrappedPtrOperations that I missed? It took me a while to work out what was going on there.
+
+[11:01:08.0176] <jonco>
+probably not
+
+[11:02:57.0500] <Redfire>
+Any reason `StringToBigInt` takes `chars` by value if it immediately turns it into a reference anyway?
+
+[11:15:14.0258] <jandem>
+I think `Range` is just two pointers in non-debug builds. Because there's not really a good reason to prefer by value or by reference we ended up with both
+
+[11:15:15.0678] <jandem>
+ * I think `Range` is just two pointers in non-debug builds. Because there's not much difference between by value or by reference in this case we ended up with both
+
+[11:15:36.0109] <jandem>
+ * I think `Range` is just two pointers in non-debug builds. Because there's not much difference between by-value or by-reference in this case we ended up with both
+
+[11:19:44.0401] <Redfire>
+`Range` is technically non-POD so C++ expects it to be constructed in the caller and passed by reference in `rsi`
+This is a very dumb problem to have and one I don't see a good solution for 😮‍💨
+
+
+2023-12-08
+[08:02:08.0440] <smaug>
+jonco: bug 1868530 is very interesting. I guess that isn't enabled by default yet anywhere?
+
+[08:02:10.0896] <botzilla>
+https://bugzil.la/1868530 — NEW (jonco) — Lower parallel marking thresholds
+
+[08:03:51.0324] <smaug>
+And Android is indeed quite different to other platforms. There the TaskController threads run often using little cores, which aren't exactly fast.
+
+[08:06:52.0775] <jonco>
+smaug: It is not enabled by default, no
+
+[08:07:14.0833] <jonco>
+Yes, that is a problem that will need to be fixed before this can be enabled on Android
+
+[08:07:35.0550] <jonco>
+It might apply to other uses of TaskController too
+
+[08:07:38.0011] <smaug>
+Scheduling on Android is so tricky
+
+[08:08:02.0014] <smaug>
+So many different types of CPUs
+
+[10:46:48.0088] <sfink>
+jonco: is [this](https://searchfox.org/mozilla-central/source/js/src/builtin/Promise.cpp#141,151-153,171-173) really the way to make a struct of GC pointers? I am reviewing a [similar addiiton](https://phabricator.services.mozilla.com/D195885) and I guess I expected all the fields to be `GCPtr<JSobject*>` and to use `TraceNullableEdge` instead of `TraceRoot`, since the restriction of only using them as roots seems unnecessary.
+
+[10:47:11.0308] <sfink>
+also, I'm wondering if there's any way to avoid the `fromMarkedLocation` calls, though I don't think there is.
+
+[10:47:48.0610] <sfink>
+(I mean, avoid it when using `GCPtr`)
+
+[12:40:46.0979] <mgaudet>
+Are reserved slots traced automatically, or do I have to add a trace method to trace them?
+
+[12:46:48.0708] <arai>
+unless it's stored as private value, the slot's value should be traced
+
+[12:47:03.0409] <iain>
+Reserved slots are just slots. If they contain values, they'll get traced normally. If they contain a private value that needs tracing (eg a pointer to a C++ object that contains a GCPtr<T>), then you need a trace method
+
+[12:49:11.0415] <mgaudet>
+Fantastic :) thanks 
+
+[15:00:38.0713] <jonco>
+> <@sfink:mozilla.org> jonco: is [this](https://searchfox.org/mozilla-central/source/js/src/builtin/Promise.cpp#141,151-153,171-173) really the way to make a struct of GC pointers? I am reviewing a [similar addiiton](https://phabricator.services.mozilla.com/D195885) and I guess I expected all the fields to be `GCPtr<JSobject*>` and to use `TraceNullableEdge` instead of `TraceRoot`, since the restriction of only using them as roots seems unnecessary.
+
+That is not great. It works if the struct is only every used as a stack root but requires manual barriers otherwise. The Handle getters scare me because they are only valid if Wrapper is Rooted and not otherwise.  I think we were going to try and avoid such an approach by using a stack roots where necessary.
+
+
+2023-12-09
+[03:48:32.0951] <liam_g>
+One of the things I like most about working with SpiderMonkey is that there's a MOZ_ASSERT for basically every mistake you could ever make from an API call. The assertion generally tells you exactly what mistake you've made, and if you don't hit an assertion you can practically be certain that things are running correctly.
+
+[03:48:36.0426] <liam_g>
+That is all.
+
+
+2023-12-11
+[04:59:46.0994] <smaug>
+jonco: btw, that compartment gc/cc thing, I wonder if the sandbox wasn't collected soon enough because it has its own zone. If we do only zone GCs evolving web page's zone and probably the normal system zone, sandbox might stay alive, because it is part of C++<->JS cycle. Or something like that.
+
+[05:01:06.0902] <smaug>
+ * jonco: btw, that compartment gc/cc thing, I wonder if the sandbox wasn't collected soon enough because it has its own zone. If we do only zone GCs for web page's zone and probably the normal system zone, sandbox might stay alive, because it is part of C++\<->JS cycle. Or something like that.
+
+[05:01:58.0925] <jonco>
+yes, that's possible if it's a small zone and there isn't much allocation happening there
+
+[05:02:43.0090] <smaug>
+As far as I see, there is very little happening there during sp3.
+
+[05:04:27.0132] <jonco>
+I don't think it's that important to collect that zone - the GC only thought so because it couldn't see any roots in it 
+
+[09:33:21.0333] <nbp>
+Does anybody knows where is `portable-baseline-interp` defined, in order to reproduce it locally?
+
+[09:39:26.0873] <dminor>
+I think you can enable it by adding `--enable-portable-baseline-interp` to your `mozconfig`.
+
+[09:39:29.0155] <sfink>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1859010 should have whatever it is
+
+[09:41:04.0731] <nbp>
+dminor: I tried and it reports that it is unknown, and grep does not find it either :/
+
+[09:41:05.0157] <sfink>
+for a closer reproduction, I think you can do `js/src/devtools/automation/autospider.py pbl` (and `wasi-pbl`). Or add `--build` to avoid having it run all the tests.
+
+[09:41:29.0348] <sfink>
+I don't see any special packages being added for it.
+
+[09:41:36.0321] <sfink>
+though I'm not sure how the sysroots work.
+
+[09:42:06.0041] <nbp>
+was I working on a 2 month old version of central?
+
+[09:42:14.0082] <sfink>
+yes
+
+[09:42:22.0123] <sfink>
+(the answer to questions like that is always "yes")
+
+[09:43:44.0535] <nbp>
+If so I got extremely lucky that the patch landed successfully in the first place :)
+
+[10:47:01.0983] <sfink>
+jandem: thanks for pointing out the [missing piece](https://phabricator.services.mozilla.com/D194003#6500849) of the inline string changes. A question: looking at the [table of sizes](https://docs.google.com/spreadsheets/d/1r4t6lfqLpk8dpTul_vEfMSOAEl5Zg1rFe0AMywUPu4s/edit#gid=1269367432), I noticed that this keeps a 40-byte atom on 32-bit, when the max atom size on 64-bit is now only 32 bytes. I was thinking I should probably shrink the 32-bit max size to match. What do you think?
+
+[11:22:48.0633] <vladyslavy>
+Hi all! I am a user of Spidermonkey 102.12.0. 
+I see that Spidermonkey does some of its work in the background threads. And I want to take control of it. I see that there is a `JS::SetHelperThreadTaskCallback`, which I assume is used to set a callback that will be responsible for running background tasks. 
+I don't see much documentation on it, so could you help me figure out what the pitfalls might be when using it. 
+Should I just call `JS::RunHelperThreadTask` in the background thread? 
+Do I need to provide additional synchronization? 
+Is it safe to join a thread that runs background task?
+
+Thank you in advance!
+
+[11:33:51.0107] <jandem>
+sfink: how does that affect the number of bytes for inline atoms on 32-bit? how does this compare to 64-bit?
+
+[11:34:03.0373] <jandem>
+ * sfink: how does that affect the number of bytes for inline chars on 32-bit? how does this compare to 64-bit?
+
+[11:43:12.0165] <sfink>
+64-bit now has a max bytes of 20, but 32-bit still has a max bytes of 28. This would make both of them have a max bytes of 20.
+
+[11:44:20.0982] <sfink>
+(before any of these patches, both had max-bytes of 24)
+
+[11:47:56.0843] <jandem>
+I think that's a good idea
+
+[11:49:51.0523] <sfink>
+I guess the alternative would be to make both of them be 28. I don't have a great way of estimating the costs and benefits for various sizes. I can histogram how many of each size is used, but it's not really clear what's better and worse, especially since some of it is based on the allocation & free pressure, which sometimes matters and sometimes doesn't.
+
+[11:50:11.0530] <sfink>
+I'll do 20 for now, and maybe do some sp3 try pushes with 20 and 28.
+
+[11:56:36.0817] <jandem>
+works for me. Calculating the total size of all atoms combined and comparing that might be interesting
+
+[12:53:51.0996] <mgaudet>
+> <@vladyslavy:mozilla.org> Hi all! I am a user of Spidermonkey 102.12.0. 
+> I see that Spidermonkey does some of its work in the background threads. And I want to take control of it. I see that there is a `JS::SetHelperThreadTaskCallback`, which I assume is used to set a callback that will be responsible for running background tasks. 
+> I don't see much documentation on it, so could you help me figure out what the pitfalls might be when using it. 
+> Should I just call `JS::RunHelperThreadTask` in the background thread? 
+> Do I need to provide additional synchronization? 
+> Is it safe to join a thread that runs background task?
+> 
+> Thank you in advance!
+
+Safety... can't speak to, but it seems like the API is relatively transparent about what it's suggesting. [Here's the in-tree gecko background task running code](https://searchfox.org/mozilla-central/rev/c003be8b9727672e7d30972983b375f4c200233f/js/xpconnect/src/XPCJSContext.cpp#1175-1184), which is pretty straightforward
+
+
+2023-12-12
+[12:25:51.0056] <devved>
+Hi everyone,
+
+Just started using spidermonkey.
+
+Does spidermonkey set any exception pending when it couldn't allocate with`JS_NewObject(JSContext*, const JSClass*)`  due to any reasons, especially when system is out of memory?
+Going through the code base it doesn't seem to me that it does so.
+A few clients of mine experienced `JS_NewObject` to return `nullptr` when system memory was under pressure, so I would like to embed proper error handling for those cases. Does spidermonkey report anything in that regard?
+
+Thanks in advance.
+
+[12:29:17.0529] <arai>
+it reports out of memory exception, which can be detected by [JS_IsThrowingOutOfMemory](https://searchfox.org/mozilla-central/rev/da48f565f70a57ac28862090828fbaa7fd8556f6/js/public/Exception.h#34)
+
+[12:30:23.0902] <arai>
+or `JS_IsExceptionPending` in the same way as other exceptions
+
+[12:31:01.0880] <ptomato>
+in general you have to check all return values of all JSAPI functions - they will return false or nullptr if a JS exception or OOM exception is pending, so you'll have to return to the caller and eventually handle the exception at the top level
+
+[12:37:49.0402] <arai>
+for `JS_NewObject` case, it depends on where the OOM happens tho, for example the OOM execption can be set while allocating tenured cell in [CellAllocator::TryNewTenuredCell](https://searchfox.org/mozilla-central/rev/da48f565f70a57ac28862090828fbaa7fd8556f6/js/src/gc/Allocator.cpp#173)
+
+
+2023-12-13
+[05:06:42.0005] <jonco>
+jandem: when do we end up purging baseline IC stubs?
+
+[05:08:55.0667] <jandem>
+jonco: for scripts that are active on the stack when we're discarding JIT code, or when we want to keep the JitScripts and get rid of JIT code only
+
+[05:10:01.0189] <jonco>
+OK, why do we need to do this though?  Wouldn't we want to only get rid of JIT code in those cases?
+
+[05:15:40.0654] <jandem>
+we can't get rid of Baseline code that it's currently active, but we try to release as much memory as possible to not hold onto a lot of other GC things
+
+[05:16:08.0706] <jandem>
+maybe we should do this less often though
+
+[05:18:02.0998] <jandem>
+ * we can't get rid of Baseline code that it's currently active, but we try to release as much memory as possible to not hold on to a lot of other GC things
+
+[05:18:19.0179] <jonco>
+OK, sounds fair.  After all there will probably be a lot more Baseline data than Ion data.
+
+[05:19:52.0031] <jandem>
+it's also nice for workers for example where we can have a frame that's running JIT code for a long time
+
+[05:22:25.0931] <jandem>
+maybe we shouldn't discard stubs if we're keeping the JitScripts though. I want to do some measurements of that
+
+[05:23:25.0243] <jandem>
+ * I'm not sure if discarding stubs but keeping the JitScripts makes sense. I want to do some measurements of that
+
+[05:50:21.0792] <nchevobbe>
+Would someone know why DebuggerObject class (https://firefox-source-docs.mozilla.org/js/Debugger/Debugger.Object.html#class) is `Object` for cross origin iframe `contentWindow` property? 
+I was about adding a workaround in DevTools for it, but maybe this could be fixed in SM ?
+
+[05:57:31.0486] <jandem>
+nchevobbe: what's the value for a same-origin iframe? "Window"?
+
+[05:59:21.0517] <nchevobbe>
+> <@jandem:mozilla.org> nchevobbe: what's the value for a same-origin iframe? "Window"?
+
+yes, "Window"
+
+[05:59:57.0904] <jandem>
+I think it's the string returned here: https://searchfox.org/mozilla-central/rev/da48f565f70a57ac28862090828fbaa7fd8556f6/dom/bindings/RemoteObjectProxy.cpp#126
+
+[06:03:44.0502] <jandem>
+maybe we can change it, but that's a question for peterv  
+
+[06:19:07.0089] <nchevobbe>
+alright, thanks!
+
+[07:09:13.0193] <peterv>
+yeah, it's changeable, a tiny bit annoying cause we'll probably need derived classes for `Window` and `Location` then
+
+[07:15:11.0123] <evilpie>
+peterv: can't we just call https://searchfox.org/mozilla-central/source/dom/bindings/RemoteObjectProxy.h#90-91 and return a different string?
+
+[07:16:00.0157] <peterv>
+ah, yeah, we can just use the prototype id
+
+[07:18:22.0226] <evilpie>
+`NamesOfInterfacesWithProtos(mPrototypeID)` probably
+
+[07:36:38.0264] <jonco>
+jandem: my tool for comparing benchmarks is here: https://github.com/jonco3/benchcomp
+
+[07:37:05.0546] <jonco>
+ping me if there is a problem (I think it currently requires running from the js/src directory)
+
+[07:37:14.0203] <nchevobbe>
+peterv evilpie I'm happy to file a bug if one is needed
+
+[07:37:40.0254] <jandem>
+jonco: thanks! I really liked the demo of this at the work week but forgot about it until the discussion today
+
+[07:38:03.0912] <peterv>
+nchevobbe: yeah, go ahead
+
+[07:40:52.0348] <nchevobbe>
+> <@pvanderbeken:mozilla.org> nchevobbe: yeah, go ahead
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1869815
+
+[07:48:23.0174] <mgaudet>
+jseward: https://trycinder.com/ is a really interesting (borrowed from Go) layout that I sort of wish we had for our jit passes for showing optimization
+
+[08:15:30.0497] <jandem>
+sfink: are there any known false positives with the hazard analysis and c++ lambdas? 
+
+[08:16:46.0736] <sfink>
+Hm... not that I recall. Unless you pass a lambda as a `std::function`, which ends up looking like an unknown function call.
+
+[08:17:34.0955] <jandem>
+sfink: it's complaining about an indirect call here inside the lambda: https://pastebin.mozilla.org/KyfSGR9c
+
+[08:18:04.0128] <jandem>
+the code is pretty similar to the old version, I'm mostly just adding a for-each with a lambda to handle N cases instead of 1
+
+[08:19:31.0172] <sfink>
+Is `forEachICScript` new? I don't see it in searchfox. How is it implemented?
+
+[08:21:12.0223] <jandem>
+sfink: it's new, here's the patch: https://hg.mozilla.org/try/rev/29c5b6daf7a6c74b0aa81ebc8b416a5531ec1e5e#l1.61
+
+[08:22:15.0898] <sfink>
+still trying to load...
+
+[08:25:26.0510] <sfink>
+Hm, that is what I expected to work. Let me look at an equivalent somewhere...
+
+[08:26:18.0299] <jandem>
+based on the stack trace I think it is able to see through the for-each and lambda call
+
+[08:30:05.0834] <sfink>
+oh! I just had something to try for that, but I guess I'm looking at the wrong problem then.
+
+[08:31:06.0858] <sfink>
+it must be the call to `mallocSizeOf`
+
+[08:31:41.0230] <jandem>
+maybe because it's captured by the lambda?
+
+[08:32:20.0703] <sfink>
+just because it's passed as a function pointer
+
+[08:32:39.0449] <sfink>
+you could use `AutoSuppressGCAnalysis` here, but why is this causing a hazard?
+
+[08:32:57.0286] <jandem>
+but it was also used before? does the analysis special-case some forms of `mallocSizeOf`?
+
+[08:33:16.0121] <sfink>
+oh right, you showed me the old version
+
+[08:33:32.0770] <jandem>
+here's the hazard log: https://paste.mozilla.org/21gJuYEj
+
+[08:33:44.0421] <sfink>
+ah yes, there's an annotation for `mallocSizeOf`
+
+[08:34:06.0507] <sfink>
+I think you're right, it must be because it's getting captured
+
+[08:35:15.0359] <jandem>
+ah interesting. In that case I should just use `AutoSuppressGCAnalysis`
+
+[08:35:39.0828] <sfink>
+Yeah, for now. I should figure out a way to suppress this if possible.
+
+[08:35:57.0908] <sfink>
+sadly, it doesn't show me the detailed CFG of the lambda body (because that's not where the hazard is)
+
+[08:37:26.0104] <jandem>
+the try commit is 9f8b99ab13cea7c0e4d65fe4e26184542f504522 if you wanted to repro locally
+
+[08:38:03.0509] <sfink>
+yeah, I'm pulling it down now
+
+[08:43:08.0675] <jandem>
+thanks for looking at it
+
+[08:45:48.0829] <sfink>
+weird, it does still have the original name...
+
+[10:24:24.0695] <sfink>
+jandem: yeah, the problem is that it's captured as a reference to a pointer to a function, and the analysis only recognizes a pointer to a function. It might Just Work if you used `[=]` instead of `[&]`, but it looks like I can make the analysis work with the original. I just need to decide how picky to make it.
+
+[11:35:37.0226] <jandem>
+sfink: nice, it works with `[=]`
+
+[11:36:13.0893] <sfink>
+I have a patch that fixes the original, but I'm still writing a test for it
+
+[12:51:00.0447] <Bryan Thrall [:bthrall]>
+I want to update the [link here](https://firefox-source-docs.mozilla.org/js/hacking_tips.html#using-ionmonkey-spew-js-shell) to c1visualizer, but java.net no longer has any content.
+http://lafo.ssw.uni-linz.ac.at/c1visualizer/ looks like the new place to find it, but does anyone know for sure?
+
+[12:55:24.0460] <iain>
+That looks right to me, based on the "About" section [here](https://github.com/zakkak/c1visualizer)? I've never used c1visualizer.
+
+[13:06:59.0711] <Bryan Thrall [:bthrall]>
+Ok, thanks!
+
+[13:46:45.0327] <mgaudet>
+Bryan Thrall [:bthrall]: You actually can remove that mention; I removed the c1 spewer in [this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1502159)
+
+[13:49:30.0102] <mgaudet>
+sfink: Is there a way to remember when one needs `HeapPtr<JSObject*>` vs tracing bare JSObject*? 
+
+[13:50:11.0936] <mgaudet>
+(Context: reviewing https://phabricator.services.mozilla.com/D195884, and TimeZoneRecord has bare JSObject* which feels hinky... but I actually realize I mostly probably cargocult when using HeapPtr) 
+
+[13:52:47.0543] <iain>
+mgaudet: There's the [flow chart here](https://searchfox.org/mozilla-central/source/js/src/gc/Barrier.h#84-109). 
+
+[13:53:40.0803] <mgaudet>
+Yay! 
+
+[13:53:43.0918] <mgaudet>
+Thank you
+
+[13:58:51.0649] <mgaudet>
+Interesting; since TraceRoot is being used it doesn't seem to matter (since the first thing TraceRoot does is call unbarrierdAddress should you use a barrier wrapper) 
+
+[14:09:54.0938] <sfink>
+mgaudet: yes (sorry, out to lunch). I just reviewed something very similar, and put in a request to change it to `GCPtr<JSObject*>`, which I'm now going to revoke and say that the bare `JSObject*` is preferable because it's the lowest overhead way of doing it when it's always being used as a root.
+
+[14:10:19.0389] <sfink>
+the one comment I'm leaving in is to use `TraceNullableRoot` in place of an `if` followed by `TraceRoot`, but that's cosmetic.
+
+[14:10:31.0720] <mgaudet>
+heh -- I have the same drafted comment 
+
+[14:10:39.0719] <mgaudet>
+cool -- glad I'm on the same page as you
+
+[14:13:04.0721] <sfink>
+it bothers me a little bit because there's no indication that it should only be used as a root, so I'll probably ask for a comment on that, though anba is just copying existing code that also omits a comment. At least we'll assert if you use it in anything else.
+
+[14:13:46.0385] <mgaudet>
+There's no 'RootPtr<T>` though is there?
+
+[14:13:56.0887] <mgaudet>
+ * There's no `RootPtr<T>` though is there?
+
+[14:15:27.0088] <sfink>
+Nope. And it'd be confusing to have `Rooted<T>` and `RootPtr<T>`, even if it makes sense.
+
+[14:16:42.0851] <mgaudet>
+Yeah... 
+
+
+2023-12-14
+[00:38:58.0258] <nchevobbe>
+> <@nchevobbe:mozilla.org> https://bugzilla.mozilla.org/show_bug.cgi?id=1869815
+
+thanks for the quick patch evilpie !
+
+[00:41:04.0376] <nchevobbe>
+Since we're on the subject, we have this issue where we show "Object" for instances of a given class (https://bugzilla.mozilla.org/show_bug.cgi?id=1526688). Maybe there's something obvious we could do to fix this?
+
+[00:59:44.0033] <evilpie>
+> <@nchevobbe:mozilla.org> Since we're on the subject, we have this issue where we show "Object" for instances of a given class (https://bugzilla.mozilla.org/show_bug.cgi?id=1526688). Maybe there's something obvious we could do to fix this?
+
+No. These are not built-in.
+
+[06:58:26.0902] <jrmuizel>
+jseward: how do you generate the hotblocks profiles on https://bugzilla.mozilla.org/show_bug.cgi?id=1869645?
+
+[07:01:12.0791] <jseward>
+jrmuizel: I run it on a (minorly) hacked version of valgrind.  I can send patches/instructions as required.  Linux only tho.  I have been doing this for FX/SM for some years on and off, but only figured out how to make Chromium run on valgrind today.
+
+[07:01:59.0068] <jrmuizel>
+how does it determine which blocks are hot?
+
+[07:04:27.0026] <jseward>
+valgrind always had a built-in profiler for the code it generated, so we could tune its code generation.  This merely freeloads on that mechanism.  For each block it keeps a counter of the number of entries to that block.   Every N (user-controllable) entries it looks through those counters and can print disassembly for the top N.  The patch I have can do weighting either by block entry counts, regardless of block size, or by total number of instructions executed by each block.
+
+[07:05:30.0475] <jseward>
+Sorting by block-entry count sounds kinda bogus at first (because it ignores block length) but makes it way easier to find corresponding blocks in two different profiles of the same workload.
+
+[07:06:24.0365] <jrmuizel>
+are you matching up blocks between Chrome and Firefox by hand?
+
+[07:07:45.0956] <jseward>
+For this bug, yes.  So it requires a bit of snooping around and guesswork.  It's easier because I just restrict myself to the hottest blocks, and the bug's workload has some pretty small inner loops.
+
+[07:08:26.0030] <jrmuizel>
+makes sense
+
+[07:56:41.0845] <zcorpan>
+yulia: thoughts on https://github.com/tc39/ecma262/issues/3166 ? Also see https://bugzilla.mozilla.org/show_bug.cgi?id=1837772
+
+[14:12:15.0341] <mgaudet>
+iain: Try found an interesting problem in my fuse patches; specifically, I had made the invariant checks only apply to debug/fuzzing builds; but I hard forgotten to similarly ifdef out all the overrides. I'm trying to figure out how I want to fix this, and if you have any opinion. 
+
+1. Add the #ifdef to all inheriting classes; simple and correct but not super pretty. 
+2. Add a macro to Guard fuses used to define whether or not the checkInvariant function gets defined. Prettier for consumers, but still a bit magic.
+3. Make only the *bodies* of `checkInvariant` debug/fuzzing only.
+4. Give up on making `checkInvariant` debug/fuzzing only 
+
+I'm sort of leaning 4, but wanted to hear whta you had to say. 
+
+[14:12:20.0508] <mgaudet>
+ * iain: Try found an interesting problem in my fuse patches; specifically, I had made the invariant checks only apply to debug/fuzzing builds; but I hard forgotten to similarly ifdef out all the overrides. I'm trying to figure out how I want to fix this, and if you have any opinion.
+
+1. Add the #ifdef to all inheriting classes; simple and correct but not super pretty.
+2. Add a macro to Guard fuses used to define whether or not the checkInvariant function gets defined. Prettier for consumers, but still a bit magic.
+3. Make only the _bodies_ of `checkInvariant` debug/fuzzing only.
+4. Give up on making `checkInvariant` debug/fuzzing only
+
+I'm sort of leaning 4, but wanted to hear what you had to say.
+
+[14:12:39.0143] <mgaudet>
+ * iain: Try found an interesting problem in my fuse patches; specifically, I had made the invariant checks only apply to debug/fuzzing builds; but I hard forgotten to similarly ifdef out all the overrides (so opt was broken). I'm trying to figure out how I want to fix this, and if you have any opinion.
+
+1. Add the #ifdef to all inheriting classes; simple and correct but not super pretty.
+2. Add a macro to Guard fuses used to define whether or not the checkInvariant function gets defined. Prettier for consumers, but still a bit magic.
+3. Make only the _bodies_ of `checkInvariant` debug/fuzzing only.
+4. Give up on making `checkInvariant` debug/fuzzing only
+
+I'm sort of leaning 4, but wanted to hear what you had to say.
+
+[14:13:39.0922] <iain>
+I think either 3 or 4 seems fine?
+
+[14:13:55.0957] <mgaudet>
+Ok, sound sgood :) 
+
+
+2023-12-15
+[12:55:01.0029] <mgaudet>
+confession: swapping between gcc and clang mozconfigs to find the overlapping set of C++ they'll accept
+
+[12:55:06.0073] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:01:55.0441] <sfink>
+oh dear
+
+[13:03:06.0636] <mgaudet>
+(I think I have succeeded; still what a _fun_ ride) 
+
+[13:06:21.0620] <sfink>
+confession: pulling down taskcluster worker docker images to try to reproduce yet another thing in CI that is not happening locally.
+
+[13:09:38.0867] <mgaudet>
+😬
+
+[13:11:09.0032] <sfink>
+ooh wait, I reproduced with a simpler setup, never mind
+
+[13:22:45.0508] <mgaudet>
+iain: Just pushed an updated stack. Some noteworthy changes; I've split the addition of the extra fuses out into their own new revision, and i've modified https://phabricator.services.mozilla.com/D194293 to have a shell only command line switch. 
+
+[13:23:33.0209] <mgaudet>
+I think all your comments in https://phabricator.services.mozilla.com/D195264 are addressed now as well.
+
+[13:24:13.0132] <mgaudet>
+My hope is that when the soft freeze stops next week we can land these patches, then we can see how they impact performance. then we can unflag the consumption a bit later. 
+
+[13:35:15.0564] <iain>
+Seems reasonable to me
+
+
+2023-12-18
+[07:55:52.0123] <mbroadst (Matt Broadstone)>
+Hi, is it possible to capture the last result of a statement executed within a module? `JS_ExecuteScript` lets you capture the result of script execution, `JS::ModuleEvaluate` has an out parameter which I think the docs are telling me can be the result of a top-level await but I'm wondering if it's possible for that out parameter to also just be the final result produced during module evaluation?
+
+[07:59:57.0072] <Ms2ger>
+It's always a promise, as defined in https://tc39.es/ecma262/#sec-moduleevaluation
+
+[08:02:58.0757] <mbroadst (Matt Broadstone)>
+Ms2ger: thanks for the clarification. In my experiments the promise does not necessarily hold the last produced value, it seems its often `undefined` though it might hold the last produced value if it was the result of top-level await
+
+[14:04:33.0327] <evilpie>
+Oh fuse looks interesting. Nice.
+
+[14:31:56.0177] <mgaudet>
+Going to be very careful in trying to roll it out, and no guarantees I keep it around if it starts to blow up in our faces, but I agree... could be interesting
+
+[14:32:21.0118] <evilpie>
+Missed opportunity to use blowFuse though
+
+[14:32:38.0777] <evilpie>
+Good luck! I know we wanted something like this for a long time.
+
+[14:34:13.0650] <mgaudet>
+Yeah, I'm glad to have given it a shot. Hopefully in January we'll start reaping benefits. Intentionally landing everything disabled right now so we can see overhead impact (and so I don't have to worry about sec bugs while I'm on vacation for next week and week after) 
+
+[14:42:16.0383] <sfink>
+
+random thought: I don't know how fuses work, exactly, but would it make sense / be useful to have the jit emit a runtime fuse check in DEBUG builds? If X happened, then this code should have been thrown out and never executed with fuse("X happened")==true.
+
+[14:46:49.0622] <mgaudet>
+So the design I just landed has each fuse defined with a 'checkInvariant' method; in principle we could definitely run this in JIT builds. 
+
+Right now, all I've landed is what I call 'Guard' fuses; these are ones where consumers much actively check the state of a fuse. A next step would be building 'invalidating' fuses, where scripts can assume the fuse holds and we'd invalidate ion code when the state no longer holds. For sure, in debug builds we should emit an 'assert' node too. 
+
+[14:48:13.0201] <sfink>
+oh, I see. What's the difference between a Guard fuse and an existing guard that bails out?
+
+[14:48:29.0750] <sfink>
+/me pretends to understand how the JIT works.
+
+[14:52:16.0966] <mgaudet>
+so, existing guards are all built out of 'check property A, B, C holds; cool we're done.' 
+
+Fuses say instead "Hey, if A, B or C ever change, we'll pop this fuse". Then, the fuses are also changed together, so that when one pops, it can pop 'downstream' ones as well. The end result being that we can replace a bunch of 'check this has this shape, check this has this proto, check the proto of that has this shape, ...' code with "check things are still kosher for this optimization", replacing all that walking and checking code with a single address load
+
+[14:53:51.0292] <mgaudet>
+The idea in general is that a fuse asserts some property of the {realm,runtime}, and we can use that to infer other things, rather than actively checking
+
+[14:54:30.0444] <sfink>
+ah! so a guard is a firecracker, and a fuse weaves together the... well, fuses of several firecrackers. Which is not the metaphor for "fuse" you were using. Forget I said it.
+
+[14:54:45.0159] <mgaudet>
+So one fuse I'm also prototyping is the 'HasSeenObjectEmulatesUndefined' fuse, which hopefully will allow us to stop constantly having to do the IsHTMLDDA checks, and only do them if we've ever actually seen anyone call `document.all`
+
+[14:55:03.0985] <sfink>
+makes sense. Nice!
+
+[14:55:35.0623] <mgaudet>
+(no, seriously, I have many doubts about the fuse metaphor; v8 calls this concept Protectors, and JSC calls them Watchpoints. and honestly, both those names are probably better) 
+
+[14:56:30.0788] <mgaudet>
+the major alignment of metaphor is that a fuse is one way -- once it pops, we provide no ability to 'un-pop' it, as it's designed to handle one-way transitions in the state of the VM
+
+[14:58:06.0336] <sfink>
+yeah, that's what I had been assuming all along. The fuse metaphor works for me.
+
+[14:59:39.0093] <mgaudet>
+Well. The important thing will be to see if this infrastructure patch stack pops 1) any fuzz bugs, as I've rigged the infrastructure up for fuzzability as best I can 2) any perf alerts. While we're willing to take a very small overhead to maintain these invariants, it should be small overhead. 
+
+[15:00:38.0858] <mgaudet>
+But. I must run. talk to all later :) 
+
+
+2023-12-20
+[09:36:09.0215] <iain>
+From the perf team end-of-year wrap-up, here's the telemetry for the 95th percentile of JS pageload execution in ms
+
+[09:36:44.0989] <iain>
+Roughly 25% improvement over the course of the year
+
+[09:37:01.0730] <iain>
+Good work, all
+
+[09:38:54.0618] <iain>
+And here's the median, with a similar improvement:
+
+
+2023-12-21
+[22:10:58.0048] <liam_g>
+How do I initialize a `JSClass` which is a Proxy so that it can be constructed with `new` by the user? I tried `JS_InitClass()`, but I'm hitting an assertion, because it doesn't expect the `JSClass` to be a Proxy.
+
+[22:59:21.0428] <arai>
+liam_g: what do you mean by "is a Proxy" ?  do you have a testcase that demonstrates what you want?   also, which assertion does it hit?
+
+[23:06:23.0060] <liam_g>
+I mean that I have a handler which derives from js::BaseProxyHandler.
+
+[23:06:31.0451] <liam_g>
+So from the C++ end.
+
+[23:07:56.0048] <liam_g>
+The assertion is `  MOZ_ASSERT(!clasp->isProxyObject(),
+             "Proxies should use GetProxyGCObjectKind");`, which is pretty self explanatory.
+
+[23:08:37.0849] <arai>
+this one? [ObjectKind-inl.h](https://searchfox.org/mozilla-central/rev/8461ad1fc943ac560414322b66de5929ef10f706/js/src/gc/ObjectKind-inl.h#35-36)
+
+[23:08:59.0006] <liam_g>
+Yes
+
+[23:09:30.0217] <arai>
+what's the backtrace?
+
+[23:10:50.0385] <liam_g>
+`````
+>	[Inline Frame] mozjs-102a1.dll!js::gc::GetGCObjectKind(const JSClass * clasp) Line 35	C++
+ 	[Inline Frame] mozjs-102a1.dll!js::NewObjectWithGivenTaggedProto(JSContext * cx, const JSClass * clasp, JS::Handle<js::TaggedProto> proto) Line 362	C++
+ 	[Inline Frame] mozjs-102a1.dll!js::NewTenuredObjectWithGivenProto(JSContext * cx, const JSClass * clasp, JS::Handle<JSObject *> proto) Line 401	C++
+ 	mozjs-102a1.dll!CreateBlankProto(JSContext * cx, const JSClass * clasp, JS::Handle<JSObject *> proto) Line 709	C++
+ 	[Inline Frame] mozjs-102a1.dll!DefineConstructorAndPrototype(JSContext * cx, JS::Handle<JSObject *> obj, JS::Handle<JSAtom *> atom, JS::Handle<JSObject *> protoProto, const JSClass * clasp, bool(*)(JSContext *, unsigned int, JS::Value *) constructor, unsigned int nargs, const JSPropertySpec * ps, const JSFunctionSpec * fs, const JSPropertySpec * static_ps, const JSFunctionSpec * static_fs, js::NativeObject * * ctorp) Line 1403	C++
+ 	mozjs-102a1.dll!js::InitClass(JSContext * cx, JS::Handle<JSObject *> obj, JS::Handle<JSObject *> protoProto_, const JSClass * clasp, bool(*)(JSContext *, unsigned int, JS::Value *) constructor, unsigned int nargs, const JSPropertySpec * ps, const JSFunctionSpec * fs, const JSPropertySpec * static_ps, const JSFunctionSpec * static_fs, js::NativeObject * * ctorp) Line 1468	C++
+ 	mozjs-102a1.dll!JS_InitClass(JSContext * cx, JS::Handle<JSObject *> obj, JS::Handle<JSObject *> parent_proto, const JSClass * clasp, bool(*)(JSContext *, unsigned int, JS::Value *) constructor, unsigned int nargs, const JSPropertySpec * ps, const JSFunctionSpec * fs, const JSPropertySpec * static_ps, const JSFunctionSpec * static_fs) Line 1622	C++
+
+`````
+
+[23:12:59.0285] <liam_g>
+And my function call is:
+
+`JS_InitClass(cx, global, nullptr, &cellClass, &cellRefConstructor, 1, nullptr, nullptr, nullptr, nullptr);`
+
+[23:13:26.0755] <liam_g>
+const JSClass cellClass = PROXY_CLASS_DEF("Cell", JSCLASS_HAS_RESERVED_SLOTS(1));
+
+[23:13:33.0442] <liam_g>
+ * `const JSClass cellClass = PROXY\_CLASS\_DEF("Cell", JSCLASS\_HAS\_RESERVED\_SLOTS(1));`
+
+[23:15:02.0195] <liam_g>
+ * `const JSClass cellClass = PROXY_CLASS_DEF("Cell", JSCLASS_HAS_RESERVED_SLOTS(1));`
+
+[23:16:45.0309] <arai>
+I think you can use something like this [testWindowNonConfigurable.cpp](https://searchfox.org/mozilla-central/rev/8461ad1fc943ac560414322b66de5929ef10f706/js/src/jsapi-tests/testWindowNonConfigurable.cpp#31-43)
+
+[23:21:35.0144] <liam_g>
+I'm not quite following what this code does, but it makes me think that I can just define a global native function which returns the proxy object.
+
+[23:39:51.0858] <arai>
+yes, the function calls `NewProxyObject` and returns it.  that's what the built-in Proxy does [ScriptedProxyHandler.cpp](https://searchfox.org/mozilla-central/rev/8461ad1fc943ac560414322b66de5929ef10f706/js/src/proxy/ScriptedProxyHandler.cpp#1500-1553)
+
+
+2023-12-22
+[11:38:50.0847] <dheitbrink>
+I have a function called from a module, we want it load some JS code and execute it in the global for the module (or the current scope), and I notice for JS_ExecuteScript, there is a scopeChain parameter. I am assuming I need to populate that.......how would I do that?
+
+[12:09:43.0933] <arai>
+you don't need to pass the envChain parameter if you want to execute the script at global top level
+
+[12:12:18.0107] <arai>
+the parameter can be used when you want to add extra environment between global and the script.  for example adding extra variables visible only for the script 
+
+[12:13:38.0642] <arai>
+https://searchfox.org/mozilla-central/rev/05178ae3d8ed27d47b340094de52bd3f572a5e1d/js/public/CompilationAndEvaluation.h#55
+
+[12:43:45.0430] <dheitbrink>
+OK yeah I had a mistake before after testing it...when I evaluate the code I do variables declared in the global scope of the module....but I am not seeing changes to the variable post function call.  
+
+[12:46:17.0388] <dheitbrink>
+Is it possible to have the changes I make to said global variables be reflected in my module?
+
+[12:47:57.0160] <arai>
+can you provide the actual code?
+
+[12:48:23.0705] <arai>
+what's function and what's variable and hoe you declare where?
+
+[12:48:27.0791] <arai>
+ * what's function and what's variable and how you declare where?
+
+[12:48:32.0840] <dheitbrink>
+yeah this is my module:
+
+[12:48:34.0191] <dheitbrink>
+var test_base = 1;
+importAtj("testImportTarg.atj");
+//print_doc(“test:” + test +”\n”);
+if (test_base == 2){
+	print_doc("Pass\n");
+} else {
+	print_doc("FAIL\n");
+}
+print_doc("test_base=" + test_base + "\n");
+
+[12:49:07.0263] <dheitbrink>
+at this is my testImportTarg.atj:
+
+[12:49:08.0215] <dheitbrink>
+this.test_base = 2;
+print_doc("test_base=" + test_base + "\n");
+
+[12:49:33.0589] <dheitbrink>
+ * and this is my testImportTarg.atj:
+
+[12:49:58.0706] <dheitbrink>
+ * `this.test\_base = 2;
+print\_doc("test\_base=" + test\_base + "\\n");`
+
+[12:50:51.0986] <dheitbrink>
+ * var test\_base = 1;
+importAtj("testImportTarg.atj");
+//print\_doc(“test:” + test +”\\n”);
+if (test\_base == 2){
+print\_doc("Pass\\n");
+} else {
+print\_doc("FAIL\\n");
+}
+print\_doc("test\_base=" + test\_base + "\\n");
+
+[12:51:00.0560] <arai>
+by "module", you mean ECMAScript module? (not a module in general, such as common js module which is actually regular script)   if so, the ECMAScript module doesn't have global `this`, and all variables are part of module environment, not global object
+
+[12:51:19.0467] <dheitbrink>
+ * var test\_base = 1;
+```importAtj("testImportTarg.atj");
+//print\_doc(“test:” + test +”\\n”);
+if (test\_base == 2){
+print\_doc("Pass\\n");
+} else {
+print\_doc("FAIL\\n");
+}
+print\_doc("test\_base=" + test\_base + "\\n");```
+
+[12:51:46.0424] <arai>
+and if you evaluate regular script in the global, the `this` points the global object, which is unrelated to the module's global variables
+
+[12:51:51.0782] <dheitbrink>
+yeah I do mean ECMAScript module.
+
+[12:53:51.0842] <arai>
+in module's scope, the global object is `globalThis`.  so, you can see the value by `globalThis.test_base`
+
+[12:56:40.0088] <arai>
+anyway, regular script's scope handling is not compatible with module's scope.   passing the module's environment object as part of `envChain` might work in some case, but not guaranteed
+
+[13:00:05.0479] <arai>
+ * in module's scope, the global object is `globalThis`.  so, you can see the value (which is set by regular script) by `globalThis.test_base`
+
+[13:08:04.0774] <dheitbrink>
+OK, to get the modules environment object, can I call, JS::CurrentGlobalOrNull, and put that on the HandleObjectVector envChain to pass into JS_ExecuteScript?
+
+[13:08:40.0812] <arai>
+`JS::CurrentGlobalOrNull` returns `globalThis` value
+
+[13:09:51.0326] <arai>
+[JS::GetModuleEnvironment](https://searchfox.org/mozilla-central/rev/05178ae3d8ed27d47b340094de52bd3f572a5e1d/js/public/Modules.h#298-299) returns the environment object
+
+[13:11:46.0139] <dheitbrink>
+Thanks.....I should just be able to populate the envChain with the global then right?
+
+[13:12:22.0895] <arai>
+but not all variables are stored into module environment object.  if the variable is not closed over, it's stored into frame slot (which is not accessible unless you use Debugger)
+
+[13:13:28.0342] <arai>
+there's [JS::TransitiveCompileOptions::deoptimizeModuleGlobalVars](https://searchfox.org/mozilla-central/rev/05178ae3d8ed27d47b340094de52bd3f572a5e1d/js/public/CompileOptions.h#316) option to forcibly move all global variables into the environment object, but that's only for internal usage and it will be removed in near future
+
+[13:14:27.0851] <arai>
+envChain shouldn't contain global object (the `JS::CurrentGlobalOrNull` value).
+
+[13:16:14.0136] <arai>
+what is it the requirement for your case?  directly modify the module's global variable?  or somehow pass a value to module?
+
+[13:16:17.0460] <dheitbrink>
+OK thanks, but what about the global from`JS::GetModuleEnvironment` in the envChain?
+
+[13:17:16.0728] <arai>
+`JS::GetModuleEnvironment` is not global.  it might work as envChain element, but I think we don't use it that way and I'm not sure what happens
+
+[13:17:34.0294] <arai>
+`envChain` expects plain object as its element
+
+[13:18:29.0845] <arai>
+like this [testStencil.cpp](https://searchfox.org/mozilla-central/rev/05178ae3d8ed27d47b340094de52bd3f572a5e1d/js/src/jsapi-tests/testStencil.cpp#132-141)
+
+[13:18:43.0767] <dheitbrink>
+I will give this a try.......but this sounds like there is a vary good chance I will not be able to get this "importATJ" to work the way I was asked to have it work.
+
+[13:21:49.0438] <arai>
+yeah, module's environment is designed to be an isolation from other things (such as another module loaded into the same global), and directly modifying the environment from other script isn't something supposed to happen
+
+[13:22:31.0295] <arai>
+so, if the requirement isn't strict about "directly modifying the module's variables", I'd suggest looking into different way
+
+[14:18:06.0075] <gkw>
+any JIT developer around?
+
+[14:19:57.0252] <gkw>
+Iain is on PTO... jandem is away... @nbp probably is not around either
+
+[14:20:35.0445] <sdetar>
+Nicholas is also on PTO also
+
+[14:20:40.0162] <gkw>
+right
+
+[14:21:03.0808] <gkw>
+well I've a I'm-not-sure-if it's an ASan UAF albeit with a debug build
+
+[14:21:18.0568] <gkw>
+I'll cc sdetar and mccr8  if you all want to move it along for now
+
+[14:22:04.0272] <gkw>
+reason being I'm around if anybody needs me to try any commands on the very-hard-to-reproduce issue
+
+[14:22:37.0668] <sdetar>
+Maybe cc wmedina, as he will be around and is the triage owner 
+
+[14:22:46.0706] <gkw>
+thanks sdetar 
+
+[14:23:19.0191] <sdetar>
+I hope all is going well Gary
+
+[14:24:25.0792] <gkw>
+everything is fine! Giving everyone a bit of a series of christmas bugs if anybody is ever bored of the festivities (no, seriously, go for your holiday) haha
+
+[14:26:00.0818] <sdetar>
+So when everyone gets back from the holidays they will have something to do.
+
+
+2023-12-25
+[00:44:01.0936] <Redfire>
+Is there an equivalent of `JS_GetTypedArraySharedness` that works for all `ArrayBufferView`s, ie including `DataView`?
+
+[00:56:51.0832] <arai>
+this one?  [SharedArrayBuffer.h](https://searchfox.org/mozilla-central/rev/fc757816ed9d8f8552dbcb96c1f89f8108f37b2a/js/public/SharedArrayBuffer.h#68-76)
+
+[00:57:27.0628] <arai>
+the implementation looks almost same [ArrayBufferViewObject.cpp](https://searchfox.org/mozilla-central/rev/fc757816ed9d8f8552dbcb96c1f89f8108f37b2a/js/src/vm/ArrayBufferViewObject.cpp#329-335)
+
+[01:08:53.0759] <Redfire>
+Huh, weird, bindings weren't generated for that. I think `SharedArrayBuffer.h` isn't included in the binding generation
+
+[01:11:28.0440] <Redfire>
+In the meantime, `JS_GetArrayBufferViewBuffer`'s `isSharedMemory: bool*` should work right?
+
+
+2023-12-27
+[18:35:08.0512] <glandium>
+Is `ShutdownImpl` ever called from Firefox?
+
+[18:54:47.0610] <arai>
+only if fast shutdown is not used
+
+[18:55:24.0726] <arai>
+so, it's not called in regular setup
+
+[18:58:19.0971] <arai>
+the default fast shutdown happens at `CCPostLastCycleCollection`, and `JS_Shutdown` is called after that. https://searchfox.org/mozilla-central/rev/08899071a2c8a573ac47ac632869bb92269b3ec3/xpcom/build/XPCOMInit.cpp#706,725
+```cpp
+AppShutdown::AdvanceShutdownPhase(ShutdownPhase::CCPostLastCycleCollection);
+...
+  JS_ShutDown();
+```
+
+[04:53:38.0866] <Redfire>
+Why's the comment on https://searchfox.org/mozilla-central/source/js/public/MapAndSet.h#7-9 `Weak Maps`? I'm pretty sure weak maps have their own header
+
+[04:55:18.0210] <evilpie>
+> <@redfire75369:mozilla.org> Why's the comment on https://searchfox.org/mozilla-central/source/js/public/MapAndSet.h#7-9 `Weak Maps`? I'm pretty sure weak maps have their own header
+
+just a copy & paste error. Feel free to provide a patch
+
+[04:56:07.0209] <Redfire>
+I have no idea what would go there lol
+
+[04:56:23.0465] <evilpie>
+I would image "Maps and Sets"
+
+[04:59:12.0865] <Redfire>
+Time to dig up my clone of mozilla-central
+
+[09:01:34.0824] <l11d>
+anyone else started to see this assert https://searchfox.org/mozilla-central/source/js/src/gc/Nursery.cpp#1595 ? None of the fuzzer testcases reproduces but the crash occurs rather frequently
+
+[10:12:45.0819] <Redfire>
+I think I did this properly? https://bugzilla.mozilla.org/show_bug.cgi?id=1872151
+
+[11:00:49.0274] <evilpie>
+Redfire: almost perfect. --amend with "r?#spidermonkey-reviewers" to remove the WIP status
+
+[11:17:06.0276] <gkw>
+l11d: yes it is seen
+
+[11:21:01.0753] <l11d>
+gkw:  did you find a reliable reproducer?
+
+[11:21:32.0357] <gkw>
+l11d: yep I did
+
+[11:21:55.0587] <gkw>
+maybe I got lucky :-/
+
+[11:23:44.0352] <gkw>
+l11d: the fuzzing team has a habit of saying things like "I just haven't had the time to report it", presumably they're busy all the time doing other things
+
+[11:24:05.0720] <gkw>
+it's been around for weeks
+
+[11:26:35.0667] <l11d>
+good to know, so I won't spend any more time in finding a reproducer 
+
+[11:28:29.0615] <gkw>
+l11d: you do good work, I look at your bugs too. Btw, I'm not employed by Moz either
+
+[11:33:54.0549] <l11d>
+> <@gkw:mozilla.org> l11d: you do good work, I look at your bugs too. Btw, I'm not employed by Moz either
+
+many thanks. I did find a couple of issue recently but most bugs are still hidden
+
+[11:34:17.0508] <gkw>
+likewise!
+
+[13:58:11.0613] <aolo2 (Alex)>
+Hello everyone and merry christmas! Ben Visness pointer me here for more indepth js engine questions. I'm working on a thing that has to run in the browser and do so really quickly. I'm comfortable with native profiling tools, and was wondering what are my options for doing "serious profiling" for code running in the browser, beyond what firefox profiler (which is really good!) gives me. For example, I would like to know if my routine is memory or compute bound. Do such things exist? Maybe there are some flags or experimental features I can enable? Or would it be more straightforward to just use native tools and compile to WASM? Thanks a lot!
+
+[14:15:20.0677] <aolo2 (Alex)>
+ * Hello everyone and merry christmas! Ben Visness pointed me here for more indepth js engine questions. I'm working on a thing that has to run in the browser and do so really quickly. I'm comfortable with native profiling tools, and was wondering what are my options for doing "serious profiling" for code running in the browser, beyond what firefox profiler (which is really good!) gives me. For example, I would like to know if my routine is memory or compute bound. Do such things exist? Maybe there are some flags or experimental features I can enable? Or would it be more straightforward to just use native tools and compile to WASM? Thanks a lot!
+
+
+2023-12-28
+[20:50:47.0157] <Redfire>
+evilpie: I used `--no-wip` with phabricator though? (The guide said `r=reviewers`, but that didn't work)
+
+[21:41:36.0758] <arai>
+the reviewers in commit message would work only for the initial submission
+
+[21:42:32.0683] <arai>
+you can add reviewer from phabricator UI. "Add Action..." -> "Change Reviewers" and put `#spidermonkey-reviewers` in the field, and then submit
+
+
+2023-12-29
+[03:19:39.0479] <whimboo>
+vinnydiehl: I wanna say thanks here as well for your work on the ISODate parsing patch! I'm so glad about these simplifications!
+

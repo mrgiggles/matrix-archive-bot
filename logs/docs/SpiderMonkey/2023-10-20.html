@@ -1,0 +1,55 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2023-10-20</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2023-10-20<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2023-10-19" class="nav-link"><span>prev</span></a>
+<a href="2023-10-21" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Fri Oct 20 2023 06:01:10 GMT-0700 (Pacific Daylight Time)">13:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell"><p>Any reason why <code>GetRegExpFlags</code> might fail here?</p>
+<pre><code>Assertion failure: !cx-&gt;isHelperThreadContext() &amp;&amp; js::CurrentThreadCanAccessRuntime(cx-&gt;runtime()), at C:/Users/Redfire/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/ec63ca3/mozjs-sys/mozjs/js/src/vm/RegExpObject.cpp:1180
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Fri Oct 20 2023 06:02:42 GMT-0700 (Pacific Daylight Time)">13:02</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell">I'm quite certain it's running on the same thread</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Fri Oct 20 2023 06:06:32 GMT-0700 (Pacific Daylight Time)">13:06</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-8" title="@redfire75369:mozilla.org">Redfire</span>&gt;</div></td><td class="msg-cell"><p>Here's the proper stacktrace:</p>
+<pre><code>JSRuntime::mainContextFromAnyThread() Runtime.h:354
+js::CurrentThreadCanAccessRuntime(const JSRuntime *) Runtime.cpp:765
+JS::GetRegExpFlags(JSContext *, Handle&lt;…&gt;) RegExpObject.cpp:1180
+ion::objects::regexp::RegExp::flags(*mut ion::context::Context) regexp.rs:50
+ion::objects::regexp::RegExp::to_string(*mut ion::context::Context) regexp.rs:54
+ion::format::regexp::format_regexp(*mut ion::context::Context,ion::format::config::Config,*mut ion::objects::regexp::RegExp) regexp.rs:20
+ion::format::object::format_object(*mut ion::context::Context,ion::format::config::Config,ion::objects::object::Object) object.rs:42
+ion::format::format_value(*mut ion::context::Context,ion::format::config::Config,*mut ion::value::Value) mod.rs:34
+cli::evaluate::eval_inline::async_fn$0(core::pin::Pin&lt;ref_mut$&lt;enum2$&lt;cli::evaluate::eval_inline::async_fn_env$0&gt; &gt; &gt;,*mut core::task::wake::Context) evaluate.rs:33
+cli::commands::eval::eval_source::async_fn$0(core::pin::Pin&lt;ref_mut$&lt;enum2$&lt;cli::commands::eval::eval_source::async_fn_env$0&gt; &gt; &gt;,*mut core::task::wake::Context) eval.rs:25
+</code></pre>
+</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Fri Oct 20 2023 09:13:17 GMT-0700 (Pacific Daylight Time)">16:13</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><span class="nick-8">Redfire</span>: can you check which condition in the assertion fails?</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Fri Oct 20 2023 09:17:36 GMT-0700 (Pacific Daylight Time)">16:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@arai:mozilla.org">arai</span>&gt;</div></td><td class="msg-cell"><p>one possibility is that <code>CurrentThreadCanAccessRuntime</code> fails because the <code>JSContext</code> associated with the thread is already destroyed (<code>TlsContext.get()</code> below returns nullptr): <a href="https://searchfox.org/mozilla-central/rev/9f6a9e601b2ab9ad1a3877691ea17c66c1fd8867/js/src/vm/Runtime.cpp#764">https://searchfox.org/mozilla-central/rev/9f6a9e601b2ab9ad1a3877691ea17c66c1fd8867/js/src/vm/Runtime.cpp#764</a></p>
+<pre><code class="language-cpp">return rt-&gt;mainContextFromAnyThread() == TlsContext.get();
+</code></pre>
+</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

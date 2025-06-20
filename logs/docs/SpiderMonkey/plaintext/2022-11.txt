@@ -1,0 +1,2792 @@
+2022-11-01
+[23:31:50.0252] <Redfire>
+That's.... a new one
+```rs
+Process 14040 launched: 'C:\Users\Redfire\spiderfire\target\debug\examples\simple.exe' (x86_64)
+Process 14040 stopped
+* thread #1, stop reason = Exception 0xc0000005 encountered at address 0x7ff75a21fd1c: Access violation reading location 0x00000058
+    frame #0: 0x00007ff75a21fd1c simple.exe`void mozilla::detail::MutexImpl::unlock(void) + 189356
+simple.exe`void mozilla::detail::MutexImpl::unlock(void):
+```
+I'll get the full bt in a while
+
+[23:39:05.0920] <Redfire>
+```rs
+js::NewObjectWithClassProto(JSContext *, const JSClass *, Handle<…>, AllocKind, NewObjectKind) JSObject.cpp:881
+[Inlined] js::NewBuiltinClassInstance(JSContext *, const JSClass *, AllocKind, NewObjectKind) JSObject-inl.h:473
+[Inlined] js::NewBuiltinClassInstance(JSContext *, const JSClass *, NewObjectKind) JSObject-inl.h:480
+[Inlined] js::NewBuiltinClassInstance(JSContext *) JSObject-inl.h:485
+JS_NewPlainObject(JSContext *) jsapi.cpp:1937
+ion::objects::object::Object::new() object.rs:49
+simple::main() simple.rs:20
+core::ops::function::FnOnce::call_once<void (*)(),tuple$<> >(void (*)()) function.rs:248
+std::sys_common::backtrace::__rust_begin_short_backtrace<void (*)(),tuple$<> >(void (*)()) backtrace.rs:122
+std::rt::lang_start::closure$0<tuple$<> >(std::rt::lang_start::closure_env$0<tuple$<> > *) rt.rs:145
+[Inlined] core::ops::function::impls::impl$2::call_once() function.rs:280
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+[Inlined] std::rt::lang_start_internal::closure$2() rt.rs:128
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+std::rt::lang_start_internal() rt.rs:128
+std::rt::lang_start<tuple$<> >(void (*)(),long long,unsigned char **) rt.rs:144
+main 0x00007ff7ccef1e36
+[Inlined] invoke_main() 0x00007ff7cd89e370
+__scrt_common_main_seh() 0x00007ff7cd89e34e
+<unknown> 0x00007ff8e1897034
+<unknown> 0x00007ff8e24826a1
+```
+```cpp
+bool isCachable = NewObjectIsCachable(cx, newKind, clasp);
+  if (isCachable) {
+    NewObjectCache& cache = cx->caches().newObjectCache;
+    NewObjectCache::EntryIndex entry = -1;
+    if (cache.lookupGlobal(clasp, global, allocKind, &entry)) { // This Line
+      gc::InitialHeap heap = GetInitialHeap(newKind, clasp);
+      JSObject* obj = cache.newObjectFromHit(cx, entry, heap);
+      if (obj) {
+        return obj;
+      }
+    }
+  }
+```
+
+[23:40:04.0373] <Redfire>
+Do you really need a global to initialise any object (`JS_NewPlainObject`)?
+
+[00:00:12.0729] <iain>
+Redfire: Yeah, there needs to be a global to do almost anything in JS
+
+[00:13:15.0831] <Redfire>
+bit of a cryptic access violation to lead me on though
+
+
+2022-11-02
+[21:38:06.0683] <mgaudet>
+confession: Have been nerdsniped into analyzing the JS::Value representation. On the plus side, I think some more documentation is coming from this :) 
+
+[21:38:09.0264] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[04:07:18.0712] <nbp>
+mgaudet: how many free bits are remaining before we have to mashup some types together?
+
+[04:09:12.0539] <nbp>
+I guess we could have a larger type tag for small values, such as Magic, int32, null and undefined (which are not pointer base) if we wanted to free some space, but then the payload size would depend on the content.
+
+[04:13:53.0642] <caleb.distributive>
+Hi everyone, got a question regarding JSGCCallbacks. Namely: how do they work? The documentation is kinda sparse. So for all I've got is that I can set them with JS_SetGCCallback.
+
+I'm attempting to tell the garbage collector not to collect a given GCThing if a particular statement is true, and I may potentially have many such GCThings that I may or may not want to prevent collection for, but I still want it to collect other things that I'm not concerned with.
+
+[04:15:08.0741] <caleb.distributive>
+ * Hi everyone, got a question regarding JSGCCallbacks. Namely: how do they work? The documentation is kinda sparse. So for all I've got is that I can set them with JS\_SetGCCallback.
+
+I'm attempting to tell the garbage collector not to collect a given GCThing if a particular statement is true, and I may potentially have many such GCThings that I may or may not want to prevent collection for (and whether I want them collected may change), but I still want it to collect other things that I'm not concerned with.
+
+[04:16:04.0503] <caleb.distributive>
+ * Hi everyone, I'm embedding Spidermonkey, and got a question regarding JSGCCallbacks. Namely: how do they work? The documentation is kinda sparse. So for all I've got is that I can set them with JS\_SetGCCallback.
+
+I'm attempting to tell the garbage collector not to collect a given GCThing if a particular statement is true, and I may potentially have many such GCThings that I may or may not want to prevent collection for (and whether I want them collected may change), but I still want it to collect other things that I'm not concerned with.
+
+[04:50:51.0061] <jakechampion>
+TIL that WebKit, Chromium, and Gecko each give a completely different error message when trying to consume a response body stream which becomes errored during the streaming…
+WebKit: “TypeError: undefined”
+Chromium: “TypeError: Failed to fetch”
+Gecko: “DOMException: The operation was aborted.”
+
+This is the code:
+```
+new Response(new ReadableStream({
+    pull(controller) {
+      controller.error();
+    },
+  })
+).text()
+```
+
+I'm not quite sure where to report this inconsistency, any pointers where I should report this would be appreciated 🤞
+
+[05:40:37.0646] <yulia>
+Probably we shouldn't have a dom exception, so you can open a bug on bugzilla for us to take a look. However, regarding the contents of the error message, those are not standardized unfortunately. We've tried to standardize error messages in the past, but it led to WebCompat issues, as people use different error messages to determine which browser they are running on
+
+[05:44:32.0260] <jakechampion>
+> <@yulia:mozilla.org> Probably we shouldn't have a dom exception, so you can open a bug on bugzilla for us to take a look. However, regarding the contents of the error message, those are not standardized unfortunately. We've tried to standardize error messages in the past, but it led to WebCompat issues, as people use different error messages to determine which browser they are running on
+
+Thanks -- I've opened https://bugzilla.mozilla.org/show_bug.cgi?id=1798678
+
+[05:44:47.0423] <yulia>
+thanks!
+
+[08:47:05.0763] <mgaudet>
+> <@nbp:mozilla.org> mgaudet: how many free bits are remaining before we have to mashup some types together?
+
+So as near as I can tell, we're actually over-allocated on type bits. We seem to have only 12 types, but 5 bits allocated to types. So we should in theory be able to support 20 more type tags. 
+
+Here's my type map: 
+
+```
+// Tag Map:
+// Float Bits:            51  50  49  48  47
+// Double:       0x00     0   0   0   0   0
+// Int32:        0x01     0   0   0   0   1
+// Boolean:      0x02     0   0   0   1   0
+// Undefined:    0x03     0   0   0   1   1
+// Null:         0x04     0   0   1   0   0
+// Magic:        0x05     0   0   1   0   1
+// String:       0x06     0   0   1   1   0
+// Symbol:       0x07     0   0   1   1   1
+// PrivateGC:    0x08     0   1   0   0   0
+// BigInt:       0x09     0   1   0   0   1
+// Unused:       0x0a     0   1   0   1   0
+// ExtPrimitive: 0x0b     0   1   0   1   1
+// Object:       0x0c     0   1   1   0   0
+// Unused:       0xd though 0x1f
+``` 
+
+[08:49:04.0337] <mgaudet>
+Even if we shrank out type-bit allocation to 4 bits, we'd still have 4 bits remaining. I've done a little bit of experimentation with doing that shrink, but either I've misunderstood (possible!) or we've got a lot of assumptions about 5 bits baked in already. 
+
+[09:02:09.0455] <iain>
+Maybe it's best to just keep the extra tag bits in our back pocket for a rainy day? I think the only meaningful advantage of freeing up the 48th address bit is that we could hypothetically run in kernel mode, which is not exactly a priority
+
+[09:04:33.0302] <jandem>
+also some of the bits are special and there are some ordering constraints :)
+
+[09:05:23.0603] <jandem>
+ * also some of the bits are special (eg `ValueObjectOrNullBit`) and there are some ordering constraints :)
+
+[09:05:44.0021] <mgaudet>
+Maybe we try setting the object tag to 0x14 -- it preserves the single bit difference constraint between Object and Null, but uses the top bit (and obeys our current ordering constraint), and helps us ensure we're not accidentally losing that bit somehow. (I think this is maybe my current worry; because we never use that bit as significant, we may have accidentally lost the ability to!) 
+
+[09:16:05.0007] <sfink>
+> <@caleb.distributive:mozilla.org> Hi everyone, I'm embedding Spidermonkey, and got a question regarding JSGCCallbacks. Namely: how do they work? The documentation is kinda sparse. So for all I've got is that I can set them with JS\_SetGCCallback.
+> 
+> I'm attempting to tell the garbage collector not to collect a given GCThing if a particular statement is true, and I may potentially have many such GCThings that I may or may not want to prevent collection for (and whether I want them collected may change), but I still want it to collect other things that I'm not concerned with.
+
+See the "GC thing pointers on the heap" section of the [GC Rooting Guide](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md), especially the Tracing section.
+
+[09:17:54.0045] <sfink>
+your callback should trace anything you want to keep alive, and null out everything you don't.
+
+[09:19:02.0282] <sfink>
+the latter is to avoid dangling pointers, either because the thing the point to is now dead, or because it's still alive (because something *else* points to it) but has been moved.
+
+[09:19:15.0821] <sfink>
+ * the latter is to avoid dangling pointers, either because the thing they point to is now dead, or because it's still alive (because something _else_ points to it) but has been moved.
+
+[09:23:23.0833] <nbp>
+mgaudet: Last time I looked at it, I do not think we could used the sign bit, as this is our tag for Private value.
+
+[09:24:36.0270] <mgaudet>
+Hmm. The way we've got our tags defined, I don't think we can use the fifth bit currently. 
+
+The problem is here: https://searchfox.org/mozilla-central/source/js/public/Value.h#113,116,127 
+
+If we set the topmost bit, changing JSVAL_TYPE_OBJECT from 0xc to 0x14, then JSVAL_TAG_NULL == JSVAL_TAG_OBJECT, as JSVAL_TAG_MAX_DOUBLE has that top bit set as well. 
+
+[09:25:48.0496] <mgaudet>
+> <@nbp:mozilla.org> mgaudet: Last time I looked at it, I do not think we could used the sign bit, as this is our tag for Private value.
+
+The float sign bit; my best guess was that it always had to be set. I couldn't find anything that said that, but derived this (not yet reviewed or landed comment): 
+
+```
+diff --git a/js/public/Value.h b/js/public/Value.h
+--- a/js/public/Value.h
++++ b/js/public/Value.h
+@@ -123,6 +123,17 @@ class JS_PUBLIC_API Value;
+ // 4. The tags for Object and Null differ by a single flipped bit, to simplify
+ //    toObjectOrNull. (See ValueObjectOrNullBit)
+ //
++// An aside: In the puboxing format described above, we've only described a use
++// in boxing of 63 of the 64 bits of the double-precision floating point. In
++// theory we could use NaN boxing and use the sign bit for our own purposes.
++// However, we assume we always have a set sign bit (1) in our value
++// representation in order to support quick determination of whether or not a
++// value is a double.
++//
++// The quick check is performed by shifting all the non-tag fraction bits out,
++// then comparing if the resulting value is strictly greater the maximum double
++// value tag. This check only works if we assume a set sign bit.
++//
+ // [1]:
+ // https://wingolog.org/archives/2011/05/18/value-representation-in-javascript-implementations#969f63bbe4eb912778c9da85feb0f5763e7a7862
+ 
+@@ -208,6 +219,7 @@ static_assert(sizeof(JSValueTag) == size
+ #elif defined(JS_PUNBOX64)
+ 
+ enum JSValueTag : uint32_t {
++  // Any value with a 'tag' lower than this is actually a double.
+   JSVAL_TAG_MAX_DOUBLE = 0x1FFF0,
+   JSVAL_TAG_INT32 = JSVAL_TAG_MAX_DOUBLE | JSVAL_TYPE_INT32,
+   JSVAL_TAG_UNDEFINED = JSVAL_TAG_MAX_DOUBLE | JSVAL_TYPE_UNDEFINED,
+```
+
+[09:26:40.0201] <nbp>
+I recall it being non-free … maybe due to the comparison complexity induced by using it.
+
+[09:27:41.0417] <nbp>
+That's it: https://searchfox.org/mozilla-central/source/js/public/Value.h#185-187
+
+[09:28:57.0122] <mgaudet>
+oh, for sure, allowing a zero sign bit makes other things complicated too. I just don't know if it's actually written down that we require a non-zero sign bit, or if it's just implicit in our value type construction. 
+
+[09:29:41.0460] <mgaudet>
+I wonder if I've just goofed in my understanding: maybe we do actually only have 4 sign bits, and the fifth bit is the discriminator between a float and the ECMAScript NaN 
+
+[09:29:49.0055] <mgaudet>
+ * I wonder if I've just goofed in my understanding: maybe we do actually only have 4 type tag bits, and the fifth bit is the discriminator between a float and the ECMAScript NaN 
+
+[09:29:51.0117] <nbp>
+that's basically what the comment mention, we keep the sign bit to have a fast isDouble check.
+
+[09:30:01.0849] <nbp>
+ * that's basically what the comment mention, we keep the sign bit at 1 to have a fast isDouble check.
+
+[09:30:07.0126] <mgaudet>
+> <@nbp:mozilla.org> that's basically what the comment mention, we keep the sign bit at 1 to have a fast isDouble check.
+
+which comment? 
+
+[09:30:18.0496] <nbp>
+The one you pasted above.
+
+[09:30:38.0928] <mgaudet>
+Oh yeah -- but that's something I just reverse engineered last night, it's not written down elsewhere
+
+[09:31:01.0771] <nbp>
+“owever, we assume we always have a set sign bit (1) in our value representation in order to support quick determination of whether or not a value is a double.”
+
+[09:31:05.0552] <nbp>
+ * “However, we assume we always have a set sign bit (1) in our value representation in order to support quick determination of whether or not a value is a double.”
+
+[09:31:46.0552] <nbp>
+oh ok, that your patch. That's something I had reverse engineer in the past as well … not recalling.
+
+[09:32:28.0214] <nbp>
+So there only 1 free tag today.
+
+[09:33:37.0331] <nbp>
+I guess we should add on our todo list to coalesce int32, null, undefined, boolean and magic into a 32bits tag.
+
+[09:34:24.0548] <mgaudet>
+> <@nbp:mozilla.org> So there only 1 free tag today.
+
+Possibly -- at the very least, attempting to use tags 0x{d,e,f} may require reordering of our tags, or giving up on some previously assumed constraints. 
+
+[09:35:44.0914] <nbp>
+Shifting String and Symbols by 2 would be make a cheap test for GC things.
+
+[09:37:50.0010] <mgaudet>
+Shifting them where? 
+
+[09:37:53.0774] <mgaudet>
+(don't quite follow) 
+
+[09:45:11.0045] <iain>
+We have four tags free, no? a, d, e, f?
+
+[09:46:46.0476] <iain>
+The only limitation is that if we want all GC things to be contiguous, Object to be the biggest tag, and Null to only differ by 1 bit from Object, then no more than half of our tags can be for GC things
+
+[09:46:56.0788] <nbp>
+ * So there only <del>1</del> 4 free tag today.
+
+[09:47:59.0691] <iain>
+In which case combining our primitive tags together doesn't get us anywhere
+
+[09:48:16.0455] <nbp>
+Yes, currently this is a requirement that they are contiguous:
+https://searchfox.org/mozilla-central/source/js/public/Value.h#717-724
+
+[09:50:13.0933] <@allstarschh>
+sfink: meeting? this week Europe ends daylight saving so the meeting is 1 hour earlier for you
+
+[09:57:14.0757] <iain>
+Of the restrictions, I think "all primitive types have smaller tags than Object" is the easiest to relax. None of the [uses](https://searchfox.org/mozilla-central/search?q=symbol:_ZNK2JS5Value11isPrimitiveEv&redirect=false) of `isPrimitive` look very performance sensitive. Implementing it as `return toTag() != JSVAL_TAG_OBJECT` seems fine.
+
+[10:10:02.0050] <nbp>
+iain: Don`t forget generated code.
+
+[10:10:22.0614] <nbp>
+but we are most likely checking individual tags.
+
+[10:16:26.0920] <iain>
+Good point
+
+[10:16:46.0108] <iain>
+At first glance, it looks like the only place we check isPrimitive is for the return value of constructors
+
+[10:17:13.0261] <iain>
+ * At first glance, it looks like the only place we check isPrimitive (in jitcode) is for the return value of constructors
+
+[10:17:36.0827] <iain>
+(https://searchfox.org/mozilla-central/search?q=branchtestprimitive&path=&case=false&regexp=false)
+
+[10:42:18.0615] <mgaudet>
+Hmm. I wonder if we're not using the MSB of the mantissa for the tag is to avoid producing signalling NaNs... 
+
+Tweaking the definition of JSVAL_TAG_MAX_DOUBLE to 0x1ffe0 (freeing up the fifth tag bit) passes a good number, but not all, jstests. Haven't investigated further yet. 
+
+[10:43:24.0517] <mgaudet>
+(It feels weird to me that JSVAL_TAG_SHIFT is 47, and yet we only use 4 of the bits for tags; I thought it might be the canonical nan, but turns out we require our canonical NaN to have a zero sign bit, and so our fast-path for checking isDouble already works properly there) 
+
+[10:43:39.0223] <iain>
+I think I've worked out to my satisfaction where the fifth tag bit went. Writing up an explanation now.
+
+[10:44:24.0570] <iain>
+In short, the problem is that the hardware generated NaN has one of our tag bits set
+
+[10:44:30.0830] <nbp>
+mgaudet: I had wondered the same, and my conclusion is that it was not necessary to care about the signalling bit as we are not doing any math with tagged values.
+
+[10:47:12.0078] <iain>
+(Unless I've been counting bits incorrectly, which may well be possible)
+
+[10:48:32.0922] <iain>
+Okay, yeah, I think my counting is correct
+
+[10:48:54.0398] <mgaudet>
+> <@nbp:mozilla.org> mgaudet: I had wondered the same, and my conclusion is that it was not necessary to care about the signalling bit as we are not doing any math with tagged values.
+
+That was me too, but I'm eager to hear Iain's explanation, because this has nerdsniped me badly :P 
+
+[10:54:14.0255] <iain>
+```
+| 63   | 62 - 52  |  51  | 50 | 49 | 48 | 47 | 46 - 0  |
+| sign | exponent | **** |    |    |    |    | payload |
+
+The largest non-NaN double we have to handle is -infinity, which has all 12 of the sign/exponent bits set, and none of the tag/payload bits.
+-infinity is 0x1ffe0 << 47. As soon as we hit (0x1ffe0 << 47) + 1, we're in NaN space.
+
+To make the maximum use out of our tag space, it would be great if our canonical NaN was (0x1ffe0 << 47) + 1.
+All doubles would be contiguous, and no value with any of the five tag bits set would be a double.
+
+However, the canonical NaN produced by the hardware is 0xfff8000000000000, which has the top 13 bits set.
+If we don't want to have to canonicalize NaNs after doing any math with doubles, we have to ensure that value is interpreted as a double.
+
+So we give that bit back. Any value without bit 51 set is a double.
+Effectively, all of our tags already have the top bit set; we just don't write them that way.
+```
+
+[10:57:01.0505] <mgaudet>
+I think that aligns with my debugging of setting JSVAL_TAG_MAX_DOUBLE to 0x1ffe0; 
+
+[10:57:13.0075] <mgaudet>
+(About to take off for lunch, so only about 75% confident) 
+
+[10:57:29.0193] <mgaudet>
+Well -- yet another comment to add to Value.h
+
+[10:59:45.0971] <iain>
+IIRC, x64 and arm differ in the canonical NaN, in the sense that one of them sets the sign bit on eg `0.0/0.0` and the other doesn't, but it doesn't matter because multiplying by -1 will flip the sign bit, even for a NaN.
+
+[11:00:13.0899] <iain>
+So both platforms are capable of creating `0xfff8000000000000` through legitimate math
+
+[11:00:59.0502] <iain>
+ * ```
+| 63   | 62 - 52  |  51  | 50 | 49 | 48 | 47 | 46 - 0  |
+| sign | exponent | **** |    |    |    |    | payload |
+
+The largest non-NaN double we have to handle is -infinity, which has all 12 of the sign/exponent bits set, and none of the tag/payload bits.
+-infinity is 0x1ffe0 << 47 (aka 0xffff << 48). As soon as we hit (0x1ffe0 << 47) + 1, we're in NaN space.
+
+To make the maximum use out of our tag space, it would be great if our canonical NaN was (0x1ffe0 << 47) + 1.
+All doubles would be contiguous, and no value with any of the five tag bits set would be a double.
+
+However, the canonical NaN produced by the hardware is 0xfff8000000000000, which has the top 13 bits set.
+If we don't want to have to canonicalize NaNs after doing any math with doubles, we have to ensure that value is interpreted as a double.
+
+So we give that bit back. Any value without bit 51 set is a double.
+Effectively, all of our tags already have the top bit set; we just don't write them that way.
+```
+
+[11:01:12.0635] <iain>
+ * ```
+| 63   | 62 - 52  |  51  | 50 | 49 | 48 | 47 | 46 - 0  |
+| sign | exponent | **** |    |    |    |    | payload |
+
+The largest non-NaN double we have to handle is -infinity, which has all 12 of the sign/exponent bits set, and none of the tag/payload bits.
+-infinity is 0x1ffe0 << 47 (aka 0xfff << 48). As soon as we hit (0x1ffe0 << 47) + 1, we're in NaN space.
+
+To make the maximum use out of our tag space, it would be great if our canonical NaN was (0x1ffe0 << 47) + 1.
+All doubles would be contiguous, and no value with any of the five tag bits set would be a double.
+
+However, the canonical NaN produced by the hardware is 0xfff8000000000000, which has the top 13 bits set.
+If we don't want to have to canonicalize NaNs after doing any math with doubles, we have to ensure that value is interpreted as a double.
+
+So we give that bit back. Any value without bit 51 set is a double.
+Effectively, all of our tags already have the top bit set; we just don't write them that way.
+```
+
+[11:01:33.0978] <nbp>
+iain: `0xfff8000000000000` has the sign bit set, which is not the case of our NaN boxing.
+
+[11:03:10.0439] <iain>
+nbp: I don't understand what you mean. All of our NaN-boxed values have the sign bit set. 
+
+[11:03:20.0623] <iain>
+(As in, everything that isn't a double)
+
+[11:04:26.0805] <nbp>
+ * <del>iain: `0xfff8000000000000` has the sign bit set, which is not the case of our NaN boxing.</del>
+
+[11:05:56.0271] <iain>
+Another way of phrasing this: we draw the line between doubles and other values at the highest point that can be produced by doing math with hardware, and unfortunately the line is `0xfff8000000000000`
+
+[11:06:36.0410] <nbp>
+`// NaN:       0x10     1   0   0   0   0`, maybe?
+
+[11:08:27.0479] <nbp>
+Excluding NaN from double math does not sounds like a big trouble maker, except for messing a bit with our type inference.
+We would have to add `isUntagged` in addition to `isDouble`, but that would free the signaling bit.
+
+[11:10:03.0955] <iain>
+> <@nbp:mozilla.org> `// NaN:       0x10     1   0   0   0   0`, maybe?
+
+I don't understand this notation
+
+[11:10:35.0334] <nbp>
+This is a reference to mgaudet previous comment describing the mapping of each tag.
+
+[11:11:57.0830] <nbp>
+/me is confused
+
+[11:12:03.0908] <iain>
+Ah, got it
+
+[11:12:16.0559] <iain>
+I think the problem is that it makes `isDouble` more expensive
+
+[11:13:31.0162] <iain>
+For the purposes of telling if something is a number, for example
+
+[11:14:10.0627] <iain>
+But maybe we can do something fancy where we just clear that bit before doing the comparison, similar to the ObjectOrNull trick
+
+[11:15:09.0627] <nbp>
+When we care about doing double math, we might just use `isUntagged`, `isDouble` would only be used when we have to write "NaN" for a string, or for the `type v === "number"` 
+
+[11:15:39.0982] <nbp>
+Clearing the bit would be a pain as it is produced by every math instruction.
+
+[11:18:47.0406] <iain>
+Suppose we have a binary arithmetic IC for a + b, and we see 1.5 + 2.4. What guards are you proposing we generate?
+
+[11:19:21.0051] <iain>
+Right now, we can quickly tell that a value is a double by comparing it to a single maximum.
+
+[11:19:24.0391] <nbp>
+`isUntagged` for both. We would have a slower path for NaN.
+
+[11:19:55.0442] <nbp>
+so keeping the fast path for non-NaN values.
+
+[11:21:56.0955] <iain>
+I think there might be a better approach
+
+[11:23:54.0527] <iain>
+Where we check `(val & ~(1 << 51)) <= JSVAL_SHIFTED_TAG_MAX_DOUBLE`
+
+[11:25:17.0313] <nbp>
+you have one extra `&` operation, but this would work.
+
+[11:25:30.0377] <iain>
+We only have to clear the bit when comparing, not for every arithmetic operation
+
+[11:25:32.0875] <iain>
+Which helps
+
+[11:25:37.0181] <nbp>
+however, this implies encoding 2 64 bits immediate :/
+
+[11:25:59.0332] <iain>
+Is there no better way to flip a high bit?
+
+[11:27:31.0474] <nbp>
+rotating and moving it to the carry flag? but that would be even more instructions.
+
+[11:29:43.0563] <iain>
+godbolt says: https://godbolt.org/z/9WMPr7G5G
+
+[11:30:43.0725] <nbp>
+TIL: never heard of `btr` before!
+
+[11:31:40.0246] <nbp>
+We should make a patch to clang, and to SpiderMonkey.
+
+[11:32:23.0716] <nbp>
+I think ARM64 has proper instructions for extracting bits.
+
+[11:34:47.0329] <iain>
+Agner Fog does say "BT, BTC, BTR, and BTS change the carry flag but leave the other flags unchanged. This causes a false dependence on the previous value of the flags and costs an extra μop."
+
+[11:35:07.0252] <iain>
+But that might still be better than encoding an entire immediate
+
+[11:35:51.0561] <iain>
+(Also, that might just be on specific old hardware)
+
+[11:38:25.0120] <iain>
+This trick would make  testing for int32 or double slightly more complicated, but I think at worst we just have to set tag 0x11 aside as unused
+
+[11:40:16.0008] <iain>
+Anyway, I think this is a plausible solution to keep in our back pocket in case we desperately need more tag bits, but doesn't seem like something we want to do unless we're forced to
+
+[12:05:27.0655] <mgaudet>
+Neat discussion: Iain, would you be able to add your writeup of the HW NaN issue (and maybe a proposed road forward) to some comments in Value.h? would be nice to have this written down in tree for future considerations
+
+[14:13:47.0972] <sfink>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1316557#c1 sounds like an actual problem that is going to get lost since it's piled on an unrelated bug. Just so I know, what should I do to get it onto the triage list?
+
+[14:17:33.0628] <Bryan Thrall [:bthrall]>
+You can unset the Priority and it will get discussed at the next triage meeting (November 😎
+
+[14:19:14.0128] <sfink>
+perfect, thank you. Though I guess for that bug I should probably open a new one myself; it's marked triage-deferred for the original issue.
+
+[14:26:39.0340] <kfjvj>
+Does anyone have suggestions for the best way to create JS Enums using Spidermonkey? 
+
+[14:30:46.0897] <kfjvj>
+From what I understand, they're typically defined as objects with mappings from name to number and from number back to name.  So,
+
+```
+enum Foo {A = 1, B = 2};
+```
+
+Would end up as something like:
+```
+Foo = {'A': 1, 1: 'A', 'B', 2, 2:'B'}
+```
+
+[14:31:08.0867] <kfjvj>
+ * From what I understand, they're typically defined as objects with mappings from name to number and from number back to name.  So,
+
+```
+enum Foo {A = 1, B = 2};
+```
+
+Would end up as something like:
+
+```
+Foo = {'A': 1, 1: 'A', 'B': 2, 2:'B'}
+```
+
+[14:34:50.0664] <sfink>
+I don't, really, but you could look at the code that gets generated for webidl enums. Look at the generated code for [the ScrollBehavior](https://searchfox.org/mozilla-central/search?q=symbol:T_mozilla%3A%3Adom%3A%3AScrollBehavior&redirect=false) type, as an example. Though the generated code is pretty messy, and I'm not sure if it's useful as a base.
+
+[14:35:22.0869] <iain>
+You could also look at what TypeScript does; I know they support enum syntax.
+
+[14:38:22.0384] <kfjvj>
+Here's what they do: https://www.typescriptlang.org/play?q=386#example/enums 
+
+[14:39:05.0065] <kfjvj>
+This enum:
+
+```
+enum CompassDirection {
+  North,
+  East,
+  South,
+  West,
+}
+```
+
+Becomes this monstrosity:
+
+```
+var CompassDirection;
+(function (CompassDirection) {
+    CompassDirection[CompassDirection["North"] = 0] = "North";
+    CompassDirection[CompassDirection["East"] = 1] = "East";
+    CompassDirection[CompassDirection["South"] = 2] = "South";
+    CompassDirection[CompassDirection["West"] = 3] = "West";
+})(CompassDirection || (CompassDirection = {}));
+```
+
+[14:41:21.0443] <sfink>
+so it's what you said originally
+
+[14:42:18.0696] <sfink>
+that seems kind of handy
+
+[14:42:51.0672] <kfjvj>
+Here's the question I have: How does one assign a numeric property to an object using SpiderMonkey.  It seems like it only accepts strings as keys.
+
+[14:43:22.0759] <sfink>
+`JS_SetElement`
+
+[14:43:43.0291] <sfink>
+or `JS_DefineElement`
+
+[14:43:50.0414] <kfjvj>
+I thought SetElement only worked on arrays
+
+[14:45:26.0142] <sfink>
+I wouldn't expect it to make a difference. For a regular object, I would expect that you could create a `PropertyKey` from an integer and use `JS_DefineProperty` to do the same thing.
+
+[14:45:42.0146] <kfjvj>
+> <@sfink:mozilla.org> I wouldn't expect it to make a difference. For a regular object, I would expect that you could create a `PropertyKey` from an integer and use `JS_DefineProperty` to do the same thing.
+
+Excellent.  THanks
+
+[14:46:34.0193] <sfink>
+oh, `JS_DefinePropertyById` exists. That seems pretty direct.
+
+[14:47:01.0827] <kfjvj>
+I've seen this PropertyKey thing around.  Is it something you can make from an int or a string?
+
+[14:47:31.0865] <iain>
+Note that the only differences in JS between objects and arrays are 1. Arrays have a different prototype with some methods, 2. Arrays have a [magic](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/length) `length` property that is automatically updated as you add elements, and 3. Arrays get fancy syntax
+
+[14:47:46.0028] <sfink>
+int, string, or symbol, I think.
+
+[14:48:16.0633] <sfink>
+and note that `jsid` is an alias for `JS::PropertyKey`.
+
+[14:53:56.0215] <iain>
+> Neat discussion: Iain, would you be able to add your writeup of the HW NaN issue (and maybe a proposed road forward) to some comments in Value.h? would be nice to have this written down in tree for future considerations
+https://phabricator.services.mozilla.com/D161091
+
+[14:54:10.0548] <iain>
+ * > Neat discussion: Iain, would you be able to add your writeup of the HW NaN issue (and maybe a proposed road forward) to some comments in Value.h? would be nice to have this written down in tree for future considerations
+
+https://phabricator.services.mozilla.com/D161091
+
+[15:45:27.0229] <evilpie>
+Mhm I thought we didn't use the sign bit, because otherwise we would have to cannoncalize on negation
+
+[15:52:02.0103] <iain>
+evilpie: We always set the sign bit for boxed values
+
+[15:52:12.0614] <iain>
+We don't enforce a particular sign bit on our canonical NaN
+
+[15:53:51.0926] <iain>
+You get different sign bits on arm and x86 by default, but you can get the other one by negating it
+
+[15:54:29.0531] <iain>
+So we draw the line between boxed values and doubles at `0xfff8_0000_0000_0000`
+
+[16:06:40.0234] <mgaudet>
+> <@iain:mozilla.org> We don't enforce a particular sign bit on our canonical NaN
+
+I came to a different conclusion actually; how did I go wrong?
+
+[16:07:52.0696] <mgaudet>
+(I concluded that we make GenericNaN always have a zero sign bit)
+
+[16:09:30.0864] <mgaudet>
+https://phabricator.services.mozilla.com/D161054
+
+[16:17:12.0878] <mgaudet>
+https://searchfox.org/mozilla-central/source/js/public/Value.h#395,420-422 + https://searchfox.org/mozilla-central/source/js/src/vm/Initialization.cpp#77 convinced me we always have a zero bit on the sign of our canonical NaN
+
+[16:21:34.0485] <iain>
+Sorry, overloading terminology here
+
+[16:21:50.0800] <iain>
+https://searchfox.org/mozilla-central/source/js/public/Value.h#392-394
+
+[16:22:29.0807] <iain>
+When we create a NaN ourselves, the sign bit is always 0.
+
+[16:23:00.0972] <iain>
+But on x86, the sign bit is set when the hardware creates a NaN itself
+
+[16:24:13.0438] <iain>
+And we still consider that NaN to be canonicalized, in the sense that we don't have to make any changes to it
+
+[16:25:56.0198] <iain>
+This is kind of necessary, because you can flip the sign bit on a NaN from JS just by negating it
+
+[16:26:17.0959] <iain>
+The hardware doesn't do a special check to make sure something isn't a NaN before flipping the bit, it just flips the bit unconditionally
+
+[16:26:37.0318] <iain>
+ * mgaudet: Sorry, overloading terminology here
+
+[16:27:15.0682] <iain>
+You could say that we have two canonical NaN values, differing only in the sign bit
+
+[16:27:33.0110] <iain>
+It's the one with the sign bit set that causes us all the trouble with tagging
+
+[16:27:36.0063] <mgaudet>
+ah ok -- my notes are wrong 
+
+[16:27:43.0749] <mgaudet>
+I'll have to tweak that patch tomorrow
+
+
+2022-11-03
+[05:31:41.0055] <Ryan Hunt>
+when SpiderMonkey is embedded in Firefox, what are realms associated with? how common is it for a function to call another function from a different realm?
+
+[06:06:26.0231] <jandem>
+Ryan Hunt: each iframe has its own global / realm for example
+
+[06:07:41.0841] <jandem>
+cross-realm calls are not extremely common (we used to have a single realm per compartment with wrappers for all cross-realm calls), but we changed it because it does show up on websites
+
+[06:08:29.0804] <jandem>
+so it is still fairly common I guess
+
+[06:13:24.0424] <jandem>
+ * so it is still fairly common I guess, for certain websites
+
+[06:14:59.0099] <jandem>
+ * cross-realm calls are not extremely common (we used to have a single realm per compartment, with cross-compartment wrappers for all cross-realm calls), but we changed it because it does show up on websites
+
+[06:24:53.0005] <Ryan Hunt>
+jandem: Ah interesting. I would not have guessed calls between functions in different iframes would show up that often, but the web surprises you. In the wasm context, I was wondering if inserting a wrapper on cross-realm wasm calls would make sense. It would simplify some of our call logic, which would help with tail calls
+
+[06:28:09.0348] <jandem>
+Ryan Hunt: most websites probably don't use them that much, but some do, at least for JS. Calling out to a trampoline or something for cross-realm calls should be fine, but deoptimizing them too much could become a perf cliff at some point
+
+[06:30:31.0922] <jandem>
+(websites sometimes create iframes from JS to use as a kind of sandbox because you get a fresh global)
+
+[08:07:50.0237] <Bryan Thrall [:bthrall]>
+I'm following the [instructions on running the Rooting Hazard Analysis locally](https://firefox-source-docs.mozilla.org/js/HazardAnalysis/running.html), but I get build failures when I execute `./mach hazards build-shell`: it can't find *prlink.h* or *prerror.h*. I successfully executed `./mach hazards bootstrap`.
+
+Is there some system dependency I'm missing?
+
+[08:13:41.0334] <Ms2ger 💉💉💉>
+Sounds like nspr, which is in tree (but outside js/)
+
+[08:13:48.0224] <Ms2ger 💉💉💉>
+I don't recall how that's integrated
+
+[08:27:44.0928] <sfink>
+Bryan Thrall [:bthrall]: you have MOZCONFIG unset? (It should be unset, since the hazard build provides its own. Unless you need specific configuration.) nspr should be built along with the shell.
+
+[08:27:52.0924] <sfink>
+let me go read my own instructions...
+
+[08:30:09.0510] <sfink>
+they definitely need some updates, but the main commands should still work the same
+
+[08:32:13.0416] <Bryan Thrall [:bthrall]>
+Thanks! I did have MOZCONFIG set, and things are building more nicely now that I've unset it
+
+[08:34:00.0989] <sfink>
+Oops, sorry, that's one major omission in the instructions. It also sounds like I need to add another check that whatever MOZCONFIG is being used is sufficient. It's a messy part of the process, I probably ought to figure out something better.
+
+[08:46:58.0641] <Bryan Thrall [:bthrall]>
+Could you in the mean time just suggest unsetting it?
+
+[08:53:56.0053] <sfink>
+yes, will do
+
+[09:06:28.0332] <Bryan Thrall [:bthrall]>
+Ok, so `./mach hazards build-shell` works now, and `./mach hazards gather --application=js` succeeds, but `./mach hazards analyze --application=js` is failing:
+```Running gcFunctions to generate ['callgraph.txt', 'gcFunctions.txt', 'gcFunctions.lst', 'limitedFunctions.lst']
+PATH="/home/bryan/.mozbuild/hazard-tools/gcc/bin:/home/bryan/.mozbuild/hazard-tools/sixgill/usr/bin:${PATH}" XDB='/home/bryan/.mozbuild/hazard-tools/sixgill/usr/bin/xdb.so' SOURCE='/home/bryan/src/small-fixes' ANALYZED_OBJDIR='/home/bryan/src/small-fixes/obj-analyzed-js' /home/bryan/src/small-fixes/obj-haz-shell/dist/bin/js /home/bryan/src/small-fixes/js/src/devtools/rootAnalysis/computeGCFunctions.js rawcalls.1.of.16 rawcalls.2.of.16 rawcalls.3.of.16 rawcalls.4.of.16 rawcalls.5.of.16 rawcalls.6.of.16 rawcalls.7.of.16 rawcalls.8.of.16 rawcalls.9.of.16 rawcalls.10.of.16 rawcalls.11.of.16 rawcalls.12.of.16 rawcalls.13.of.16 rawcalls.14.of.16 rawcalls.15.of.16 rawcalls.16.of.16 --outputs callgraph.txt gcFunctions.txt gcFunctions.lst limitedFunctions.lst
+Spawned process 2354879
+free(): invalid pointer
+Renaming callgraph.tmp1 -> callgraph.txt
+Error renaming callgraph.tmp1 -> callgraph.txt
+Traceback (most recent call last):
+  File "/home/bryan/src/small-fixes/js/src/devtools/rootAnalysis/analyze.py", line 494, in <module>
+    run_job(step, data)
+  File "/home/bryan/src/small-fixes/js/src/devtools/rootAnalysis/analyze.py", line 252, in run_job
+    os.rename(temp, final)
+FileNotFoundError: [Errno 2] No such file or directory: 'callgraph.tmp1' -> 'callgraph.txt'```
+
+[09:06:49.0332] <sfink>
+whoa
+
+[09:10:27.0501] <sfink>
+I'm trying to run it locally now. I've never seen it fail in that way.
+
+[09:11:33.0754] <sfink>
+the `free(): invalid pointer` is ominous.
+
+[09:15:44.0883] <sfink>
+oh good, I'm getting exactly the same errors locally.
+
+[09:19:59.0724] <sfink>
+the invalid free is the problem, it's causing everything to abort. It's coming from my jsctypes code. I should really get off of ctypes entirely.
+
+[09:31:51.0985] <sfink>
+Bryan Thrall [:bthrall]: as a quick workaround, you can comment out the `libc.free(...)` call on line 344 of `js/src/devtools/rootAnalysis/utility.js`. 
+
+[09:32:02.0668] <Bryan Thrall [:bthrall]>
+Thanks!
+
+[09:44:16.0238] <Redfire>
+I think it'd be nice for spidermonkey-embedding-examples to have one with `BigInt`
+
+
+2022-11-04
+[02:32:20.0732] <Redfire>
+Am I right that I can't directly initialise a symbol with `SymbolCode::PrivateNameSymbol`?
+
+[02:32:52.0185] <Redfire>
+I just `DefineProperty` or whatever on an object with `#propName`
+
+[09:05:42.0895] <mgaudet>
+Redfire: Uhm. I would stay away from private name symbols; they're an implementation detail of private fields. AFAICT you probably can get away with "#propname" via DefineProperty, but you won't be able to access that property from script, only via JSAPI. 
+
+
+2022-11-06
+[09:50:20.0881] <zweieuro>
+Hi ! I got a more or less general question. Can Spidermonkey/V8 and similar engines be used in other projects effectively ?
+
+[09:50:44.0682] <zweieuro>
+Can I use JS as a scripting language/interface atop a custom C++ engine E.g.
+
+[12:01:57.0788] <sfink>
+zweieuro: yes, they can. They're not the easiest things to integrate, but both projects intend to be usable in that way. For SpiderMonkey, see [our embedding site](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples) and the [SpiderMonkey page](https://spidermonkey.dev).
+
+[12:25:30.0313] <jimb>
+Is it still the case that using `delete` to remove a property from an object puts it in hashtable-mode permanently?
+
+[13:33:05.0719] <iain>
+jimb: Unless it's the last property you added
+
+[13:34:17.0978] <iain>
+There's an optimization that can step back to the previous shape if you delete the last property: https://searchfox.org/mozilla-central/source/js/src/vm/Shape.cpp#769-771
+
+
+2022-11-07
+[01:11:31.0934] <jonco>
+jandem: thanks for requesting uplift on my bugs while I was away
+
+[01:14:34.0872] <jandem>
+jonco: no problem :)
+
+[05:20:19.0744] <liam_g>
+In the JS::CompileFunctions() function, one of the arguments is a pointer for a pointer called argnames. How am I supposed to set this up if I have more than one arg name?
+
+[05:21:37.0795] <liam_g>
+Is it comma separated or something?
+
+``````
+        const char* paramNames = "arg1, arg2";
+        JS::CompileFunction(...., &paramNames...)
+``````
+
+[05:26:29.0374] <liam_g>
+Nevermind, I got it. It's `const char* paramName[] ={"arg1", "arg2"};`
+
+[06:07:46.0379] <liam_g>
+I'm trying to compile a function with `JS::CompileFunction()` and then run it with `JS_CallFunction()`. It compiles, but it's not returning as expected.
+
+[06:07:50.0349] <liam_g>
+````````
+
+[06:07:58.0950] <liam_g>
+ * ```
+        const auto sampleCode = "() => { return 6; }";
+
+        JS::SourceText<mozilla::Utf8Unit> preprocessSource;
+        preprocessSource.init(cx, sampleCode, strlen(sampleCode), JS::SourceOwnership::Borrowed);
+        JS::RootedObjectVector envC(cx);
+        JS::CompileOptions cOps(cx);
+        JS::RootedFunction processFunc (cx, JS::CompileFunction(cx, envC, cOps, "returnSix", 0, nullptr, preprocessSource));        
+        JS::RootedValue rVall(cx);
+
+        if (!JS_CallFunction(cx, glob, processFunc, JS::HandleValueArray::empty(), &rVall))
+            MOZ_ASSERT(false);
+
+        js::DumpValue(rVall);
+```
+
+[06:08:34.0146] <liam_g>
+I expected this to print 6, but it returns undefined.
+
+[06:08:53.0889] <liam_g>
+Am I doing something wrong? Or am I wrong to expect that it returns 6?
+
+[06:20:56.0359] <evilpie>
+> <@liam_g:mozilla.org> Am I doing something wrong? Or am I wrong to expect that it returns 6?
+
+You are defining a function that has as it's body an arrow function, you probably want `sampleCode = "return 6;"`
+
+[06:21:06.0571] <evilpie>
+> <@liam_g:mozilla.org> Am I doing something wrong? Or am I wrong to expect that it returns 6?
+
+ * You are defining a function that has as its body an arrow function, you probably want `sampleCode = "return 6;"`
+
+[06:25:33.0651] <liam_g>
+Ha, I knew it was something simple.
+
+[06:26:42.0320] <liam_g>
+Does that mean I have to write my javascript without a function definition?
+
+[06:27:41.0348] <liam_g>
+It would be nice for readability and debugging if I could write my function with a normal definition, compile it, and then run it.
+
+[06:28:44.0899] <padenot>
+`(() => { return 6; })()` or something then
+
+[06:56:11.0503] <liam_g>
+Couldn't get that one working, but actually it's not so bad writing my code without the function definition at the top. Thanks a ton for your help.
+
+[10:43:54.0956] <davidj361>
+Is it even possible to make a function return type as a `JS::RootedObject`?
+
+[10:44:37.0941] <davidj361>
+Or you strictly have to use C raw pointers are return types?
+
+[10:44:50.0673] <davidj361>
+ * Or you strictly have to use C raw pointers are return types? like `JSObject*`
+
+[10:44:56.0939] <davidj361>
+ * Or you strictly have to use C raw pointers as return types? like `JSObject*`
+
+[10:45:37.0864] <iain>
+`js::RootedObject` must live on the stack
+
+[10:46:24.0421] <iain>
+You should be returning raw pointers
+
+[10:46:30.0013] <davidj361>
+I have a wrapper for `JSContext*` and I want the global as a member variable obtainable via a getter function, so is it not possible to return that global as a `JS::RootedObject` to hand off to other functions that require a global as `JS::HandleObject`?
+
+[10:46:37.0759] <davidj361>
+ * I have a class wrapper for `JSContext*` and I want the global as a member variable obtainable via a getter function, so is it not possible to return that global as a `JS::RootedObject` to hand off to other functions that require a global as `JS::HandleObject`?
+
+[10:47:05.0910] <iain>
+You have to root the return value yourself
+
+[10:47:14.0006] <iain>
+This makes sense if you think about what rooting is doing
+
+[10:47:39.0121] <iain>
+We are saying "I have stored a pointer to this object on the stack in a place that the GC knows about"
+
+[10:47:40.0795] <davidj361>
+so you mean return the global as a C raw pointer and root the global each time I want to use it?
+
+[10:47:46.0558] <iain>
+Yes
+
+[10:47:50.0704] <davidj361>
+ * so you mean return the global as a C raw pointer from the getter function and root the global each time I want to use it?
+
+[10:48:09.0401] <davidj361>
+that sounds very tedious that I can't automate that with a function
+
+[10:48:30.0917] <iain>
+If you call into your getter function, you can root the pointer to the global inside the getter, but as soon as you return, that stack frame is freed up
+
+[10:49:35.0009] <iain>
+You can't call a function to do something inside your own stack frame, which is what you would need to avoid doing this
+
+[10:53:33.0022] <iain>
+You can say `RootedObject result(cx, FunctionIAmCalling(...));`, which is not meaningfully worse than `RootedObject result = FunctionIAmCalling(...);`
+
+[10:57:10.0116] <iain>
+But you can't pass the return value directly into a function that expects a Handle
+
+[10:57:30.0871] <iain>
+You need to store it somewhere in your own stack frame
+
+[10:57:58.0030] <iain>
+Which is just the cost of doing business with SM's garbage collector
+
+[10:58:33.0246] <davidj361>
+Thank you for clarifying
+
+
+2022-11-08
+[20:23:34.0382] <liam_g>
+I embedded Spidermonkey in my C++ project so that the user can do scripting, but now I'm finding that it's convenient to have little bits of JS as part of my source code also. What is the best way of managing JS files in a larger project?
+
+[20:24:44.0168] <liam_g>
+The simplest thing is to just write the script as a string in the cpp file, but then Intellisense is blind to it. I'd much prefer have separate .js files which I can work with, and then include them into my project. I've figured out a way of doing something like `const char* code = #include"scipt.js ;`, but it feels like a bit of a hack. Has anyone figured out a better system?
+
+[20:25:05.0896] <liam_g>
+ * The simplest thing is to just write the script as a string in the cpp file, but then Intellisense is blind to it. I'd much prefer have separate .js files which I can work with, and then include them into my project. I've figured out a way of doing something like `const char* code = #include"scipt.js" ;`, but it feels like a bit of a hack. Has anyone figured out a better system?
+
+[20:25:19.0532] <Redfire>
+I think there's a `#embed` thingy coming soon? 
+
+[20:25:49.0783] <liam_g>
+ * The simplest thing is to just write the script as a string in the cpp file, but then Intellisense is blind to it. I'd much prefer have separate .js files which I can work with, and then include them into my project. I've figured out a way of doing something like `const char* code = " #include"scipt.js"  ";`, but it feels like a bit of a hack. Has anyone figured out a better system?
+
+[20:27:37.0321] <liam_g>
+Any info on that?
+
+[20:28:38.0724] <Redfire>
+It's in C23, but sadly not in C++23
+
+[20:28:40.0910] <Redfire>
+https://thephd.dev/finally-embed-in-c23
+
+[22:37:13.0490] <liam_g>
+Any C++20 solutions?
+
+[22:42:00.0933] <liam_g>
+Or CMake solutions?
+
+[23:59:54.0666] <arai>
+if it's not necessary to use preprocessor, a simple solution would be to write a script (python etc) to convert JS code into a C++ source code with a long string literal, and run it during build process to generate C++ source file and compile it.  this is what SpiderMonkey does for self-hosted JS code ([moz.build](https://searchfox.org/mozilla-central/rev/b6d0ad6ba24b3d075e357e52160cd8fc7f911ba9/js/src/moz.build#624-630), [embedjs.py](https://searchfox.org/mozilla-central/rev/b6d0ad6ba24b3d075e357e52160cd8fc7f911ba9/js/src/builtin/embedjs.py)
+
+[00:17:20.0262] <liam_g>
+Yeah I was thinking of something like that. I've even seen it done in CMake.
+
+[00:18:10.0284] <liam_g>
+If this is what the Spider pros do then it's good enough for me.
+
+[02:51:20.0241] <nbp>
+Redfire: IIRC, there is a way to declare variable, and using `__attribute__(section("name")))` to associate it with a given section in the object/ELF file. Then at link time, you can add this section with objdump command using `script.js` as input. I've never tried it personnally :/
+
+[02:51:26.0993] <nbp>
+ * Redfire: IIRC, there is a way to declare variable, and using `__attribute__(section("name"))` to associate it with a given section in the object/ELF file. Then at link time, you can add this section with objdump command using `script.js` as input. I've never tried it personnally :/
+
+
+2022-11-09
+[21:29:58.0362] <Redfire>
+Having the same issue with `GetPromiseResult` as I've had before:
+```rs
+std::_Atomic_storage::load(memory_order) atomic:1045
+mozilla::detail::IntrinsicMemoryOps::load(const std::atomic<…> &) Atomics.h:191
+mozilla::detail::AtomicBaseIncDec::operator unsigned long long() Atomics.h:336
+js::gc::Cell::flags() Cell.h:156
+js::gc::TenuredCellWithNonGCPointer::headerPtr() Cell.h:729
+js::BaseShape::clasp() Shape.h:671
+js::Shape::getObjectClass() Shape.h:1050
+JSObject::getClass() JSObject.h:101
+JSObject::is<…>() JSObject.h:445
+JSObject::as<…>() JSObject.h:450
+JS::GetPromiseResult(Handle<…>) jsapi.cpp:3817
+ion::objects::promise::Promise::result(ion::context::Context *) promise.rs:146
+ion::format::promise::format_promise(ion::context::Context *,Config,ion::objects::promise::Promise *) promise.rs:17
+ion::format::object::format_object(ion::context::Context *,Config,Object) object.rs:41
+ion::format::format_value(ion::context::Context *,Config,ion::value::Value *) mod.rs:32
+cli::evaluate::eval_inline::async_fn$0(Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,ResumeTy) evaluate.rs:32
+core::future::from_generator::impl$1::poll<enum2$<cli::evaluate::eval_inline::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::eval::eval_source::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,ResumeTy) eval.rs:26
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::eval::eval_source::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::handle_command::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::handle_command::async_fn_env$0> > >,ResumeTy) mod.rs:31
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::handle_command::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::handle_command::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::main::async_block$0(Pin<ref_mut$<enum2$<cli::main::async_block_env$0> > >,ResumeTy) main.rs:64
+core::future::from_generator::impl$1::poll<enum2$<cli::main::async_block_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::task::wake::Context *) mod.rs:91
+core::future::future::impl$1::poll<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >(Pin<ref_mut$<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::task::wake::Context *) future.rs:124
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::coop::with_budget::closure$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::cell::Cell<tokio::coop::Budget> *) coop.rs:102
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::try_with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:445
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:421
+[Inlined] tokio::coop::with_budget(Budget,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:95
+[Inlined] tokio::coop::budget(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:72
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::runtime::scheduler::current_thread::Context::enter<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(tokio::runtime::scheduler::current_thread::Core *,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:349
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,tokio::runtime::scheduler::current_thread::Core *,tokio::runtime::scheduler::current_thread::Context *) current_thread.rs:524
+tokio::runtime::scheduler::current_thread::impl$9::enter::closure$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) current_thread.rs:595
+tokio::macros::scoped_tls::ScopedKey<tokio::runtime::scheduler::current_thread::Context>::set<tokio::runtime::scheduler::current_thread::Context,tokio::runtime::scheduler::current_thread::impl$9::enter::closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >,tuple$<alloc::boxed::Box<tokio::runtime::scheduler::current_thread::Core,alloc::alloc::Global>,enum2$<core::option::Option<tuple$<> > > > >(tokio::runtime::scheduler::current_thread::Context *,closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) scoped_tls.rs:61
+tokio::runtime::scheduler::current_thread::CoreGuard::enter<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(CoreGuard,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:595
+tokio::runtime::scheduler::current_thread::CoreGuard::block_on<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(CoreGuard,Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::panic::location::Location *) current_thread.rs:515
+tokio::runtime::scheduler::current_thread::CurrentThread::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) current_thread.rs:161
+tokio::runtime::Runtime::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) mod.rs:490
+cli::main() main.rs:64
+core::ops::function::FnOnce::call_once<void (*)(),tuple$<> >(void (*)()) function.rs:248
+[Inlined] core::hint::black_box(tuple$<>) hint.rs:223
+std::rt::lang_start::closure$0<tuple$<> >(std::rt::lang_start::closure_env$0<tuple$<> > *) rt.rs:166
+[Inlined] core::ops::function::impls::impl$2::call_once() function.rs:283
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+[Inlined] std::rt::lang_start_internal::closure$2() rt.rs:148
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+std::rt::lang_start_internal() rt.rs:148
+std::rt::lang_start<tuple$<> >(void (*)(),long long,unsigned char **,unsigned char) rt.rs:165
+main 0x00007ff6b74773bc
+[Inlined] invoke_main() 0x00007ff6b9a6a7b0
+__scrt_common_main_seh() 0x00007ff6b9a6a78e
+<unknown> 0x00007ffd13787034
+<unknown> 0x00007ffd138c26a1
+```
+Promise comes from the result of a script with `(async () => 3)()`
+Psuedocode Flow:
+1. root promise
+2. get PromiseState (succeeds)
+3. get promise result (fails)
+
+[21:30:44.0400] <Redfire>
+Right before I run `GetPromiseResult`, `IsPromiseObject(promise.handle().into()) = true`
+
+[21:49:28.0699] <Redfire>
+It seems the *mut JSObject somehow is pointing to null? I have no idea.
+
+[21:49:40.0778] <Redfire>
+ * It seems the `JSObject*` somehow is pointing to null? I have no idea.
+
+[21:50:34.0209] <Redfire>
+* It seems the `headerPtr_` is somehow pointing to null? I have no idea.
+
+[21:51:31.0614] <Redfire>
+* It seems the `headerPtr_` is somehow pointing to null? I have no idea.
+
+[22:34:16.0966] <Redfire>
+* The issue may just be the use of `&promise->as<...>()` instead of `promise->as<...>()`, but I can't confirm that yet, I'll test that out
+
+[22:57:28.0299] <Redfire>
+* Having the same issue with `GetPromiseResult` as I've had before:
+```rs
+std::_Atomic_storage::load(memory_order) atomic:1045
+mozilla::detail::IntrinsicMemoryOps::load(const std::atomic<…> &) Atomics.h:191
+mozilla::detail::AtomicBaseIncDec::operator unsigned long long() Atomics.h:336
+js::gc::Cell::flags() Cell.h:156
+js::gc::TenuredCellWithNonGCPointer::headerPtr() Cell.h:729
+js::BaseShape::clasp() Shape.h:671
+js::Shape::getObjectClass() Shape.h:1050
+JSObject::getClass() JSObject.h:101
+JSObject::is<…>() JSObject.h:445
+JSObject::as<…>() JSObject.h:450
+JS::GetPromiseResult(Handle<…>) jsapi.cpp:3817
+ion::objects::promise::Promise::result(ion::context::Context *) promise.rs:146
+ion::format::promise::format_promise(ion::context::Context *,Config,ion::objects::promise::Promise *) promise.rs:17
+ion::format::object::format_object(ion::context::Context *,Config,Object) object.rs:41
+ion::format::format_value(ion::context::Context *,Config,ion::value::Value *) mod.rs:32
+cli::evaluate::eval_inline::async_fn$0(Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,ResumeTy) evaluate.rs:32
+core::future::from_generator::impl$1::poll<enum2$<cli::evaluate::eval_inline::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::eval::eval_source::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,ResumeTy) eval.rs:26
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::eval::eval_source::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::handle_command::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::handle_command::async_fn_env$0> > >,ResumeTy) mod.rs:31
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::handle_command::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::handle_command::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::main::async_block$0(Pin<ref_mut$<enum2$<cli::main::async_block_env$0> > >,ResumeTy) main.rs:64
+core::future::from_generator::impl$1::poll<enum2$<cli::main::async_block_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::task::wake::Context *) mod.rs:91
+core::future::future::impl$1::poll<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >(Pin<ref_mut$<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::task::wake::Context *) future.rs:124
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::coop::with_budget::closure$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::cell::Cell<tokio::coop::Budget> *) coop.rs:102
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::try_with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:445
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:421
+[Inlined] tokio::coop::with_budget(Budget,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:95
+[Inlined] tokio::coop::budget(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:72
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::runtime::scheduler::current_thread::Context::enter<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(tokio::runtime::scheduler::current_thread::Core *,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:349
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,tokio::runtime::scheduler::current_thread::Core *,tokio::runtime::scheduler::current_thread::Context *) current_thread.rs:524
+tokio::runtime::scheduler::current_thread::impl$9::enter::closure$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) current_thread.rs:595
+tokio::macros::scoped_tls::ScopedKey<tokio::runtime::scheduler::current_thread::Context>::set<tokio::runtime::scheduler::current_thread::Context,tokio::runtime::scheduler::current_thread::impl$9::enter::closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >,tuple$<alloc::boxed::Box<tokio::runtime::scheduler::current_thread::Core,alloc::alloc::Global>,enum2$<core::option::Option<tuple$<> > > > >(tokio::runtime::scheduler::current_thread::Context *,closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) scoped_tls.rs:61
+tokio::runtime::scheduler::current_thread::CoreGuard::enter<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(CoreGuard,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:595
+tokio::runtime::scheduler::current_thread::CoreGuard::block_on<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(CoreGuard,Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::panic::location::Location *) current_thread.rs:515
+tokio::runtime::scheduler::current_thread::CurrentThread::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) current_thread.rs:161
+tokio::runtime::Runtime::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) mod.rs:490
+cli::main() main.rs:64
+core::ops::function::FnOnce::call_once<void (*)(),tuple$<> >(void (*)()) function.rs:248
+[Inlined] core::hint::black_box(tuple$<>) hint.rs:223
+std::rt::lang_start::closure$0<tuple$<> >(std::rt::lang_start::closure_env$0<tuple$<> > *) rt.rs:166
+[Inlined] core::ops::function::impls::impl$2::call_once() function.rs:283
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+[Inlined] std::rt::lang_start_internal::closure$2() rt.rs:148
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+std::rt::lang_start_internal() rt.rs:148
+std::rt::lang_start<tuple$<> >(void (*)(),long long,unsigned char **,unsigned char) rt.rs:165
+main 0x00007ff6b74773bc
+[Inlined] invoke_main() 0x00007ff6b9a6a7b0
+__scrt_common_main_seh() 0x00007ff6b9a6a78e
+<unknown> 0x00007ffd13787034
+<unknown> 0x00007ffd138c26a1
+```
+Promise comes from the result of a script with `(async () => 3)()`
+Psuedocode Flow:
+1. root promise value
+2. root promise object 
+2. get PromiseState (succeeds)
+3. get promise result (fails)
+
+[23:06:28.0724] <Redfire>
+* Having the same issue with `GetPromiseResult` as I've had before:
+```rs
+std::_Atomic_storage::load(memory_order) atomic:1045
+mozilla::detail::IntrinsicMemoryOps::load(const std::atomic<…> &) Atomics.h:191
+mozilla::detail::AtomicBaseIncDec::operator unsigned long long() Atomics.h:336
+js::gc::Cell::flags() Cell.h:156
+js::gc::TenuredCellWithNonGCPointer::headerPtr() Cell.h:729
+js::BaseShape::clasp() Shape.h:671
+js::Shape::getObjectClass() Shape.h:1050
+JSObject::getClass() JSObject.h:101
+JSObject::is<…>() JSObject.h:445
+JSObject::as<…>() JSObject.h:450
+JS::GetPromiseResult(Handle<…>) jsapi.cpp:3817
+ion::objects::promise::Promise::result(ion::context::Context *) promise.rs:146
+ion::format::promise::format_promise(ion::context::Context *,Config,ion::objects::promise::Promise *) promise.rs:17
+ion::format::object::format_object(ion::context::Context *,Config,Object) object.rs:41
+ion::format::format_value(ion::context::Context *,Config,ion::value::Value *) mod.rs:32
+cli::evaluate::eval_inline::async_fn$0(Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,ResumeTy) evaluate.rs:32
+core::future::from_generator::impl$1::poll<enum2$<cli::evaluate::eval_inline::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::eval::eval_source::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,ResumeTy) eval.rs:26
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::eval::eval_source::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::commands::handle_command::async_fn$0(Pin<ref_mut$<enum2$<cli::commands::handle_command::async_fn_env$0> > >,ResumeTy) mod.rs:31
+core::future::from_generator::impl$1::poll<enum2$<cli::commands::handle_command::async_fn_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::commands::handle_command::async_fn_env$0> > > >,core::task::wake::Context *) mod.rs:91
+cli::main::async_block$0(Pin<ref_mut$<enum2$<cli::main::async_block_env$0> > >,ResumeTy) main.rs:64
+core::future::from_generator::impl$1::poll<enum2$<cli::main::async_block_env$0> >(Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::task::wake::Context *) mod.rs:91
+core::future::future::impl$1::poll<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >(Pin<ref_mut$<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::task::wake::Context *) future.rs:124
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::coop::with_budget::closure$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,core::cell::Cell<tokio::coop::Budget> *) coop.rs:102
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::try_with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:445
+std::thread::local::LocalKey<core::cell::Cell<tokio::coop::Budget> >::with<core::cell::Cell<tokio::coop::Budget>,tokio::coop::with_budget::closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >,enum2$<core::task::poll::Poll<tuple$<> > > >(closure_env$0<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >) local.rs:421
+[Inlined] tokio::coop::with_budget(Budget,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:95
+[Inlined] tokio::coop::budget(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) coop.rs:72
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:525
+tokio::runtime::scheduler::current_thread::Context::enter<enum2$<core::task::poll::Poll<tuple$<> > >,tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > > >(tokio::runtime::scheduler::current_thread::Core *,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:349
+tokio::runtime::scheduler::current_thread::impl$9::block_on::closure$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,tokio::runtime::scheduler::current_thread::Core *,tokio::runtime::scheduler::current_thread::Context *) current_thread.rs:524
+tokio::runtime::scheduler::current_thread::impl$9::enter::closure$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) current_thread.rs:595
+tokio::macros::scoped_tls::ScopedKey<tokio::runtime::scheduler::current_thread::Context>::set<tokio::runtime::scheduler::current_thread::Context,tokio::runtime::scheduler::current_thread::impl$9::enter::closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >,tuple$<alloc::boxed::Box<tokio::runtime::scheduler::current_thread::Core,alloc::alloc::Global>,enum2$<core::option::Option<tuple$<> > > > >(tokio::runtime::scheduler::current_thread::Context *,closure_env$0<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >) scoped_tls.rs:61
+tokio::runtime::scheduler::current_thread::CoreGuard::enter<tokio::runtime::scheduler::current_thread::impl$9::block_on::closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >,enum2$<core::option::Option<tuple$<> > > >(CoreGuard,closure_env$0<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >) current_thread.rs:595
+tokio::runtime::scheduler::current_thread::CoreGuard::block_on<core::pin::Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > > >(CoreGuard,Pin<ref_mut$<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > > >,core::panic::location::Location *) current_thread.rs:515
+tokio::runtime::scheduler::current_thread::CurrentThread::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) current_thread.rs:161
+tokio::runtime::Runtime::block_on<core::future::from_generator::GenFuture<enum2$<cli::main::async_block_env$0> > >(GenFuture<enum2$<cli::main::async_block_env$0> >,core::panic::location::Location *) mod.rs:490
+cli::main() main.rs:64
+core::ops::function::FnOnce::call_once<void (*)(),tuple$<> >(void (*)()) function.rs:248
+[Inlined] core::hint::black_box(tuple$<>) hint.rs:223
+std::rt::lang_start::closure$0<tuple$<> >(std::rt::lang_start::closure_env$0<tuple$<> > *) rt.rs:166
+[Inlined] core::ops::function::impls::impl$2::call_once() function.rs:283
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+[Inlined] std::rt::lang_start_internal::closure$2() rt.rs:148
+[Inlined] std::panicking::try::do_call() panicking.rs:492
+[Inlined] std::panicking::try() panicking.rs:456
+[Inlined] std::panic::catch_unwind() panic.rs:137
+std::rt::lang_start_internal() rt.rs:148
+std::rt::lang_start<tuple$<> >(void (*)(),long long,unsigned char **,unsigned char) rt.rs:165
+main 0x00007ff6b74773bc
+[Inlined] invoke_main() 0x00007ff6b9a6a7b0
+__scrt_common_main_seh() 0x00007ff6b9a6a78e
+<unknown> 0x00007ffd13787034
+<unknown> 0x00007ffd138c26a1
+```
+Promise comes from the result of a script with `(async () => 3)()`
+Psuedocode Flow:
+1. root promise value (via being rval)
+2. root promise object 
+2. get PromiseState (succeeds)
+3. get promise result (fails)
+
+[23:13:14.0337] <Redfire>
+I think the issue may be the use of `&promise->as<...>()` instead of `promise->as<...>()` because `as()` already returns a reference
+
+[00:26:49.0777] <Redfire>
+ * I think the issue may be the use of `&promise->as<...>()` instead of `promise->as<...>()` because `as()` already returns a reference 
+
+Edit: Definitely not it
+
+[07:49:00.0782] <Redfire>
+👀https://mastodon.social/@SpiderMonkey 
+
+[08:20:37.0165] <yulia>
+we're a bit behind on posts but it should be up to date from now on
+
+[08:22:05.0798] <yulia>
+ohhh we should verify our link
+
+[08:23:17.0579] <Redfire>
+You just need a link tag with `rel="me"` that links to the mastodon page
+
+[08:25:11.0815] <Redfire>
+* You just need a link with `rel="me"` that links to the mastodon page
+
+[08:25:56.0499] <yulia>
+yep, on it!
+
+[08:28:08.0154] <yulia>
+should be there maybe tomorrow.. i think everything is a little slow right now
+
+[08:28:46.0035] <yulia>
+but yes, this is our "official" SM account, we might move instances at some point. Though the migration looks pretty simple to do, so if folks follow that one they should be transferred if we move
+
+[08:48:40.0414] <jonco>
+sfink: ping
+
+[09:52:18.0750] <slavaz>
+There is something I do not understand with rooting and GC. Use case. I have one JSContext cx and I would like to run in with multiple Globals gl1, gl2, gl3.  Initially, I want gl1, gl2, gl3 not to be garbage collected. At some point, I no longer need gl2. Now, I call  JS_NewGlobalObject and got gl1, gl2, gl3. The I can do AutoRealm in them in arbitrary order. But I want them not to be GC-ed, so,  what I need to do? JS::RootedObject g1{gl1}, etc? My concern that  JS::RootedObject is described as object on stack. I am allowed to create JS::RootedObject in one order and destroy them in different order? If not, what mechanism I can use to preven objects from GC-ing and remove that prevention in arbitrary order? 
+
+[10:02:57.0971] <iain>
+slavaz: One option is to have a `GCVector<...>` (https://searchfox.org/mozilla-central/source/js/public/GCVector.h#27) that contains gl1, gl2, etc. Then you can root the GCVector, instead of each individual global
+
+[10:04:09.0152] <nbp>
+Not sure this will answer your question, but we have `AddPersistentRoot`: https://searchfox.org/mozilla-central/source/js/public/RootingAPI.h#1347-1348
+
+[10:48:37.0363] <sfink>
+that's more an internal function used by `PersistentRooted`.
+
+[10:50:06.0892] <sfink>
+slavaz: if you happen to only be running code that uses gl1,gl2,gl3 within one static scope, then `Rooted<JSObject*>` is fine. To let go of `gl2`, reassign the Rooted to nullptr.
+
+[10:50:36.0975] <sfink>
+because you are correct in thinking that you can't destroy `RootedObject` in a different order.
+
+[10:55:27.0724] <sfink>
+but if they're not all under one scope, then `PersistentRooted` is the easiest way to go. (Again, set it to nullptr to release it.) Though if you want to keep them in some other struct on the heap, then `PersistentRooted` makes it surprisingly easy to create memory leaks. In that case, you'd use `Heap` and set it up to be traced [as described here](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap)
+
+[10:56:08.0989] <sfink>
+ * but if they're not all under one scope, then `PersistentRooted` is the easiest way to go. (Again, set it to nullptr to release it.) Though if you want to keep them in some other struct on the heap, then `PersistentRooted` makes it surprisingly easy to create memory leaks. In that case, you'd be better off [using `Heap` and setting it up to be traced](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap)
+
+[11:33:53.0230] <slavaz>
+> <@sfink:mozilla.org> but if they're not all under one scope, then `PersistentRooted` is the easiest way to go. (Again, set it to nullptr to release it.) Though if you want to keep them in some other struct on the heap, then `PersistentRooted` makes it surprisingly easy to create memory leaks. In that case, you'd be better off [using `Heap` and setting it up to be traced](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap)
+
+They are not under one scope, so, JS::PersistentRooted<T> seems like way to go.  so I am saying JS::PersistentRooted<JSObject *) glx{cx, JS_NewGlobalObject(whatever) }. So, what I need to do to remove all tracing and all allocated memory, including one by JsObject? glx just goes out of scope? say glx = nullptr before going out of scope? Anything to delete JSObject ?anything else? 
+
+[11:37:02.0489] <slavaz>
+> <@sfink:mozilla.org> but if they're not all under one scope, then `PersistentRooted` is the easiest way to go. (Again, set it to nullptr to release it.) Though if you want to keep them in some other struct on the heap, then `PersistentRooted` makes it surprisingly easy to create memory leaks. In that case, you'd be better off [using `Heap` and setting it up to be traced](https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md#gc-thing-pointers-on-the-heap)
+
+ * They are not under one scope, so, JS::PersistentRooted\<T> seems like way to go.  so I am saying JS::PersistentRooted\<JSObject \*) glx{cx, JS\_NewGlobalObject(whatever) }. So, what I need to do to remove all tracing and all allocated memory, including one by JsObject? glx just goes out of scope? I found glx.reset() before going out of scope? Anything to delete JSObject ?anything else?
+
+[12:04:04.0759] <sfink>
+`glx = nullptr` will prevent it from keeping your global alive. You can't actively delete or finalize a `JSObject`, and it won't be deleted if there's anything else keeping it alive, but that should be fine. `glx.reset()` will have nearly the same effect as `glx = nullptr`.
+
+[12:04:24.0337] <sfink>
+> glx just goes out of scope?
+
+[12:04:56.0786] <sfink>
+since you don't have a single scope, that doesn't seem possible for your situation.
+
+[12:06:02.0120] <sfink>
+but if it's a member of some struct that you delete, that works too (as in, it's fine for `PersistentRooted` objects to be deleted. That'll also stop them from keeping things alive, and it's safe to do.)
+
+[12:07:12.0535] <sfink>
+after `glx = nullptr`, the actual freeing of JSObject memory won't happen until the next GC.
+
+[13:57:29.0652] <kfjvj>
+Is there an easy way to pass a RootedValue as a HandleObject?
+
+[15:27:47.0393] <iain>
+kfjvj: No, you have to convert it to an object and root it separately. A HandleObject is a pointer to a rooted object. A value and an object don't have the same representation (there are [tag bits set in the value](https://searchfox.org/mozilla-central/source/js/public/Value.h#31)), so you can't take a pointer to a value and convert it to a pointer to an object.
+
+[15:29:36.0222] <iain>
+So `RootedObj obj(cx, &val.toObject());` is the idiomatic way to do it. You'll see it all over the SM source code.
+
+
+2022-11-10
+[16:40:33.0639] <jimb>
+Can we inline webassembly functions into JS?
+
+[16:40:59.0147] <jimb>
+or, more carefully phrased: If we have a JS call to Wasm, can SpiderMonkey inline that call?
+
+[16:42:05.0899] <iain>
+jimb: Currently, no
+
+[16:45:11.0685] <iain>
+We have some of the pieces in place to implement it, but currently I think there's a lot of Ion code that assumes we're compiling either JS or wasm, but not both at the same time
+
+[08:22:41.0820] <davidj361>
+Is it really bad to root a global again after it's already rooted and passed as a JS:HandleObject?
+
+[08:23:43.0892] <davidj361>
+My understanding is that once you root something you pass it down the stack and don't need to root again
+
+[08:24:41.0315] <mgaudet>
+davidj361: Yeah, that's the general case; however, sometimes re-rooting happens. Often when you need a more specific type
+
+[08:24:52.0009] <mgaudet>
+the important thing is to make sure the roots go away when you don't need it.
+
+[08:25:31.0482] <davidj361>
+isn't that handled properly when the stack variable just falls out of stack once the function ends?
+
+[08:25:42.0726] <davidj361>
+ * isn't that handled properly when the stack variable just falls out of scope once the function ends?
+
+[08:39:53.0124] <mgaudet>
+For `Rooted` absolutely; just making it clear that's a requirement.
+
+[08:42:50.0437] <davidj361>
+If you have a C Pointer of a global as a class member and root the C pointer then the rooted variable falls out of scope, does that mean the C Pointer is no longer usable?
+
+[08:43:19.0402] <davidj361>
+Is it not proper to have the global as a C Pointer? Or is it possible to have a JS::RootedObject as a class member for global?
+
+[08:43:30.0186] <davidj361>
+ * If you have a raw C Pointer of a global as a class member and root the C pointer then the rooted variable falls out of scope, does that mean the C Pointer is no longer usable?
+
+[08:43:45.0523] <davidj361>
+ * If you have a raw C Pointer of a global as a class member and root the C pointer then the rooted variable falls out of scope, does that mean the C Pointer is no longer usable? Or can you root it again when you need it?
+
+[08:54:32.0321] <mgaudet>
+You definitely don't want the raw C pointer as a class member unless you're tracing that elsewhere. 
+
+[08:55:13.0329] <mgaudet>
+davidj361: have you seen https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/next/docs/GC%20Rooting%20Guide.md ? 
+
+[09:06:11.0820] <davidj361>
+yes but I still found it confusing
+
+[09:14:23.0246] <sfink>
+if you have a raw C pointer class member that becomes unrooted at some point, then it will become invalid if you do anything that might trigger a GC. (Which is calling just about anything in the JSAPI.)
+
+[09:16:51.0779] <sfink>
+in practice, that means that if you want a GC pointer in a struct, you have to distinguish structs that will be on the stack vs structs that will be on the heap. If it's on the stack, use a Rooted field in the struct. If it's going to be on the heap, use a Heap field and then arrange for it to be traced.
+
+
+2022-11-11
+[19:11:04.0464] <liam_g>
+The Property Attribute flags that are defined in PropertyDescriptor.h (JSPROP_ENUMERATE etc) seem to have some spare bits. If I were to appropriate one of those bits and use it for my own purposes, would this mess up anything in the engine?
+
+[19:11:42.0282] <liam_g>
+I'm thinking about doing `JS_FN("f", doF, 1, My_Flag)`
+
+[19:11:56.0099] <liam_g>
+70% sure that this is a bad idea, but just wanted to check.
+
+[19:12:24.0684] <arai>
+do you mean adding yet another flag ?
+
+[19:13:22.0197] <arai>
+or using a combination of existing flags?
+
+[19:16:13.0742] <arai>
+`JSPROP_ENUMERATE`, `JSPROP_READONLY`, and `JSPROP_PERMANENT` are also exposed to JavaScript itself (`enumerate`, `!writable`, `!configurable`), and you can use any combination of them
+
+[19:16:40.0079] <arai>
+(err, as long as it's valid.  not sure if all combination is valid
+
+[19:16:47.0199] <arai>
+ * err, as long as it's valid.  not sure if all combination is valid
+
+[19:16:57.0011] <arai>
+ * err, as long as it's valid.  not sure if all combinations are valid
+
+[19:19:17.0035] <liam_g>
+I mean like defining `static constexpr unsigned My_Flag = 0x16;` somewhere
+
+[19:19:46.0186] <liam_g>
+JSPROP_RESOLVING, the highest existing one, is 0x08.
+
+[19:20:26.0044] <liam_g>
+So if my thinking is correct, this wouldn't have any other effects on engine.
+
+[19:20:36.0129] <arai>
+for new one, there's one restriction that it shouldn't conflict with `JSFUN_FLAGS_MASK` ([jsapi.h](https://searchfox.org/mozilla-central/rev/dd216c1307a2bf1b0d2465b9749fa86dac44303a/js/src/jsapi.h#532-540))
+
+[19:21:15.0932] <arai>
+otherwise I think an unknown flag can be put into `JSFunctionSpec.flags`
+
+[19:22:07.0947] <liam_g>
+Got it. Thanks for the suggestion.
+
+[06:35:25.0693] <davidj361>
+Why is it that `JS::ReportErrorASCII` doesn't exist but `JS_ReportErrorASCII` does? It throws me off how certain things are `JS_` while others are `JS::`.
+
+[06:35:49.0169] <davidj361>
+because `JS_ReportErrorASCII` isn't in public or something?
+
+[08:30:53.0341] <jandem>
+spidermonkey used to have a C API, so all functions had a `JS_` prefix. We're now using the `JS::` namespace more for new APIs but it is a bit of a mix
+
+[08:31:02.0632] <jandem>
+ * SpiderMonkey used to have a C API, so all functions had a `JS_` prefix. We're now using the `JS::` namespace more for new APIs but it is a bit of a mix
+
+
+2022-11-13
+[14:34:48.0568] <oreo639>
+mozjs102 fails to build on armv6 due to isb being used here:
+https://github.com/mozilla/gecko-dev/blob/esr102/js/src/jit/arm/Architecture-arm.cpp#L534
+You can see the build failure here:
+https://github.com/void-linux/void-packages/actions/runs/3330125326/jobs/5508201397
+
+How best should that be resolved? (should it use the __ARM_ARCH_7__ macros?)
+Here is what the linux kernel does for reference:
+https://github.com/torvalds/linux/blob/5bfc75d92efd494db37f5c4c173d3639d4772966/arch/arm/include/asm/barrier.h#L18-L46
+
+
+2022-11-14
+[04:09:22.0953] <luyahan>
+Hi, i upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+
+[04:09:43.0469] <luyahan>
+ * Hi, i upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+ jit-test: [ 9984|   33|   12|    0] 100% ======================================>| 205.6s
+jstests: [44270|    2|    1| 6684] 100% ======================================>| 589.7s
+jsapi-tests: 4 unexpected failures.
+
+[04:10:01.0990] <luyahan>
+ * Hi, i upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+```
+ jit-test: [ 9984|   33|   12|    0] 100% ======================================>| 205.6s
+jstests: [44270|    2|    1| 6684] 100% ======================================>| 589.7s
+jsapi-tests: 4 unexpected failures.
+```
+
+[04:10:06.0851] <luyahan>
+ * Hi, i upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+
+```
+jit-test: [ 9984|   33|   12|    0] 100% ======================================>| 205.6s
+jstests: [44270|    2|    1| 6684] 100% ======================================>| 589.7s
+jsapi-tests: 4 unexpected failures.
+```
+
+[04:10:20.0705] <luyahan>
+ * Hi all, i upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+
+```
+jit-test: [ 9984|   33|   12|    0] 100% ======================================>| 205.6s
+jstests: [44270|    2|    1| 6684] 100% ======================================>| 589.7s
+jsapi-tests: 4 unexpected failures.
+```
+
+[04:10:46.0992] <luyahan>
+ * Hi all,  i am LuYahan from PLCT Lab
+I upload a patch about  riscv64 jit port on https://phabricator.services.mozilla.com/D161986.
+The results of the current riscv64 test are shown below.
+
+```
+jit-test: [ 9984|   33|   12|    0] 100% ======================================>| 205.6s
+jstests: [44270|    2|    1| 6684] 100% ======================================>| 589.7s
+jsapi-tests: 4 unexpected failures.
+```
+
+[04:41:00.0305] <nbp>
+luyahan: Thanks a lot for this contribution! We are definitely looking forward to have a RISCV backend in the future.
+Due to some past experience and to the fact that we are a central repository for a valid implementation, as well as the limited resources we can allocate to each backend, [we created a process to accept new backends in SpiderMonkey](https://spidermonkey.dev/custom-architectures) to ensure that SpiderMonkey / Firefox users get a qualitative product.
+
+Don't be afraid by this process, this should be less painful than making the backend in the first place ;)
+
+[04:43:03.0828] <nbp>
+luyahan: Feel free to [fill this form](https://spidermonkey.dev/port-proposal-template) in [the associated bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1800431).
+
+[08:53:14.0897] <davidj361>
+Are you not able to do this?
+```c++
+#pragma once
+
+namespace JS {
+class RootedObject;
+}
+class JSContext;
+
+class Wrapper {
+ public:
+    Wrapper();
+    void createGlobal();
+
+    JS::RootedObject global;
+    JSContext* jsContext = nullptr;
+};
+```
+
+[08:55:59.0652] <Ms2ger 💉💉💉>
+You can't put a forward declared class in a field directly
+
+[08:56:11.0483] <Ms2ger 💉💉💉>
+Because you need to know the size
+
+[08:56:22.0877] <Ms2ger 💉💉💉>
+And it's not a class anyway, it's a typedef
+
+[09:00:16.0288] <davidj361>
+Thank you
+
+[09:01:11.0763] <davidj361>
+so if I don't utilize forward declarations, it won't allow you to default initialize `JS::RootedObject` right?
+
+[09:01:54.0665] <arai>
+`JS::Rooted` constructor needs `JSContext*` parameter
+
+[09:02:02.0187] <davidj361>
+> <@davidj361:matrix.org> Is it not proper to have the global as a C Pointer? Or is it possible to have a JS::RootedObject as a class member for global?
+
+Because I'm told that I shouldn't utilize a raw C pointer and should use a rooted class member
+
+[09:02:44.0710] <Ms2ger 💉💉💉>
+I'm skeptical about the Rooted in a class anyway
+
+[09:03:00.0028] <Ms2ger 💉💉💉>
+Rooted needs to follow stack discipline
+
+[09:03:15.0103] <arai>
+what is the `Wrapper` for?
+
+[09:03:22.0664] <arai>
+and where is it allocated?
+
+[09:03:29.0159] <arai>
+ * and when and where is it allocated?
+
+[09:03:38.0200] <davidj361>
+just for holding and managing a context + global
+
+[09:03:59.0310] <davidj361>
+Should just be allocated in the class instance?
+
+[09:04:29.0072] <arai>
+usually, you don't need to hold global object.
+
+[09:04:42.0670] <arai>
+`JS::CurrentGlobalOrNull` returns it as long as you're in the global
+
+[09:04:54.0699] <davidj361>
+right but I want to bind functions and variables from C++ to the global scope of the context
+
+[09:04:59.0073] <davidj361>
+hmmm
+
+[09:05:21.0034] <davidj361>
+Let me test it out
+
+[09:07:41.0258] <davidj361>
+I'm confused, don't you still need to root the global? Would this make the global stop working completely with `JS::CurrentGlobalOrNull` once `global` falls out of scope?
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/cookbook.cpp#L911
+
+[09:08:04.0506] <davidj361>
+Or can you just do `JS_NewGlobalObject` and not have to root it at all?
+
+[09:10:59.0560] <arai>
+err, maybe I misunderstood the purpose of the class
+
+[09:13:34.0533] <arai>
+I think, the global object needs to be rooted (please correct me)
+
+[09:14:18.0654] <arai>
+is `Wrapper` allocated on stack?
+
+[09:14:53.0888] <arai>
+is the address passed to somewhere beyond the function?
+
+[09:15:45.0001] <arai>
+I'm asking because if it's allocated on the stack and it's not visible to elsewhere, there's no need to wrap with a class and you don't need to worry about the forward declaration
+
+[09:17:44.0732] <arai>
+then, if it's not allocated on the stack, you cannot use `JS::Rooted`
+
+[09:18:15.0211] <arai>
+ * is the address of `Wrapper` instance passed to somewhere beyond the function?
+
+[10:02:41.0475] <davidj361>
+> <@arai:mozilla.org> is `Wrapper` allocated on stack?
+
+Should be, a class instance on the stack
+
+[12:13:05.0226] <davidj361>
+apparently if the Rooted global falls out of scope you can still root it again no problem
+
+[12:13:31.0576] <davidj361>
+but it looks like it needs to be rooted in order to use `JS::CurrentGlobalOrNull`
+
+[12:20:44.0431] <davidj361>
+i.e. doesn't seem like you can just do `JS_NewGlobalObject(jsContext, &globalClass, nullptr, JS::FireOnNewGlobalHook, options)` and then `JS::CurrentGlobalOrNull`
+
+[12:46:36.0975] <sfink>
+you would need to enter the realm of that global in order for it to be the current global.
+
+[12:47:14.0008] <sfink>
+The [docs for JSAutoRealm](https://searchfox.org/mozilla-central/rev/eadcd17181cdc44ea5b939ad506edd79d1270872/js/public/Realm.h#180) probably describe it best.
+
+[12:48:14.0035] <sfink>
+but this makes me think that we might need to add something to the `PersistentRooted` docs. Right now, we scare people away from using it. We ought to give examples of when it *does* make sense. Because your scenario is probably one such case.
+
+[12:49:21.0236] <sfink>
+it's ok to have a struct that contains a `JSContext*` and a `PersistentRooted<JSObject*>` for the global if it really is a (per-thread) singleton. You only get into trouble if some JS thing owns a `PersistentRooted`.
+
+[12:50:03.0270] <sfink>
+and `PersistentRooted` can be constructed without a `JSContext*`. You can hand it the `JSContext*` later. (Really, you're handing the `PersistentRooted` to the context.)
+
+[12:50:47.0181] <sfink>
+ * and `PersistentRooted` can be constructed without a `JSContext*`. You can hand it the `JSContext*` later by calling `init(cx)`. (Really, you're handing the `PersistentRooted` to the context.)
+
+[12:54:52.0061] <sfink>
+note that if you enter a realm, that will root the global. If you need to use it for something, you'll have to grab it with `JS::CurrentGlobalOrNull` and stick it in a `Rooted`. But that means you probably don't need a struct containing the global if you're just going to have the one global that you can retrieve from the cx.
+
+[12:55:10.0795] <sfink>
+hopefully this makes sense. It probably sounds like I'm talking in circles.
+
+
+2022-11-15
+[07:51:06.0845] <davidj361>
+Thank you sfink 
+
+[09:00:02.0553] <littledan>
+Hey, I'm wondering what people here think about https://github.com/legendecas/proposal-async-context . It was recently raised again at WinterCG for server environments; I think it's relevant for the Web as well, since a few different web frameworks want to preserve information across async flows. Most recently, I heard this request from React, to store priority information for a calculation, in the context of async/await and callbacks.
+
+[09:01:41.0847] <littledan>
+A request for the web to support something like this has been around for a really really long time--when I was at Google, Angular was pushing for async/await to be tweaked to permit the implementation of something like this; we ended up supporting it in a Node-only way with the V8 PromiseHooks API, but the demand from the JS side never went away.
+
+[10:48:06.0301] <kfjvj>
+Has any work been done towards mapping JS exceptions to c++ exceptions?
+
+[10:59:50.0740] <mgaudet>
+I think a couple of embdeddings have done that (mongodb iirc?), but we've never done it at mozilla, as we don't use C++ exceptions. 
+
+[11:35:18.0586] <ewang21>
+In addition to JS_SetNativeStackQuota to set the stack size of the context, does anyone know any other APIs in SpiderMonkey that can limit JSContext resources?
+
+
+2022-11-16
+[22:18:54.0089] <arai>
+ewang21: [`JS_SetGCParameter`](https://searchfox.org/mozilla-central/rev/d7d2cc647772de15c4c5aa47f74d25d0e379e404/js/public/GCAPI.h#1222-1223) can set GC behavior.  See [`JSGCParamKey`](https://searchfox.org/mozilla-central/rev/d7d2cc647772de15c4c5aa47f74d25d0e379e404/js/public/GCAPI.h#69) for parameters
+
+[00:13:06.0399] <arai>
+has anyone experienced `JSRuntime` leak in reftest?  I'm looking into the failure that:
+  * [happens with my patch, on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=4396f720d77a91bf170905221be6aa15f33feb13)
+  * [doesn't happen without my patch on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=53b8da707b04409db923897c51aa273beb3c215c)
+  * happens without my patch locally
+
+and wondering if it's pre-existing issue or not
+
+[02:30:48.0095] <luyahan>
+done
+
+[03:42:19.0063] <nbp>
+luyahan: Thanks for writing it, I will raise this submission in our next team meeting.
+
+[07:05:55.0499] <mccr8>
+> <@arai:mozilla.org> has anyone experienced `JSRuntime` leak in reftest?  I'm looking into the failure that:
+>   * [happens with my patch, on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=4396f720d77a91bf170905221be6aa15f33feb13)
+>   * [doesn't happen without my patch on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=53b8da707b04409db923897c51aa273beb3c215c)
+>   * happens without my patch locally
+> 
+> and wondering if it's pre-existing issue or not
+
+FWIW that's probably just a regular leak. We don't do leak checking in reftests so that'll be the only sign of it.
+
+[07:07:33.0634] <mccr8>
+Well, not all leaks will leak a runtime, I suppose.
+
+[07:47:57.0850] <arai>
+mccr8: what do you mean by regular leak?  reftest is supposed to leak?
+
+[07:55:20.0428] <mccr8>
+No, I just meant that that is a sign of a leak, and you won't get the usual leakcheck failures.
+
+[07:55:55.0715] <mccr8>
+It is possible there is an existing leak that your change is turning into a runtime leak that is an assert but it is hard to guess whether that's really what is going on or not.
+
+[08:03:34.0782] <arai>
+I see. I'll continue investigating the details
+
+[08:09:38.0481] <mccr8>
+Looks like there's also an assertion failure.
+
+[08:27:09.0271] <arai>
+yes, the assertion failure seems to be caused by the runtime leak
+
+[08:27:33.0422] <arai>
+it's self-hosted JS's file name string
+
+[08:28:58.0969] <arai>
+* it's self-hosted JS's file name string getting freed while there's still a reference, possibly from the leaked runtime
+
+[08:33:04.0635] <Redfire>
+How exactly does `PropertyKey` work on 32b platforms, there's no spare bits for symbol or string pointers? and the tags in total use 4 bits
+
+[08:33:18.0460] <arai>
+oh, just realized that the leak happens even without patch on automation.  just that it's not treated as job failure
+
+[08:33:27.0568] <Redfire>
+* How exactly does `PropertyKey` work on 32b platforms? there's no spare bits for symbol or string pointers, and the tags in total use 4 bits
+
+[08:34:40.0454] <arai>
+so, the leak itself isn't a problem
+
+[08:35:09.0687] <arai>
+* oh, just realized that the leak happens even without patch on automation. just that it's not treated as job failure https://treeherder.mozilla.org/jobs?repo=try&revision=53b8da707b04409db923897c51aa273beb3c215c&selectedTaskRun=SBDFdP9wSBaEUmiLraUJnA.0
+
+[08:35:10.0485] <iain>
+Redfire: There are three tag bits. We guarantee that everything is allocated with 8-byte alignment, and tag the low bits.
+
+[08:35:52.0726] <iain>
+ * Redfire: There are [three tag bits](https://searchfox.org/mozilla-central/source/js/public/Id.h#56). We guarantee that everything is allocated with 8-byte alignment, and tag the low bits.
+
+[08:36:17.0831] <arai>
+I just need to figure out what to do when runtime lives longer than JS_Shutdown
+
+[08:37:41.0289] <Redfire>
+iain:  Oh, it's the low bits. I didn't see that one coming. I hadn't even considered abusing alignment for tagging on a pointer
+
+[08:37:54.0882] <arai>
+* so, the leak itself isn't a problem (at least not my patch's problem)
+
+[08:38:21.0321] <iain>
+We do all sorts of code crimes here
+
+[08:39:10.0323] <Redfire>
+All in the name of optimisation 😛
+
+[08:39:44.0883] <Ms2ger 💉💉💉>
+I thought the main goal was giving the c++ committee nightmares
+
+[08:40:29.0127] <Redfire>
+I was working on adding the  PropertyKey methods on the rust wrapper, which is why I was even looking at this
+
+[08:41:33.0415] <iain>
+We used to have some functions that were called with low bits tagged in the `this` pointer, but we managed to get rid of that nonsense
+
+[08:47:31.0868] <iain>
+(https://searchfox.org/mozilla-esr78/source/js/src/vm/TypeSet.h#282)
+
+[11:02:01.0756] <Bryan Thrall [:bthrall]>
+> <@iain:mozilla.org> We do all sorts of code crimes here
+
+This should be a sticker or a shirt 😄
+
+[11:02:51.0180] <iain>
+"SpiderMonkey: Purveyors of Fine Code Crimes since 1996"
+
+[11:06:26.0803] <sfink>
+iain: halp! I keep trying to write a comment on [the phab rev for AddAndStoreSlot prebarriering removal](https://phabricator.services.mozilla.com/D161962#5325327), and I keep realizing I'm misunderstanding what's going on. Are you around for a quick [zoom call](https://mozilla.zoom.us/my/sfink)?
+
+[11:22:44.0960] <kfjvj>
+I'm working with C++ exceptions, and I would like to know what would be the best way to store info about the JS object that caused the exception.  I'd like to include a reference to the object in the exception, but I'm not sure how that would affect rooting.  My first thought was to use persistentrooted, but I'm not sure if that's a good idea.  Thoughts?
+
+[11:25:27.0684] <iain>
+Concept art: 
+
+[11:32:21.0687] <sfink>
+kfjvj: if the lifetime of the C++ exception is short, then `PersistentRooted` makes sense to me.
+
+[11:32:26.0358] <sfink>
+But I guess the way I would assume exceptions would work is that any JSNative would execute in a try block to catch exceptions, and then the C++ exception would be wrapped into a JS `ErrorObject` that would be thrown by the JSNative (as in, it would be set as the pending exception on the cx, and then the JSNative would return false.) In that case, you would have an ErrorObject pointing to a C++ exception object of some sort, which points to your JS object that somehow caused the problem. A PersistentRooted in that C++ exception object would then hold the JS object alive which would hold the global alive. If there is any way to reach that ErrorObject from the global, then you'd have an uncollectable cycle.
+
+[11:33:30.0736] <sfink>
+if that is at all possible, then it would be better for your c++ exception object to store the detail object in a `Heap<JSObject*>` and have a `trace()` method that your `ErrorObject` would invoke.
+
+[11:33:44.0389] <sfink>
+(I'm handwaving here.)
+
+[11:52:30.0063] <kfjvj>
+Thanks.
+
+[12:16:51.0898] <ewang21>
+> <@arai:mozilla.org> ewang21: [`JS_SetGCParameter`](https://searchfox.org/mozilla-central/rev/d7d2cc647772de15c4c5aa47f74d25d0e379e404/js/public/GCAPI.h#1222-1223) can set GC behavior.  See [`JSGCParamKey`](https://searchfox.org/mozilla-central/rev/d7d2cc647772de15c4c5aa47f74d25d0e379e404/js/public/GCAPI.h#69) for parameters
+
+Thank you very much!
+
+
+2022-11-17
+[23:07:09.0456] <luyahan>
+```
+  // Zeroes dest if the condition is true.
+  inline void spectreZeroRegister(Condition cond, Register scratch,
+                                  Register dest)
+``` 
+About this macroassembler func, i don't know where are operands to compare? Does the func need to been used with other func?
+
+[23:07:21.0127] <luyahan>
+ * ```
+  // Zeroes dest if the condition is true.
+  inline void spectreZeroRegister(Condition cond, Register scratch,
+                                  Register dest)
+```
+
+About this macroassembler func, I don't know where are operands to compare? Does the func need to been used with other func?
+
+[23:16:51.0087] <arai>
+luyahan: it uses the flag register.  so, the comparison should be done immediately before it
+
+[23:18:30.0949] <arai>
+comparison instruction sets flag register based on the result, and the instruction generated by `spectreZeroRegister` uses the flag as condition
+
+[23:19:01.0150] <arai>
+ * comparison instruction sets flag register based on the result, and the instruction generated by `spectreZeroRegister` (e.g. cmov) uses the flag as condition
+
+[23:55:16.0872] <arai>
+ * has anyone experienced `JSRuntime` leak in reftest?  I'm looking into the failure that:
+
+- [happens with my patch, on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=4396f720d77a91bf170905221be6aa15f33feb13)
+- <del>[doesn't happen without my patch on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=53b8da707b04409db923897c51aa273beb3c215c)</del> (actually, happens, but it doesn't result in failure)
+- happens without my patch locally
+
+and wondering if it's pre-existing issue or not
+
+[23:55:39.0515] <arai>
+> <@arai:mozilla.org> has anyone experienced `JSRuntime` leak in reftest?  I'm looking into the failure that:
+> 
+> - [happens with my patch, on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=4396f720d77a91bf170905221be6aa15f33feb13)
+> - <del>[doesn't happen without my patch on automation](https://treeherder.mozilla.org/jobs?repo=try&revision=53b8da707b04409db923897c51aa273beb3c215c)</del> (actually, happens, but it doesn't result in failure)
+> - happens without my patch locally
+> 
+> and wondering if it's pre-existing issue or not
+
+related question.   anyone know why we're leaking JS runtime (and some more things) in reftest?  is it something we should support, or something we should fix?
+
+[23:57:49.0642] <arai>
+if we should support the "leak", possible fix for my [bug 1786834](https://bugzilla.mozilla.org/show_bug.cgi?id=1786834) patch is to support JSRuntime being alive even after `JS_Shutdown`, by adding refcount to the string cache, and destruct it *after* `JS_Shutdown`. but I feel that's going to wrong direction
+
+[23:57:51.0027] <botzilla>
+https://bugzil.la/1786834 — ASSIGNED (arai) — Make SharedImmutableStringsCache globally accessible singleton
+
+[23:58:54.0626] <arai>
+is there already some workaround to other structure that's freed in `JS_Shutdown` ?
+
+[00:00:11.0826] <arai>
+ * if we should support the "leak", possible fix for my [bug 1786834](https://bugzilla.mozilla.org/show_bug.cgi?id=1786834) patch is to support JSRuntime being alive even after `JS_Shutdown`, by adding refcount to the string cache, and destruct the cache _after_ `JS_Shutdown`. but I feel that's going to wrong direction
+
+[05:14:21.0058] <chococandy>
+Hello,
+I am new here and thinking to contribute to SpiderMonkey.
+
+[06:14:54.0743] <nbp>
+chococandy: Welcome, is there any particular topic you might have a preference for?
+
+[06:29:51.0028] <chococandy>
+> <@nbp:mozilla.org> chococandy: Welcome, is there any particular topic you might have a preference for?
+
+I want to learn and this will be my first contribution. I want to start off with fixing easy bugs.
+
+[06:36:02.0308] <nbp>
+We have a few good-first-bugs: https://codetribute.mozilla.org/projects/jseng
+
+[06:36:35.0790] <nbp>
+some old one might not be as good as initially thought :/
+
+[06:40:58.0130] <chococandy>
+> <@nbp:mozilla.org> We have a few good-first-bugs: https://codetribute.mozilla.org/projects/jseng
+
+Thank you. I'll go through the list :)
+
+[09:33:56.0166] <nbp>
+yulia: Any reasons why ScriptKind::eImport yield a ClassicScript load request? Isn't that supposed to be a module?
+
+[09:34:34.0361] <yulia>
+eImport? got a link?
+
+[09:34:38.0078] <yulia>
+i think it should be eModule?
+
+[09:35:01.0375] <nbp>
+https://searchfox.org/mozilla-central/source/dom/script/ScriptLoader.cpp#822
+
+[09:35:12.0834] <yulia>
+ah, that is for import map -- its separate from modules
+
+[09:35:29.0829] <yulia>
+it is for these things: https://github.com/WICG/import-maps
+
+[09:36:09.0158] <yulia>
+these are effectively JSON files -- i think @allstarschh would have more detail but they are efficiently represented by a ScriptLoadRequest, as they are quite basic
+
+[09:37:15.0990] <nbp>
+Ok :)
+
+[12:32:58.0763] <@allstarschh>
+> <@yulia:mozilla.org> these are effectively JSON files -- i think @allstarschh would have more detail but they are efficiently represented by a ScriptLoadRequest, as they are quite basic
+
+Right now import maps can be only inline script tags, they can't be external scripts, for simplicity import map scripts are treated as classic inline scripts for now. But that might change in the future, for example we might have another class called "ImportMapLoadRequest", which extends ScriptLoadRequest.
+
+
+2022-11-18
+[00:57:29.0667] <Ms2ger 💉💉💉>
+Maybe `ScriptKind::eImport` should be `ScriptKind::eImportMap` then :)
+
+[01:17:39.0124] <yulia>
+it already is, just easy to misread especially if you have the module context already paged in to your thinking. I am not sure what a better name would be, but maybe a comment above that line would help
+
+[01:18:42.0856] <Ms2ger 💉💉💉>
+Ha
+
+[01:18:51.0819] <Ms2ger 💉💉💉>
+yulia being ahead of me as usual
+
+[07:59:46.0603] <Redfire>
+If you use `JS_ConcatStrings` or `JS_NewDependentString`, are the parent string(s) traced automatically so if they would have been GC'ed earlier, they're now GC'ed only after the child is GC'ed?
+
+[08:27:58.0412] <jonco>
+Redfire: Yes the new string has a pointer to the parent (although in the first case you get a rope which can get flattened later)
+
+[11:19:31.0356] <davidj361>
+This isn't already in SpiderMonkey embedded is it? Is there a way to enable it?
+https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+
+[11:21:44.0237] <davidj361>
+> <@mgaudet:mozilla.org> pastah: Sorry; I don't think we expose any of that via the embedder API. 
+> 
+> If you're poking around in the JS engine itself, you might be best served starting from our shell build, and exploring all the testing functions that are available (call help() from the shell)
+
+I assume the same answer as this.
+
+[11:32:12.0371] <davidj361>
+mgaudet calling `help()` from the `repl` binary should show something? Or you mean from the shell that builds with SpiderMonkey itself when you build libraries?
+
+[12:54:42.0252] <mgaudet>
+> <@davidj361:matrix.org> This isn't already in SpiderMonkey embedded is it? Is there a way to enable it?
+> https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+
+No: the implement setTimeout you really need an event loop, which we don't currently provide.
+
+[12:55:23.0838] <mgaudet>
+> <@davidj361:matrix.org> mgaudet calling `help()` from the `repl` binary should show something? Or you mean from the shell that builds with SpiderMonkey itself when you build libraries?
+
+help is [only implemented as part of our shell](https://searchfox.org/mozilla-central/source/js/src/shell/js.cpp#8820-8823)
+
+[13:00:16.0872] <mgaudet>
+confession: linux perf is horribly failing me at the moment. 
+
+[13:00:19.0668] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:45:23.0874] <mgaudet>
+confession: [Tried rebuilding perf so that it didn't shell out to `addr2line` so frequently](https://eighty-twenty.org/2021/09/09/perf-addr2line-speed-improvement), hoping for a substantial speedup. Alas, still seeing a huge performance problem trying to look at a perf profile with call-stacks. this is even with [libbfd](https://michcioperz.com/post/slow-perf-script/). no idea what's gone so wrong, but this is a mess in a way I have no recollection of last time I used perf (admittedly... a long while ago) 
+
+
+2022-11-19
+[16:56:31.0886] <littledan>
+> <@littledan:matrix.org> Hey, I'm wondering what people here think about https://github.com/legendecas/proposal-async-context . It was recently raised again at WinterCG for server environments; I think it's relevant for the Web as well, since a few different web frameworks want to preserve information across async flows. Most recently, I heard this request from React, to store priority information for a calculation, in the context of async/await and callbacks.
+
+We now have a Matrix room to discuss this in more detail, working on the TC39 proposal, which is proposed for Stage 1 this upcoming meeting. Let me know if you want an invite.
+
+
+2022-11-21
+[14:12:05.0067] <mgaudet>
+confession: `perf report --no-inline` is magical
+
+
+2022-11-22
+[19:54:42.0460] <diipak>
+Hey Community, I am looking forward to embed the Spidermonkey 91 esr to my exisiting C application. Since the JSAPI is already C++fied now. I am thinking creating the C layer as a separate shared library and link it to my C application. But then it leaves me in a situation where I can't use my C application utility to interact with SM.
+
+[19:55:24.0660] <diipak>
+Any easy or alternative way around it?
+
+[05:54:32.0410] <yulia>
+I don't quit understand why you won't be able to use your c application to interact with SM if you have the C layer?
+
+[05:56:06.0984] <yulia>
+I vaguely remember someone doing this ages ago to parse dates in C: https://gist.github.com/jstepien/2180739 -- but I am not sure I understand the second half of the question
+
+[05:57:02.0017] <yulia>
+it is no longer up to date. Our embedding guide is here: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples
+
+[05:58:04.0363] <yulia>
+ * I suspect you've already seen our embedding guide? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples
+
+[05:59:27.0995] <yulia>
+ * I don't quite understand why you won't be able to use your c application to interact with SM if you have the C layer?
+
+[06:00:01.0324] <nbp>
+yulia: the problem would be the GC, if the global is used as-is with a bare pointer, then the GC is not aware of it, and the second call to `JS_EvaluateScript` might experience a use-after-free. (in case the heap is compacted and the global move)
+
+[06:01:16.0658] <yulia>
+oh, that script is 11 years old. It's just the only simple example of embedding SM in C that I can think of off the top of my head
+
+[06:01:56.0101] <nbp>
+diipak: If you are looking at making a C embedding, I would look at how mozjs Rust library did, as they could not rely on fixed addresses known by the Garbage Collector, and use a vector of object which are known by the GC.
+
+[07:22:30.0783] <Treviño>
+Hey, is there a programmatic way (or an example) to create an ES Module, defining exported elements? I mean without doing it through compiling the a generated string containing JS source?
+
+[08:28:38.0114] <Redfire>
+Not yet, bug 1722802, which was supposed to add one has been stalled for a while though.
+
+[08:28:39.0537] <botzilla>
+https://bugzil.la/1722802 — UNCONFIRMED (nobody) — Add JSAPI functions to create JS modules w/ custom exports
+
+[08:30:20.0839] <jonco>
+Treviño: Bug 1670176 would also add some of the infrastructure for this
+
+[08:30:22.0374] <botzilla>
+https://bugzil.la/1670176 — NEW (jon4t4n) — Implement the JSON modules proposal
+
+[09:49:48.0463] <Treviño>
+> <@redfire75369:mozilla.org> Not yet, bug 1722802, which was supposed to add one has been stalled for a while though.
+
+thanks for the pointer
+
+[10:28:34.0080] <liam_g>
+I'd like to compute a hash value of a JSString and separately an std::string for a hash table. Ideally I'd like to be able to have one function which is specialized for both types, meaning probably a function which takes a const char* or string_view argument. I'm not sure how to access this from JSString though. Ideally I'd like to do it without allocation, just iterating over the characters. Any suggestions?
+
+[15:19:23.0343] <Redfire>
+`JS_GetLatin1CharsAndLength` and `JS_GetTwoByteStringCharsAndLength` give you a `uint8_t*` and `uint16_t*` respectively
+
+[15:19:35.0728] <Redfire>
+You could probably just use those for your hashing
+
+[15:20:01.0840] <Redfire>
+* `JS_GetLatin1StringCharsAndLength` and `JS_GetTwoByteStringCharsAndLength` give you a `uint8_t*` and `uint16_t*` respectively
+
+[15:23:30.0833] <Redfire>
+You can use [JS_DeprecatedStringHasLatin1Chars](https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#3090) to check if you should use the former or the latter
+
+[15:24:17.0870] <Redfire>
+* You can use `JSString:hasLatin1Chars` to check if you should use the former or the latter
+
+[15:26:10.0785] <Redfire>
+* You can use `JSString::hasLatin1Chars` to check if you should use the former or the latter
+
+
+2022-11-23
+[21:58:39.0115] <diipak>
+Hi Community again, I wonder how can I add some custom class enumberable properties into the global scope as enumerable properties (these properties should be lazily resolved) in my embeded environment
+
+[23:45:21.0947] <luyahan>
+When the meeting be held? Is it open for everyone?
+
+[01:20:52.0631] <luyahan>
+ * Hi nbp ～ 
+ Can you tell me when the meeting be held? Is it open for everyone?
+
+[01:21:48.0464] <luyahan>
+Hi all
+I open a patch on ph but not give me a warning: 
+```
+
+[01:21:57.0258] <luyahan>
+ * Hi all
+I open a patch on ph but not give me a warning:
+```
+Code analysis found 3 defects in the diff 647929:
+
+3 defects found by code coverage analysis
+3 issues unresolved and 2 issues closed compared to the previous diff 647595.
+
+WARNING: Found 3 issues (warning level) that can be dismissed.
+In our previous code coverage analysis run, we found some files which had no coverage and are being modified in this patch:
+Should they have tests, or are they dead code?
+
+You can file a bug blocking Bug 1415824 for untested files that should be tested.
+You can file a bug blocking Bug 1415819 for untested files that should be removed.
+
+```
+
+[01:21:58.0775] <botzilla>
+https://bugzil.la/1415824 — NEW (nobody) — [meta] Write tests for files with zero coverage
+
+[01:21:59.0534] <botzilla>
+https://bugzil.la/1415819 — NEW (nobody) — [meta] Delete dead code using the files with zero coverage report
+
+[01:22:59.0145] <luyahan>
+ * Hi all
+I open a patch on ph but not give me  warnings:
+```
+Code analysis found 3 defects in the diff 647929:
+
+3 defects found by code coverage analysis
+3 issues unresolved and 2 issues closed compared to the previous diff 647595.
+
+WARNING: Found 3 issues (warning level) that can be dismissed.
+In our previous code coverage analysis run, we found some files which had no coverage and are being modified in this patch:
+Should they have tests, or are they dead code?
+
+You can file a bug blocking Bug 1415824 for untested files that should be tested.
+You can file a bug blocking Bug 1415819 for untested files that should be removed.
+
+```
+What I shoud do to fix this?
+
+[01:32:30.0400] <Ms2ger 💉💉💉>
+luyahan: you should try to figure out if the file you're touching is actually used, and file a bug blocking one of these two bugs depending on what you find
+
+[01:36:49.0548] <padenot>
+luyahan: because you're adding a new backend that is not running in CI, I think this message is expected -- the code coerage analysis isn't compiling your code and can't assess coverage
+
+[01:36:53.0776] <padenot>
+ * luyahan: because you're adding a new backend that is not running in CI, I think this message is expected -- the code coverage analysis isn't compiling your code and can't assess coverage
+
+[01:37:11.0654] <padenot>
+the reviewer will know for sure though
+
+[04:03:50.0120] <luyahan>
+padenot: Ms2ger 💉💉💉  Thanks very much!
+
+[08:48:10.0763] <jonco>
+sfink: ping
+
+
+2022-11-24
+[12:38:26.0562] <davidj361>
+How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm)`?
+
+[12:39:25.0076] <davidj361>
+ * How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm/Js::RootedObject)`?
+
+[12:39:51.0649] <davidj361>
+ * How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm/Js::RootedObject)`?
+Make a wrapper for JsContext + global + JSAutoRealm.
+
+[12:39:58.0690] <davidj361>
+ * How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm/Js::RootedObject)`?
+Making a wrapper for JsContext + global + JSAutoRealm.
+
+[13:09:49.0950] <davidj361>
+ * How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm/Js::RootedObject)`?
+Making a wrapper for JsContext + global + JSAutoRealm that could lets be held in a `std::vector`
+
+[13:10:15.0685] <davidj361>
+ * How do I get around: `Rooted(const Rooted&) = delete;`? Is it not possible to `std::move(JSAutoRealm/Js::RootedObject)`?
+Making a wrapper for JsContext + global + JSAutoRealm that could be held in a `std::vector`
+
+[13:14:47.0242] <iain>
+Rooted and AutoRealm have to live on the stack.
+
+[13:14:58.0124] <iain>
+ * davidj361: Rooted and AutoRealm have to live on the stack.
+
+[13:15:14.0193] <davidj361>
+> <@iain:mozilla.org> davidj361: Rooted and AutoRealm have to live on the stack.
+
+are you not able to std::move them?
+
+[13:15:54.0748] <davidj361>
+> <@iain:mozilla.org> davidj361: Rooted and AutoRealm have to live on the stack.
+
+ * are you not able to std::move them? I'm keeping them as class data members. But the class being copy constructed or move constructed is breaking it.
+
+[13:16:17.0533] <iain>
+You shouldn't keep them as class data members, unless that class is also only stack-allocated
+
+[13:16:56.0185] <iain>
+Rooted in particular relies on the fact that instances are created in LIFO order
+
+[13:17:13.0947] <iain>
+ * Rooted in particular relies on the fact that instances are created/destroyed in LIFO order
+
+[13:17:20.0516] <davidj361>
+It should be stack allocated, i'm using no pointers atm
+
+[13:17:43.0733] <davidj361>
+copying/moving the wrapper breaks everything though
+
+[13:19:38.0775] <iain>
+If you're putting them in a vector, then they're not on the stack
+
+[13:20:11.0921] <iain>
+And you're losing the guarantee that Rooted instances are destroyed in the reverse order of creation
+
+[13:20:21.0477] <davidj361>
+Ah right, i forgot 😅
+
+[13:21:22.0693] <davidj361>
+So would I utilize `JS::Heap<T>`?
+
+[13:21:38.0446] <davidj361>
+I was told that `JS::PersistentRooted<T>` might be an option too
+
+[13:21:55.0259] <iain>
+You could consider RootedVector: https://searchfox.org/mozilla-central/source/js/public/GCVector.h#336-344
+
+[13:22:19.0966] <davidj361>
+I mean I would like move/copy the Wrapper lets say
+
+[13:22:34.0020] <davidj361>
+Where the wrapper could be dynamically allocated
+
+[13:22:44.0054] <davidj361>
+Just to avoid future usecase headaches
+
+[13:23:49.0596] <iain>
+You can create a dynamically allocated class with `Heap<T>` pointers
+
+[13:24:08.0957] <iain>
+But you are responsible for making sure that instances of that class are traced by the GC
+
+[13:24:38.0931] <davidj361>
+I don't understand the different between `Heap<T>` and `PersistentRooted<T>` when Persistent says " for things that are alive until the process exits (or until you manually delete the PersistentRooted for a reason not based on GC finalization.)", doesn't that make it work just like a Heap?
+
+[13:24:39.0759] <iain>
+So you have to write a `trace` method, and you need to store them somewhere the GC knows about
+
+[13:24:55.0007] <iain>
+Like a RootedVector
+
+[13:25:29.0102] <davidj361>
+I don't follow
+
+[13:26:28.0546] <iain>
+Say you have an object containing a pointer to a JSObject.
+
+[13:27:05.0776] <iain>
+When a GC is triggered, the garbage collector will clean up any objects that aren't reachable, and potentially move existing objects to a new location.
+
+[13:27:17.0524] <iain>
+If the GC doesn't know about your object, then your pointer could be invalidated.
+
+[13:28:19.0420] <iain>
+Step 1 of telling the GC about your object is using `Heap<T>`. This is a helper class that implements some bookkeeping that the GC needs to do when you write to that pointer.
+
+[13:29:09.0279] <iain>
+Step 2 of telling the GC about your object is writing a `trace` method. This lets the GC know which garbage-collected things are reachable via your object.
+
+[13:29:55.0331] <iain>
+Step 3 is making sure that the GC knows to trace your object in the first place. This is accomplished by making sure there is *some* path from a GC root to your object.
+
+[13:31:19.0493] <davidj361>
+I'm not binding the Wrapper to JavaScript, i.e. it's not reachable inside the JavaScript. I'm just creating some Wrapper manager class for holding JSContext, global, and JSAutoRealm together
+
+[13:31:48.0691] <iain>
+The thing you might be missing is that `Heap<T>` only keeps an object alive if the owner of the `Heap<T>` is reachable (aka traced by the GC)
+
+[13:31:51.0774] <davidj361>
+ * I'm not binding the Wrapper to JavaScript, i.e. it should not be reachable inside the JavaScript. I'm just creating some Wrapper manager class for holding JSContext, global, and JSAutoRealm together
+
+[13:32:03.0314] <davidj361>
+right
+
+[13:32:12.0571] <davidj361>
+I'm still reading up on tracing atm trying to understand it better
+
+[13:32:24.0414] <davidj361>
+but it seems like it's meant for classes that you bind to JavaScript?
+
+[13:32:48.0033] <iain>
+(Also you almost certainly don't want to be storing a JSAutoRealm. You want a realm, and then to enter it when needed using a stack-allocated AutoRealm.)
+
+[13:33:05.0696] <iain>
+Tracing is used to figure out which objects are alive and which objects are dead.
+
+[13:34:19.0439] <iain>
+Note that it's possible for there to be cycles between regular C++ objects (with `Heap<T>` members) and GC-managed JSObjects. If such a cycle isn't reachable from outside, then we want to clean it up.
+
+[13:35:32.0599] <iain>
+An example from code I'm currently working on: here's a C++ class, NativeIterator, that contains a pointer to a JSObject: https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.h#27
+
+[13:35:54.0193] <iain>
+(For current purposes, you can think of GCPtr<T> as a SM-internal version of Heap<T>)
+
+[13:36:22.0995] <iain>
+That pointer points to a PropertyIteratorObject: https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.h#411
+
+[13:36:50.0784] <iain>
+Inside that PropertyIteratorObject, we store a pointer back to the NativeIterator.
+
+[13:37:34.0971] <iain>
+This kind of wrapper pattern isn't the only way to have cycles, but it's probably the simplest one
+
+[13:38:06.0438] <iain>
+When the GC runs, if nothing holds a reference to the PropertyIteratorObject, we want to clean it up
+
+[13:39:30.0460] <iain>
+But if we keep everything alive that has a `Heap<T>` (or a `GCPtr<T>` in this case) pointing to it, then we'll never be able to delete the PropertyIteratorObject
+
+[13:40:15.0491] <iain>
+So when the GC traces the object graph to figure out what is alive, it needs to be able to trace through regular C++ objects
+
+[13:41:57.0446] <iain>
+If neither object is reachable, then the PropertyIteratorObject will not be marked as alive, and then when we sweep the heap, we'll delete it. When we do so, its [finalizer](https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.cpp#1205-1210) will run and delete the NativeIterator
+
+[13:42:51.0946] <davidj361>
+I'm confused on how finalize and trace gets even ran. Aren't you supposed to bind the class?
+
+[13:43:40.0387] <iain>
+I don't know what you mean by "bind" here
+
+[13:44:08.0563] <davidj361>
+like you're supposed to call some SM API function on your class and it exposes your class to JavaScript I assume?
+
+[13:44:19.0503] <davidj361>
+Which I don't want to expose the class to JavaScript
+
+[13:44:51.0590] <iain>
+A class can require tracing without being exposed to JS
+
+[13:45:55.0414] <iain>
+The GC manages memory. When we need to free some memory, we trigger a garbage collection, and we get rid of the objects we no longer need.
+
+[13:46:02.0309] <iain>
+How do we know which objects we still need?
+
+[13:46:14.0944] <iain>
+Well, we start with the objects that are directly reachable.
+
+[13:46:29.0467] <iain>
+That generally means things that are currently stored somewhere on the stack
+
+[13:46:34.0684] <iain>
+That's what `Rooted<T>` is for
+
+[13:47:02.0918] <iain>
+`PersistentRooted` is another form of roots.
+
+[13:47:20.0766] <iain>
+Then, we trace all the pointers leaving those objects to figure out which objects are reachable from a root
+
+[13:47:21.0650] <davidj361>
+ok after re-reading again, i'm confused how step 3 is achieved
+> Step 3 is making sure that the GC knows to trace your object in the first place. This is accomplished by making sure there is some path from a GC root to your object.
+
+
+[13:49:36.0063] <iain>
+Either you stick your object in a Rooted (or RootedVec, or PersistentRooted, or some other equivalent container), or you stick it in some other object that will trace it recursively
+
+[13:50:05.0431] <davidj361>
+Oh boy, that's another rabbit hole of wrappers
+
+[13:53:16.0058] <davidj361>
+Thanks for the help iain, i'll have to play around with this code some more
+
+[13:57:05.0258] <iain>
+The "easiest" way to handle this is probably to have a class that holds the data you care about, and implement a trace method on that class, then use PersistentRooted to store a pointer to that class. The massive footgun here is that you need to be very careful with the ownership of the PersistentRooted. None of the data that is reachable from a persistent-rooted instance of your class can be freed as long as the PersistentRooted exists, so if you ever end up with a cycle where the PersistentRooted owns itself, it will never be freed and you'll leak a bunch of memory.
+
+[13:58:04.0067] <iain>
+If you can guarantee that won't happen, then PersistentRooted might be the way to go
+
+
+2022-11-25
+[10:55:01.0222] <davidj361>
+> <@iain:mozilla.org> (Also you almost certainly don't want to be storing a JSAutoRealm. You want a realm, and then to enter it when needed using a stack-allocated AutoRealm.)
+
+Why is it not possible to have a heap version of JSAutoRealm? I assume you want it to be persistent for the life cycle of the JSContext
+
+[10:58:14.0266] <iain>
+davidj361: No. An AutoRealm means "while this exists, I am inside this particular realm". You can have nested AutoRealms, but it doesn't make sense to have a bunch of AutoRealms floating around on the heap.
+
+[10:58:20.0146] <iain>
+You can only be in one realm at a time.
+
+[10:59:17.0791] <iain>
+You generally want to enter the realm just before you execute code that should run in that realm, and then exit the realm as soon as you're done.
+
+[11:00:16.0742] <iain>
+ * You generally want to enter the realm just before you execute code that should run in that realm, and then exit the realm as soon as you're done. (Ditto for "before you allocate an object that should live in that realm")
+
+[11:00:38.0629] <davidj361>
+I'm trying to avoid having to declare JSAutoRealm for each time I want to execute code and keep it encapsulated though
+
+[11:00:45.0399] <davidj361>
+to make it more friendly to a user lets say
+
+[11:00:57.0602] <davidj361>
+i'm thinking at this point I have to pass a function pointer or something like so
+
+[11:02:04.0286] <davidj361>
+if I cannot encapsulate and hide away JSAutoRealm, I might as well not encapsulate at all
+
+[11:02:20.0334] <davidj361>
+ * if I cannot encapsulate and hide away JSAutoRealm, I might as well not encapsulate anything at all
+
+[11:03:08.0047] <davidj361>
+also i'm planning to have multithreaded with a context for each thread
+
+[11:05:03.0722] <davidj361>
+One use case lets say is having a class that initializes SpiderMonkey, holds JSContext, global, and everything. Where I'm testing this class in a Unit Test where another parallel class has SpiderMonkey code but only requires a `JSContext*`
+
+[11:05:24.0966] <davidj361>
+Like a binding generator class vs a SpiderMonkey wrapper
+
+[11:05:31.0920] <davidj361>
+ * Like a binding generator class vs a SpiderMonkey wrapper class
+
+[11:06:17.0195] <davidj361>
+which is why I'm having this dilemma of trying to encapsulate everything and deal with things not having to have hardcoded statements of JSAutoRealm everywhere
+
+[11:08:03.0665] <iain>
+If you [look at searchfox](https://searchfox.org/mozilla-central/search?q=symbol:T_JSAutoRealm&redirect=false), there are a *lot* of places where Gecko uses JSAutoRealm
+
+[11:10:12.0229] <iain>
+That doesn't necessarily mean it's impossible to write some sort of API that does all the realm entry/exit automatically, but if there were a simple way to avoid this, we would likely have done it by now
+
+[11:10:45.0023] <iain>
+Writing efficient C++ code to interact with a dynamic garbage-collected language has some inherent complexity
+
+[13:02:50.0704] <ptomato>
+Well you can have an embedding that only has one realm... I assume that's the case they're taking about
+
+[13:29:38.0590] <kfjvj>
+Is there a way to register a single global object with a context so that we can do something like "JSGetGlobal(ctx)" or something similar?
+
+[13:31:47.0091] <iain>
+kfjvj: Like [this](https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#1170)?
+
+[13:55:16.0406] <kfjvj>
+THERE it is.  Thanks.
+
+
+2022-11-26
+[17:09:40.0531] <buildhell>
+hi, having some trouble with spidermonkey js shell --enable-coverage build, what information do i need to provide? im just looking to be able to use lcov and working with the mach tool
+
+[07:40:56.0467] <buildhell>
+16 people 😂
+
+[08:57:46.0916] <sfink|pto>
+buildhell: a randomly chosen [CI ccov log file](https://firefoxci.taskcluster-artifacts.net/NlJpqBudSUassUvI_ekIfQ/0/public/logs/live_backing.log) points to browser/config/mozconfigs/linux64/code-coverage-opt which points to browser/config/mozconfigs/linux64/code-coverage which lists a bunch of relevant-looking options.
+
+[08:58:02.0782] <sfink|pto>
+(I don't know the actual answer, I'm just digging)
+
+[08:59:16.0013] <sfink>
+but you can post the mozconfig file you're using
+
+[09:02:56.0874] <sfink>
+[the docs](https://firefox-source-docs.mozilla.org/tools/code-coverage/index.html#creating-your-own-coverage-build) seem to basically say to use `--enable-coverage --disable-sandbox`, and copy the rest of the options from the code coverage mozconfig file for your platform
+
+
+2022-11-28
+[02:20:28.0665] <nbp>
+> <@sfink:mozilla.org> [the docs](https://firefox-source-docs.mozilla.org/tools/code-coverage/index.html#creating-your-own-coverage-build) seem to basically say to use `--enable-coverage --disable-sandbox`, and copy the rest of the options from the code coverage mozconfig file for your platform
+
+AFAIK, `--disable-sandbox` has not effect on the JS shell.
+
+[02:26:37.0272] <nbp>
+buildhell: Are you looking at profiling SpiderMonkey C++ code, or at profiling JavaScript code executed with SpiderMonkey? 
+For the later, there is no specific compilation option. Code Coverage is part of our JIT optimizations, and therefore enabled by default.
+There is the command line `--code-coverage` to enable it always, and the environment variable `JS_CODE_COVERAGE_OUTPUT_DIR` to specify the directory in which the LCov output would be spew on successful termination of the program.
+
+[07:36:26.0028] <davidj361>
+Having issues with putting the global on a `JS::Heap<JSObject*>` inside a wrapper where I do `JS::Rooted<Wrapper>`.
+> error: no matching function for call to ‘JS::Heap<JSObject*>::Heap(JSContext*&, JSObject*)
+
+[07:36:57.0867] <davidj361>
+ * Having issues with putting the global on a `JS::Heap<JSObject*>` inside a wrapper where I do `JS::Rooted<Wrapper>`.
+
+> error: no matching function for call to ‘JS::Heap\<JSObject\*>::Heap(JSContext\*&, JSObject\*)
+
+`Wrapper(JSContext* ctx) : global(ctx, createGlobal(ctx)) {}`
+
+[07:38:42.0625] <davidj361>
+ * Having issues with putting the global on a `JS::Heap<JSObject*>` inside a wrapper where I do `JS::Rooted<Wrapper> wrapper(ctx);`.
+
+> error: no matching function for call to ‘JS::Heap\<JSObject\*>::Heap(JSContext\*&, JSObject\*)
+
+`Wrapper(JSContext* ctx) : global(ctx, createGlobal(ctx)) {}`
+
+[07:41:59.0482] <davidj361>
+Would I just need to do: `Wrapper(JSContext* ctx) : global(createGlobal(ctx)) {}` as it's not a `JS::RootedObject`?
+
+[07:43:04.0063] <davidj361>
+Also once I root my wrapper it's saying I have no access to its public variables, so not sure how I can access global inside wrapper afterwards.
+
+[08:19:19.0091] <davidj361>
+Like do I have to use `JS_CallFunctionValue` and such on the Wrapper?
+
+[08:19:54.0273] <davidj361>
+ * Like do I have to use `JS_CallFunctionName` and such on the Wrapper?
+
+[08:21:57.0713] <davidj361>
+ * Like do I have to use `JS_CallFunctionName`, `JS_GetProperty`, and such on the Wrapper?
+
+[08:29:21.0942] <rickh2099>
+I'm new. Hello!
+
+[08:30:01.0455] <rickh2099>
+How does the Spidermonkey code "link" into the Firefox code? Is it a library import or is there a copy of Spidermonkey code in the Firefox repo that I can't find?
+
+[08:32:18.0023] <davidj361>
+> <@stormshadow:mozilla.org> How does the Spidermonkey code "link" into the Firefox code? Is it a library import or is there a copy of Spidermonkey code in the Firefox repo that I can't find?
+
+SpiderMonkey is contained within the `js/` directory of the Firefox repo.
+
+[08:32:40.0774] <rickh2099>
+Thanks so much.
+
+[08:37:03.0503] <davidj361>
+rickh2099: also all the exported API is in `js/public`, though not sure if Firefox specifically has direct access to the internals of SpiderMonkey
+
+[09:02:38.0150] <mccr8>
+I think js/src/jsfriendapi.h is mostly used when Firefox needs extra access into SpiderMonkey internals.
+
+[09:16:53.0206] <sfink>
+> <@davidj361:matrix.org> Would I just need to do: `Wrapper(JSContext* ctx) : global(createGlobal(ctx)) {}` as it's not a `JS::RootedObject`?
+
+Yes. The `Heap` constructor doesn't need a `JSContext*`.
+
+[09:24:08.0018] <sfink>
+> <@davidj361:matrix.org> Also once I root my wrapper it's saying I have no access to its public variables, so not sure how I can access global inside wrapper afterwards.
+
+You can call `.get()` to get the pointer out of the `Rooted`. But I'm not sure which public variables you mean? Neither `GlobalObject` nor `JSObject` really expose much directly. So I'm not sure exactly what code you're asking about. If you have a `Rooted<Wrapper>` and want to access a public member of `Wrapper`, you can either do `rootedWrapper.get()->member`, or you can do the fancy thing and specialize `WrappedPtrOperations` for your type to expose things directly.
+
+[09:24:59.0661] <sfink>
+within your Wrapper's method implementations, you would normally use the `Rooted<JSObject*>` or `Rooted<GlobalObject*>` directly in JSAPI calls, letting it autoconvert to `Handle<T>` when passed as a parameter.
+
+[10:08:45.0554] <davidj361>
+Thank you sfink
+
+[10:22:43.0409] <nbp>
+jonco: What does `Live` means in `hasLiveGlobal`?
+
+[10:25:47.0410] <jonco>
+nbp: I read it as being live in the GC sense
+
+[10:26:43.0712] <nbp>
+hum … I am facing one alternative, either I rename everything except the GC use, or I rename the only GC use :/
+
+[10:27:23.0768] <nbp>
+Could Live mean initialized? 🙄
+
+[10:28:29.0819] <jonco>
+I don't think we use live to mean initialised anywhere else
+
+[10:30:44.0041] <jonco>
+your patch is OK, I don't want to block you on it, but that code is pretty obscure and it would be nice to make it clearer
+
+[10:41:40.0407] <nbp>
+ok, I will land the patch as-is.
+
+
+2022-11-29
+[03:12:58.0339] <jonco>
+I think we (re)create byte code and associated GC things on when we delazify, is that correct?
+
+[03:20:30.0205] <nbp>
+That the Stencil instantiation, yes.
+
+[03:20:46.0114] <jonco>
+Thanks
+
+[03:21:09.0230] <nbp>
+ * That's the Stencil instantiation, yes.
+
+[07:38:15.0919] <davidj361>
+What happens when you create a global off another global? Specifically what if you had a Heap<JSObject*> global and created a Rooted global off that?
+
+[08:16:30.0790] <davidj361>
+Also is it possible to bind a bunch of things to a global+context and hand that off to other newly created contexts and globals?
+
+[08:24:53.0167] <mccr8>
+Technically it is possible to sort of move objects between compartments using proxies and brain transplants but it is very complex and you probably want to avoid it.
+
+[08:25:01.0384] <mccr8>
+ * Technically it is possible to sort of move objects between globals using proxies and brain transplants but it is very complex and you probably want to avoid it.
+
+[08:26:37.0625] <mccr8>
+One issue is that you have to update all references to the object that might exist. If they are on another global, then you need to replace the objects with cross compartment wrappers etc.
+
+[09:31:11.0751] <davidj361>
+If I wanted to showcase some spidermonkey code, what would be preferred in sharing it? afaik godbolt.org doesn't offer SpiderMonkey libraries
+
+[09:37:06.0482] <iain>
+davidj361: As in, link to part of the implementation of SM? I would use Searchfox. You can get a permalink to the current version with `y` (or clicking the permalink button on the right)
+
+[09:37:38.0160] <iain>
+(eg here's a [NativeIterator](https://searchfox.org/mozilla-central/rev/670e2e0999f04dc7734c8c12b2c3d420a1e31f12/js/src/vm/Iteration.h#84) permalink)
+
+[09:38:23.0369] <davidj361>
+> <@iain:mozilla.org> davidj361: As in, link to part of the implementation of SM? I would use Searchfox. You can get a permalink to the current version with `y` (or clicking the permalink button on the right)
+
+I made an embedding testcase
+
+[09:39:33.0661] <iain>
+Is it the sort of thing that could/should be added to the list of examples here? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples
+
+[09:40:01.0076] <davidj361>
+It's more that I show encapsulation and I'm worried that I'm breaking a bunch of stuff
+
+[09:40:25.0981] <iain>
+Oh, like you just want to show us some code and see if it makes sense?
+
+[09:40:54.0241] <davidj361>
+yeah, it works but I'm worried there's actually a lot of issues. Basically I kind of violated the stack with JSAutoRealm?
+
+[09:40:59.0721] <davidj361>
+ * yeah, it works but I'm worried there's actually a lot of issues. Basically I kind of violated the stack with JSAutoRealm, possibly
+
+[09:41:56.0861] <iain>
+If it's relatively short, you can embed code into chat messages with triple backticks
+
+[09:42:09.0735] <iain>
+eg here's a testcase:
+```
+function f() {
+	var i = 0;
+	while (i < (this.foo = this.foo ^ 123)) {
+		this.prop = 1;
+	}
+}
+new f();
+f();
+```
+
+[09:42:27.0086] <iain>
+Otherwise, you can just put it up on github or make a gist or something
+
+[09:44:38.0167] <iain>
+(I can't guarantee that any particular person in this chat is going to have time to review all your code in any depth, though, so the more narrowly scoped you can make your question, the more likely it is that we can answer it)
+
+[09:45:28.0465] <davidj361>
+it's not super complex, but it's too long for the chat
+
+[09:45:40.0722] <davidj361>
+at least 2 screens of this chat buffer
+
+[09:46:05.0615] <davidj361>
+i'll try to post a gist/repo later
+
+
+2022-11-30
+[17:17:43.0409] <tcampbell>
+huh.. TIL that you can define out-of-line inner classes in C++. I guess it isn't surprising, but I never realized it actually was allowed.
+```cpp
+class A {
+  class B;
+};
+class A::B {
+  void mtd();
+};
+```
+
+[01:39:07.0390] <arai>
+tcampbell: review ping for bug 1797736
+
+[01:39:09.0356] <botzilla>
+https://bugzil.la/1797736 — ASSIGNED (arai) — eager evaluation fails when inner function uses variable from outside its scope
+
+[08:27:06.0472] <davidj361>
+How is PersistentRooted garbage collected? What happens if a PersistentRooted variable falls out of scope?
+
+[08:27:31.0031] <davidj361>
+Even if it falls out of scope it stays in GC until process exits I hear?
+
+[08:27:48.0667] <davidj361>
+ * Even if it falls out of scope it stays in GC until process exits I assume?
+
+[08:29:20.0800] <sfink>
+a PersistentRooted registers itself with the GC to be traced during the GC, which is what keeps whatever it is holding alive. When it goes out of scope, it unregisters itself. So no, if it goes out of scope, then whatever it was holding will no longer be kept alive (by that PersistentRooted; something else might keep it alive).
+
+[08:34:15.0040] <davidj361>
+Thank you sfink
+
+[08:34:52.0561] <davidj361>
+Reading that it sounds like PersistentRooted works very similarly to Rooted which I find confusing
+
+[08:34:59.0062] <davidj361>
+ * Reading that, it sounds like PersistentRooted works very similarly to Rooted which I find confusing
+
+[08:35:54.0103] <sfink>
+we could call `Rooted` something like `TemporaryOnStackRooted`, but it's used a lot more. ;-)
+
+[08:36:39.0732] <davidj361>
+> But note that JS::PersistentRooted in a struct or class is a rather dangerous thing to use — it will keep a GC thing alive, and most GC things end up keeping their global alive, so if your class/struct is reachable in any way from that global, then nothing will ever be cleaned up by the GC.
+
+Is this meant for binded classes/structs? Or just general encapsulation of PersistentRooted variables in classes/structs?
+
+[08:37:46.0224] <sfink>
+`PersistentRooted` pretty much *is* the same as `Rooted`, but yes, it can be used in structs, on the heap, and doesn't need to be destructed in LIFO order.
+
+[08:40:53.0400] <sfink>
+it's good for things like the global root of a whole object graph, and makes a more convenient alternative to registering a callback for tracing the initial entry points into an embedding's graph.
+
+[08:46:46.0052] <jonco>
+sfink: piing
+
+[12:11:59.0889] <laurencerowe>
+Hi, I'm seeing `InternalError: too much recursion` when running my script with the spidermonkey js.wasm (mozilla-release branch) under either wasmtime or through the SpiderMonkey WASI demo site. The script works fine when using native spidermonkey js cli (installed through Mac homebrew.) Is there a way to increase the recursion limit for the wasi version of spidermonkey?
+
+[12:17:21.0360] <tcampbell>
+laurencerowe: https://searchfox.org/mozilla-central/source/js/public/RootingAPI.h#1039
+
+[12:17:59.0974] <tcampbell>
+for the WASI stuff, it counts frames rather than bytes (since WASM call stack is virtual and directly accessible from code)
+
+[12:21:59.0187] <laurencerowe>
+> <@tcampbell:mozilla.org> for the WASI stuff, it counts frames rather than bytes (since WASM call stack is virtual and directly accessible from code)
+
+100 is rather low (Python's default stack depth is 1000). Is it worth filing a bug? My script is calling React to server render some html.
+
+[12:22:38.0617] <tcampbell>
+filing a bug and giving this sort of context is useful
+
+[12:51:55.0148] <laurencerowe>
+Created https://bugzilla.mozilla.org/show_bug.cgi?id=1803438
+
+[13:49:24.0956] <laurencerowe>
+> <@laurencerowe:mozilla.org> Created https://bugzilla.mozilla.org/show_bug.cgi?id=1803438
+
+Given `wasiRecursionDepthLimit` is a constant used in only one place I was able to find it in the WAT and change it. My script required it be at least 221. Details added to bug report.
+
+[14:30:23.0624] <tcampbell>
+thanks for testing that
+
+[14:31:21.0747] <laurencerowe>
+thanks for pointing me to the relevant code!
+

@@ -1,0 +1,2412 @@
+2023-11-01
+[08:22:56.0178] <Redfire>
+Is there any meaningful perf difference between rooting and stuffing something in a globally traced set on the heap via `JS_AddExtraRootsGCTracer`
+
+[08:23:39.0623] <Redfire>
+* Is there any meaningful perf difference between rooting on the stack and stuffing something in a globally traced set on the heap via 
+JS_AddExtraRootsGCTracer
+
+[08:57:28.0108] <jonco>
+Redfire: Probably not. It depends on exactly what you're doing of course, but I'd suggest using stack rooting unless you have evidence that this is a problem.
+
+[09:01:08.0807] <Redfire>
+Stack rooting is definitely recommended, but I feel like making it easy to use is more important in my case
+
+[09:08:46.0609] <Redfire>
+Also I saw servo seems to take the latter approach
+
+[09:12:16.0920] <jonco>
+That may be due to servo being written in rust (I don't remember the exact issue) rather than anything performance related
+
+[09:13:07.0710] <jonco>
+If adding an extra roots tracer is easier in your case then do that
+
+[09:13:11.0130] <Redfire>
+I figured it'd be on par or slightly worse, I didn't think it'd would be better
+
+[09:14:56.0802] <Redfire>
+Currently, I have some very fancy shenanigans with rooting on the heap so it LIFOs correctly, which is probably harder to maintain
+
+[09:21:48.0791] <jonco>
+If your roots are not added/removed in LIFO order then stack rooting will not be a good fit.
+
+[09:26:00.0736] <Redfire>
+I mostly forced that just so I could return safely without out params.
+selfish yes, but it's important on my part to be easy to use
+
+[12:46:36.0955] <aadhi0319>
+Is a runtime always paired with the same context or does this change? If it does change, where can I find when the context of a runtime changes? Thanks!
+
+[13:28:26.0101] <mgaudet>
+aadhi0319: The main thread context for a runtime is always the same; I don't think we expose helper threads to embeddings but they have (had?) a more complicated story around JSContexts. Workers / if you build something like workers probably also has a complicated story
+
+
+2023-11-02
+[12:26:10.0230] <jlink>
+How do I run jsapi-tests locally? I want to run testAvlTree.cpp, which seems to be part of jsapi-tests, but I can't figure out how to run them.
+https://searchfox.org/mozilla-central/source/js/src/jsapi-tests/README says to run a 'jsapi-tests' executable but I don't seem to have that executable.
+mach can also be run with 'jsapi-tests' as the first parameter but that also fails due to _some file_ not being about to be found.
+
+[12:26:58.0437] <jlink>
+I have run ./mach build first.
+
+[12:30:16.0070] <jonco>
+jlink: there should be dist/bin/jsapi-tests in your build directory
+
+[12:31:04.0384] <jlink>
+jonco: What produces that? Should that come from ./mach build?
+
+[12:32:18.0797] <jlink>
+I have a bunch of "Test*.exe" files in there, but no jsapi-tests executable.
+
+[12:34:04.0423] <jonco>
+yes, from mach build
+
+[12:36:25.0205] <jonco>
+what does your mozconfig file look like?
+
+[12:39:31.0881] <jlink>
+Well that formatting was unfortunate. 😄
+
+[12:39:49.0142] <jlink>
+ac_add_options --enable-application=browser
+ac_add_options --enable-jitspew
+
+[12:42:28.0480] <jonco>
+You can try adding: ac_add_options --enable-js-shell
+
+[12:43:25.0278] <jonco>
+Usually I build the shell only rather than the browser with: ac_add_options --enable-application=js
+
+[12:45:54.0494] <jlink>
+That makes a bit of sense - thanks for the suggestions. I will try those out now.
+
+[13:37:16.0495] <sfink>
+maybe you need `ac_add_options --enable-tests`
+
+[15:13:07.0115] <jlink>
+So far it looks like adding ac_add_options --enable-js-shell has gotten me what I need! (At least "./mach jsapi-tests" looks like it's running tests instead of reporting a missing file.)
+
+
+2023-11-03
+[21:08:32.0255] <Redfire>
+Not quite sure I get but I want to check if all latin-1 strings are guaranteed to be between 0x00<char<0xFF and in utf-16 strings, there'll always be at least one u16 codepoint > 0xFF
+
+[21:39:21.0969] <arai>
+I'm not sure if I understand the sentence, but we call single byte `0x00`-`0xFF` range as "Latin1" in API, and that range directly maps to `\u0000`-`\u00FF` range in UTF-16 ("TwoBytes" in API)
+
+[22:02:23.0147] <Redfire>
+1. Can a TwoByte string ever have only `0x00`-`0xFF` bytes (but not stored as Latin1)?
+2. Will all TwoByte strings have at least one codepoint greater than `0xFF` (I'm confused about surrogates) 
+
+[22:02:58.0384] <Redfire>
+* Can a TwoByte string ever have only 0x00-0xFF bytes (but not stored as Latin1)?
+Will all TwoByte strings have at least one codepoint greater than 0xFF (I'm confused about surrogates basically)
+
+
+[22:03:10.0008] <Redfire>
+* 1. Can a TwoByte string ever have only 0x00-0xFF bytes (but not stored as Latin1)?
+
+2. Will all TwoByte strings have at least one codepoint greater than 0xFF (I'm confused about surrogates basically)
+
+[22:03:15.0047] <Redfire>
+* Can a TwoByte string ever have only 0x00-0xFF bytes (but not stored as Latin1)?
+Will all TwoByte strings have at least one codepoint greater than 0xFF (I'm confused about surrogates basically)
+
+
+[22:09:53.0109] <arai>
+oh, I think I understand the question.  being `TwoBytes` string doesn't guarantee that there's non-latin1 in the string content.  ASCII-only string can also be represented as `TwoBytes` string
+
+[22:12:31.0290] <arai>
+if you're looking into specific API, it can have more rules (such as, it tries to use minimal representation, it always use TwoBytes, etc)
+
+[22:13:11.0023] <arai>
+which API or struct are you thinking about?
+
+[22:18:19.0108] <arai>
+also, what do you mean with surrogates?  is it about the surrogate pair (`\uD800`-`\uDFFF`)?
+
+[22:30:40.0252] <Redfire>
+> <@arai:mozilla.org> if you're looking into specific API, it can have more rules (such as, it tries to use minimal representation, it always use TwoBytes, etc)
+
+Currently, I'm working on atob/btoa, since it operates on codepoints between 0x00 and 0xFF
+
+[22:31:27.0344] <Redfire>
+and also possibly looking at webidl's `ByteString`, though not yet
+
+[22:32:30.0213] <arai>
+which `atob` implementation?  is it in your embedding?
+
+[22:32:44.0492] <Redfire>
+In my embedding yes
+
+[22:34:20.0870] <arai>
+is the context that you're trying to implement `atob`, and now you're looking at how to extract or generate JSString data there?
+
+[22:34:43.0934] <Redfire>
+Extraction is the concern
+
+[22:36:11.0730] <arai>
+okay, so, the question is that "whether the underlying representation of `JSString` passed to `atob` can always be Latin1 or not" ?
+
+[22:38:54.0590] <Redfire>
+for encoding purposes, I want Latin1 (since its a byte sequence), I was wondering if I could just error on non-Latin1 strings which makes the implementation much easier
+
+[22:39:20.0762] <arai>
+in general we don't assume the underlying representation when operating on strings, but write a template function which can operate on both, and branch on "has-latin1" condition (`JS::StringHasLatin1Chars` in the API)
+
+[22:40:09.0407] <arai>
+example in [BindingUtils.h](https://searchfox.org/mozilla-central/rev/99a9eed20cf195b8ff815604876b6fb73ca5ecd7/dom/bindings/BindingUtils.h#1385)
+
+[22:41:50.0990] <Redfire>
+Vaguely related: Does the case where a TwoByte has only Latin1 characters have to do with subslicing a TwoByte string that originally had non-Latin1 characters?
+
+[22:45:08.0410] <arai>
+yeah, it can create a JSDependentString that points the original TwoBytes string
+
+[22:45:30.0804] <arai>
+if you have SpiderMonkey shell, you can use `dumpStringRepresentation` function to investigate the string representation
+
+[22:47:18.0663] <arai>
+anyway, unless you can guarantee that the `atob` input always comes *directly* from the `btoa` (that always uses latin1), I'd suggest supporting both latin1 and twobytes as input for `atob`
+
+[22:48:48.0405] <Redfire>
+I definitely will, I was mostly just checking if I needed to
+
+[09:37:47.0447] <sfink>
+the string creation functions will normally scan the string to check whether it's latin1, but there are "...DontDeflate" variants (eg `JS::NewStringCopyNDontDeflate` and `JS_NewUCStringDontDeflate`) that will always produce a TwoBytes string. So generally speaking, no you can't assume TwoByte strings are not latin1, not even if you ignore dependent strings.
+
+[10:25:54.0888] <smaug>
+I assume https://searchfox.org/mozilla-central/rev/8acfbe4ba09b46b91c862dc2fbc064d4fc1bac9a/js/public/MapAndSet.h#62-63 sets rval to true if something was deleted?
+
+[10:42:37.0891] <jandem>
+smaug: yes
+
+[12:49:46.0512] <tjr>
+I have a bit of a puzzle I am trying to figure out, relating to JSScript/Stencil initialization, if anyone would like to investigate - I'm not getting far myself.  The puzzle is basically that at a certain point we are observing that the filename associated with a ScriptSourceObject is mangled - it's been bit flipped probably due to faulty hardware.  But what we don't know if this is going to cause problems further down execution, or if at this point the filename is just a peice of metadata we're carrying around but not using for any real purpose. https://bugzilla.mozilla.org/show_bug.cgi?id=1859046#c2
+
+[14:30:42.0307] <tcampbell>
+We do use the filename for things like the debugger, for error stacks in JS, etc. For some system js (which may be in your set of resource:// urls), there are cases where we fetch the source from the onmi.ja_ again and that would explode. So I guess there are a few cases were bad things will happen after that bit flip, but I don't believe we expect and immediate and spectacular demise of the process. If your question is essentially: "will failing on 'pesource://' urls cause more harm than allowing them?" then the answer is probably that process is better off being killed off
+
+[14:30:49.0812] <tcampbell>
+ * tjr: We do use the filename for things like the debugger, for error stacks in JS, etc. For some system js (which may be in your set of resource:// urls), there are cases where we fetch the source from the onmi.ja\_ again and that would explode. So I guess there are a few cases were bad things will happen after that bit flip, but I don't believe we expect and immediate and spectacular demise of the process. If your question is essentially: "will failing on 'pesource://' urls cause more harm than allowing them?" then the answer is probably that process is better off being killed off
+
+[14:56:42.0536] <tjr>
+Hm.  I wish I had some idea about whether or not these users had a mostly functioning Firefox and it crashed occasionally; or if it basically never works for them, so no worries 
+
+[16:43:22.0969] <smaug>
+Anyone knows what jsreftests are? What do they actually run, is it whole Gecko + Spidermonkey or just js shell or something?
+
+[16:45:33.0890] <smaug>
+and in which process are those tests run?
+
+[16:47:06.0327] <arai>
+jsreftest is [jstest](https://searchfox.org/mozilla-central/source/js/src/tests) running on the reftest harness
+
+[16:47:29.0472] <arai>
+ * to my understanding, jsreftest is [jstest](https://searchfox.org/mozilla-central/source/js/src/tests) running on the reftest harness
+
+[16:47:58.0532] <arai>
+(maybe I'm wrong)
+
+[16:48:34.0720] <smaug>
+ah, based on a log that seems to be the case, thanks
+
+
+2023-11-04
+[03:16:39.0148] <arai>
+uh, I bumped into a trouble around macro from windows headers again.  last time it was `small`, and this time it's `near` :/
+
+[03:17:33.0477] <arai>
+apparently other people also bump into it https://searchfox.org/mozilla-central/rev/5c171edc46302ca76dcbccf6b308b476701ed474/dom/system/nsDeviceSensors.cpp#35
+```cpp
+#undef near
+```
+
+[12:08:35.0960] <jrmuizel>
+it seems like we mess up the the line number information when we do inlining in Ion. Anyone have suggestions for where in the code this might be happening?
+
+[12:51:17.0227] <jrmuizel>
+seems like here: `js::jit::WarpBuilder::buildInline`
+
+[12:55:39.0942] <iain|pto>
+jrmuizel: The top level of a compilation is done in `WarpBuilder::build`, and inlined compilations go through `WarpBuilder::buildInline`. That said, the bulk of the work in both cases is done in [WarpBuilder::buildBody](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#614), which is used in both paths. That's where we currently do the [line number tracking](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.cpp#673).
+
+[12:56:36.0078] <jrmuizel>
+iain|pto: yeah, in my case, I want to use the line number information from the caller
+
+[12:56:57.0984] <jrmuizel>
+so `current->updateTrackedSite(newBytecodeSite(loc));` will put the wrong stuff there
+
+[12:59:34.0223] <iain|pto>
+The [BytecodeSite](https://searchfox.org/mozilla-central/source/js/src/jit/InlineScriptTree.h#106) knows that it's inlined, and where. (See also [InlineScriptTree](https://searchfox.org/mozilla-central/source/js/src/jit/InlineScriptTree.h#24)). The information you want is available, we just have to dump it differently.
+
+[12:59:48.0626] <jrmuizel>
+ah
+
+[13:00:34.0225] <jrmuizel>
+iain|pto: so I just need to walk up the InlineScriptTree until I'm at the parent and use that when dumping instead?
+
+[13:01:11.0414] <iain|pto>
+jrmuizel: That sounds like it should work, yeah.
+
+
+2023-11-05
+[17:35:48.0871] <jrmuizel>
+iain: that worked. I now have src level profiles of react's `jsx()` in SM and JSX that mostly make sense.
+
+[17:36:02.0283] <jrmuizel>
+ * iain: that worked. I now have src level profiles of react's `jsx()` in SM and JSC that mostly make sense.
+
+[17:36:10.0969] <jrmuizel>
+We spend a lot more time in `!RESERVED_PROPS.hasOwnProperty(propName)` then JSC does
+
+[18:06:29.0013] <jrmuizel>
+probably because of their hasownproperty cache: https://bugs.webkit.org/show_bug.cgi?id=161708
+
+[18:06:44.0417] <jrmuizel>
+do we have anything like that?
+
+[06:16:27.0114] <jandem>
+for us `hasOwnProperty` calls a tiny self-hosted function that uses an IC for this that's very similar to how we handle `in`
+
+
+2023-11-06
+[05:44:54.0553] <mccr8>
+> <@arai:mozilla.org> uh, I bumped into a trouble around macro from windows headers again.  last time it was `small`, and this time it's `near` :/
+
+There's some kind of windows.h wrapper mechanism we have but I'm not sure how it works or if it is used in the shell. https://searchfox.org/mozilla-central/search?q=windows-h-&path=
+
+[05:47:44.0014] <arai>
+is it for creating a subset of `windows.h` ?
+
+[05:48:40.0120] <arai>
+err, I guess I misread
+
+[05:50:18.0575] <arai>
+does it allow performing `#undef small` in all `#include <windows.h>` consumer in tree?
+
+[05:51:30.0015] <arai>
+if it's possible, I'd like to move all `#undef small`, `#undef near`, `#undef far` into the wrapper
+
+[05:51:49.0110] <arai>
+(and possibly some more, if there's any problematic macro)
+
+[05:53:21.0730] <mccr8>
+I'm not sure. You'd need to track down somebody who worked on it.
+
+[05:54:05.0458] <arai>
+okay, thanks :)
+
+[05:54:18.0882] <mccr8>
+It looks like it is allowlist based so I'd think random stuff like small and far wouldn't be in there so I don't know.
+
+[06:12:27.0327] <arai>
+I've tried putting those undefs in the wrapper, and it's indeed effective, but it unfortunately breaks other windows-related headers that depends on `far` macro :/
+
+[06:16:10.0688] <arai>
+so, looks like those undefs cannot be inside the wrapper for `windows.h` itself
+
+[06:18:49.0579] <mccr8>
+Ah that's too bad.
+
+
+2023-11-07
+[03:33:48.0642] <arai>
+jonco: hi, thank you for your comment on bug 1863467.  now I'm wondering, how should I think about the static data when talking about memory consumption?
+
+[03:33:51.0129] <botzilla>
+https://bugzil.la/1863467 — NEW (nobody) — Can permanent atoms zone and table be stored as static data?
+
+[03:35:40.0408] <arai>
+if a static data (such as `WellKnownAtomInfo` array [here](https://searchfox.org/mozilla-central/rev/e94bcd536a2a4caad0597d1b2d624342e6a389c4/js/src/vm/WellKnownAtom.h#40-44,46)) is loaded (mmaped, maybe?), is it treated in the same way as things dynamically allocated on heap?
+
+[03:36:11.0872] <jonco>
+arai: oh hey, was just writing a followup comment
+
+[03:38:29.0198] <jonco>
+I was thinking that not all systems mmap executables - in particular I don't know if Android does (IIRC you can't map some times of flash storage)
+
+[03:39:48.0842] <nbp>
+https://bugzil.la/1863347 🎉
+
+[03:41:38.0627] <jonco>
+> <@arai:mozilla.org> if a static data (such as `WellKnownAtomInfo` array [here](https://searchfox.org/mozilla-central/rev/e94bcd536a2a4caad0597d1b2d624342e6a389c4/js/src/vm/WellKnownAtom.h#40-44,46)) is loaded (mmaped, maybe?), is it treated in the same way as things dynamically allocated on heap?
+
+treated the same in which way?
+
+[03:42:27.0004] <jonco>
+storing atom data in the executable should work, except it's tricky as you noted because of alignment and ensuring the data structures match
+
+[03:43:39.0900] <arai>
+I mean, is there any difference between "having 100kB of static data" vs "malloc 100kB data and fill it", in term of how it affects memory consumption?
+
+[03:45:21.0473] <jonco>
+I'm not sure there is.  It has to live in pysical RAM somewhere.
+
+[03:46:24.0374] <arai>
+okay, then moving JSAtom into static data itself doesn't impact the memory consumption
+
+[03:46:51.0784] <arai>
+the remaining thing is that we can remove the source data (`WellKnownAtomInfo`) from the binary
+
+[03:47:28.0780] <arai>
+it has length, hash, and the text content.  all of them can be moved to JSAtom itself (or referred buffer)
+
+[03:49:03.0765] <jonco>
+So looking up an atom would just index into the zone somehow? 
+
+[03:50:02.0739] <jonco>
+That's not trivial - there are different kinds of atom (FAT_INLINE_ATOM and plain ATOM)
+
+[03:50:53.0174] <jonco>
+One other issue is that the GC currently decommits unused parts of chunks. I don't know if that would be possible with a static chunk that was part of the binary.
+
+[03:52:16.0338] <jonco>
+ * So looking up an well known atom would just index into the zone somehow? 
+
+[03:52:38.0701] <arai>
+I was thinking that the lookup part remains same, except that the table points is also statically allocated and the table's field points the static data (maybe with pointer, or maybe offset)
+
+[03:53:03.0873] <arai>
+yeah, I was looking into the commit/decommit part and that seems to be problematic with static data
+
+[03:53:15.0231] <jonco>
+Aha, yes that would work
+
+[03:54:13.0450] <arai>
+does GC modify the atom zone data after `freezeSharedAtomsZone` ? https://searchfox.org/mozilla-central/rev/e94bcd536a2a4caad0597d1b2d624342e6a389c4/js/src/vm/JSAtomUtils.cpp#311
+```cpp
+if (!gc.freezeSharedAtomsZone()) {
+```
+
+[03:54:51.0992] <jonco>
+it does not
+
+[03:55:01.0499] <arai>
+if the modification happens only before that, we *could* generate the corresponding flags bits statically
+
+[03:55:18.0211] <arai>
+(it would be very complex tho...)
+
+[03:55:59.0875] <jonco>
+do you mean the mark bits or something else? 
+
+[03:57:03.0774] <arai>
+the zone's fields, arena's fields, chunk's field, and the actual JSAtom fields
+
+[03:57:22.0308] <arai>
+(it's first time looking into this parts.  maybe I'm missing something)
+
+[03:58:19.0933] <jonco>
+arena and chunk - these would be part of the static data and would have to be pre-generated
+
+[03:58:31.0531] <jonco>
+zone - would could set this up dynamically
+
+[03:58:59.0035] <jonco>
+ * arena, chunk and atom - these would be part of the static data and would have to be pre-generated
+
+[03:59:23.0774] <jonco>
+do you know how you would make the chunk aligned if it was part of the binary?
+
+[04:00:55.0832] <arai>
+I've experimented with `alignas` on a struct, and I get aligned pointer, even with `alignas` with 1MB
+
+[04:03:05.0026] <jonco>
+Nice!
+
+[04:03:25.0315] <jonco>
+Might be worth check that all toolchains support that
+
+[04:03:59.0453] <arai>
+yeah, I've tested on clang, but not on others. I'll check
+
+[05:37:31.0534] <yulia>
+I have a stupid question that will probably be more expedient to ask than to test (the build is taking a while): If i remember correctly, if we have the following html page:
+
+```
+<script src="./myjs.js">
+<script src="./myjs.js">
+```
+it should only load once. 
+If we have a nonce, (and this is where I am not sure) it should still only load once?
+```
+<script src="./myjs.js" nonce="1">
+<script src="./myjs.js" nonce="2">
+```
+
+[06:06:46.0888] <zcorpan>
+yulia: the memory cache and the reuse-ongoing-fetches behavior that browsers implement is not specified yet. See https://github.com/whatwg/fetch/issues/1400 , https://github.com/whatwg/html/issues/2465
+
+[06:08:06.0141] <zcorpan>
+yulia: I'm not aware of `nonce` affecting the fetching though
+
+[06:13:45.0651] <yulia>
+Thanks, that explains why I wasn't able to find it in the spec, but that the code expects single loads per urls
+
+[06:14:58.0590] <yulia>
+We have a bug that results from a double loading of a tracked url: https://bugzilla.mozilla.org/show_bug.cgi?id=1849519
+
+[06:15:23.0818] <yulia>
+One thought I have is: we should probably decouple this from the scriptLoadContext
+
+[06:17:09.0855] <yulia>
+but, on the other hand, we shouldn't be loading this file twice anyway, and it looks like there is a race condition. I think that race might occur somewhere upstream, maybe here? https://searchfox.org/mozilla-central/source/dom/script/ScriptElement.cpp#126
+
+[06:17:27.0676] <yulia>
+I haven't gotten that far yet, I just wanted to make sure my expectation was correct
+
+[06:24:47.0560] <yulia>
+hm, my pernosco session seems to be down for now
+
+[07:57:33.0195] <mccr8>
+> <@arai:mozilla.org> okay, then moving JSAtom into static data itself doesn't impact the memory consumption
+
+Read only static data that does not contain pointers reduces memory usage, because the same memory can be used for all processes. With Fission, we have a large number of processes. If it does contain pointers, then it has to deal with the memory living at different addresses in different processes. I think maybe on Windows you'll still save memory but not Linux or MacOS. Unless the fork server is in use and then maybe?
+
+[07:58:58.0781] <mccr8>
+You can try AWSY base to measure content process overhead. In about:memory terms, static pointerless data will continue to use resident (and thus address space) but not resident-unique.
+
+[08:21:17.0692] <jonco>
+mccr8: good point!
+
+[08:22:08.0626] <jonco>
+In this case, we probably need to put a pointer to the zone in arenas in the static data.
+
+[08:22:49.0160] <jonco>
+(I say probably because maybe nothing reads the zone from permanent atoms... so maybe we could get away without?  but this is getting pretty fragile and hacky)
+
+[11:55:18.0874] <jrmuizel>
+iain: We see a hasOwnProperty IonIC under `shallowEqual` on react. But objB is monomorphic (the shape is always the same). Why would this be?
+
+[11:59:31.0132] <iain>
+jrmuizel: I would guess it's because there are 2-6 distinct properties being checked. We attach a different stub per-property. If there were more than 6, then we would transition to megamorphic mode and attach a megamorphic hasprop.
+
+[12:00:04.0858] <jrmuizel>
+there are three distinct properties being checked
+
+[12:00:38.0814] <iain>
+Right, makes sense.
+
+[12:01:53.0505] <iain>
+With 3 properties, it's likely that the Ion IC chain is faster than looking it up in the megamorphic property cache.
+
+[15:45:39.0968] <arai>
+okay, so I should be careful not to put pointers when creating large static data.  that applies also to the current prototype of the atomization patch stack, and also the current m-c, which uses an array of (length,hash,pointer) ([WellKnownAtomInfo](https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/WellKnownAtom.h#46)), and rewriting it to use index would reduce the total memory consumption with multiple processes
+
+
+2023-11-08
+[16:02:21.0582] <mccr8>
+> <@arai:mozilla.org> okay, so I should be careful not to put pointers when creating large static data.  that applies also to the current prototype of the atomization patch stack, and also the current m-c, which uses an array of (length,hash,pointer) ([WellKnownAtomInfo](https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/WellKnownAtom.h#46)), and rewriting it to use index would reduce the total memory consumption with multiple processes
+
+Yeah, for the XPIDL static data we tried to be careful to use integer indices etc everywhere to avoid pointers.
+
+[16:02:41.0702] <mccr8>
+On Linux, there's some kind of utility you can run to look up whether the static data is rodata or whatever.
+
+[16:03:21.0334] <mccr8>
+Glandium's blog post from a decade ago is also kind of relevant, though it is mostly talking about strings. https://glandium.org/blog/?p=2361
+
+[16:03:36.0517] <arai>
+thanks! I'll look into them
+
+[01:17:04.0153] <padenot>
+Hi folks, have we done changes to the GC or CC or that kind of thing recently? We're seeing **horrible** performance on `chat.m.o` on recent nightlies, but not slightly older nightlies
+
+[01:18:19.0536] <padenot>
+a typical profile looks like this: https://share.firefox.dev/3sqxuPj, see the process called `mozilla.org` (which is `chat.m.o`), main thread, after the 26s mark
+
+[01:18:57.0834] <padenot>
+maybe it's them that are doing something weird, but strangely I'm typing this from an older nightly, I can't repro
+
+[02:06:26.0823] <jandem>
+smaug, jonco : that profile ^ does show quite a lot of CC/GC time. Could it be the scheduling changes?
+
+[02:14:39.0090] <jonco>
+That's mostly CC time.  I can't see any recent changes that are immediately suspicious.
+
+[02:16:18.0334] <jonco>
+padenot: any idea of a date range?
+
+[02:39:49.0216] <smaug>
+padenot: what is "recent" here?
+
+[02:41:01.0071] <smaug>
+padenot: That feels like a leak somewhere
+
+[02:44:31.0279] <smaug>
+(that is what long GC or CC times usually are)
+
+[02:48:21.0985] <fncf0x>
+Hey, am new into browser hacking, i would like to have fun on spidermonkey any good ideas where to start ? (my goals is to debug API calls and origin source code ....etc) already did on V8 but wat some fun here ! thanks 
+
+[02:50:24.0335] <smaug>
+padenot: I could take a look at the gc/cc logs if you generate them from about:memory when you see the issue
+
+[02:51:47.0487] <arai>
+fncf0x: Hi again :)  if you haven't yet setup the development environment, try following this document https://firefox-source-docs.mozilla.org/js/build.html
+
+[02:53:33.0136] <arai>
+if you've already done that, then the next step is to look for a bug to work on.  https://codetribute.mozilla.org/languages/c++ lists bugs suitable for newcomer, and bugs with "Project" = "JavaScript Engine*" is for SpiderMonkey
+
+[02:55:52.0498] <arai>
+ * if you've already done that, then the next step is to look for a bug to work on.  https://codetribute.mozilla.org/languages/c++ lists bugs suitable for newcomer, and bugs with "Project" = "JavaScript\*" is for SpiderMonkey
+
+[02:56:28.0425] <arai>
+also, if you have any specific area that you want to look into, let us know
+
+[02:58:16.0143] <jandem>
+smaug: bug 1863491 looks similar and has a regression range
+
+[02:58:17.0391] <botzilla>
+https://bugzil.la/1863491 — UNCONFIRMED (nobody) — twitter grinds to a halt
+
+[02:59:29.0501] <smaug>
+Hmm, is it somehow the same as https://bugzilla.mozilla.org/show_bug.cgi?id=1863104
+
+[02:59:46.0957] <fncf0x>
+> <@arai:mozilla.org> if you've already done that, then the next step is to look for a bug to work on.  https://codetribute.mozilla.org/languages/c++ lists bugs suitable for newcomer, and bugs with "Project" = "JavaScript\*" is for SpiderMonkey
+
+thanks ! 
+
+[02:59:52.0220] <fncf0x>
+> <@arai:mozilla.org> also, if you have any specific area that you want to look into, let us know
+
+alright !
+
+[03:00:54.0584] <padenot>
+smaug: I can do that. I'm thinking maybe 2-3 days? I'm not always good at updating my nightly
+
+[03:02:02.0551] <smaug>
+sefeng: could bug 1863104 have caused some leaks (even temporary) ?
+
+[03:02:04.0136] <botzilla>
+https://bugzil.la/1863104 — NEW (sefeng) — 10% regression on AWFY-Matrix React benchmark suite on 2Nov
+
+[03:02:33.0379] <smaug>
+er, https://bugzilla.mozilla.org/show_bug.cgi?id=1722322
+
+[03:03:15.0030] <jandem>
+smaug: bug 1862909 is a thunderbird regression caused by that change. It does suggest these bugs could all be related to some leak
+
+[03:03:17.0519] <botzilla>
+https://bugzil.la/1862909 — NEW (nobody) — Thunderbird perma suince 2023-11-03 - WARNING: YOU ARE LEAKING THE WORLD (at least one JSRuntime and everything alive inside it, that is) AT JS_ShutDown TIME.  FIX THIS! | single tracking bug
+
+[03:03:40.0053] <padenot>
+smaug: I clicked the button, that generated a bunch of files, should I zip them up and send them over ?
+
+[03:03:53.0335] <padenot>
+I'm not entirely sure what to look for or how to do it
+
+[03:05:01.0586] <smaug>
+zip and share somewhere
+
+[03:05:08.0017] <smaug>
+they might be huge
+
+[03:05:15.0357] <smaug>
+select only the ones for the relevant process
+
+[03:06:19.0693] <padenot>
+two files of 1.2GB each
+
+[03:06:47.0936] <smaug>
+uh, a bit too large
+
+[03:07:04.0009] <smaug>
+I was hoping you managed to catch the issue when the leak isn't yet horrible
+
+[03:07:22.0581] <smaug>
+Hard to analyze such a massive logs, at least on this machine
+
+[03:08:07.0882] <padenot>
+ok let me reload and try
+
+[03:08:14.0560] <smaug>
+padenot: by any chance, does changing dom.enable_largest_contentful_paint pref help ?
+
+[03:10:28.0488] <smaug>
+ah, there is also https://bugzilla.mozilla.org/show_bug.cgi?id=1828144 in the possible regression range
+
+[03:13:54.0763] <padenot>
+smaug: I'll letting it sit there over lunch, hopefully I can repro in 30-45min or so
+
+[03:14:05.0061] <padenot>
+and it's going to be smaller
+
+[03:15:08.0652] <padenot>
+smaug: should I do concise or verbose? I did verbose
+
+[03:15:36.0337] <smaug>
+concise could be enough
+
+[03:15:53.0702] <padenot>
+those compress extremely well so on my end it doesn't amtter
+
+[03:15:55.0612] <padenot>
+ * those compress extremely well so on my end it doesn't matter
+
+[03:16:36.0303] <smaug>
+right, but to analyze them... I'd need more than 32GB ram
+
+[03:20:29.0778] <fncf0x>
+when building am having this error 
+```  File "/usr/local/lib/python3.7/curses/__init__.py", line 13, in <module>
+    from _curses import *
+ModuleNotFoundError: No module named '_curses'
+```
+any one has an idea (am not on window)
+
+[03:22:19.0996] <fncf0x>
+or is there an channel where i can ask those questions ?
+
+[03:25:35.0780] <arai>
+fncf0x: the stack trace points a file in your python installation in the last frame.  try checking if it's configured properly
+
+[03:27:13.0766] <fncf0x>
+> <@arai:mozilla.org> fncf0x: the stack trace points a file in your python installation in the last frame.  try checking if it's configured properly
+
+its a python3.7 from source, installed noramlly, is there any requirements file ? thanks ! ^^
+
+[03:28:13.0032] <arai>
+people in #python:mozilla.org would know better
+
+[03:28:22.0851] <fncf0x>
+alright ! thanks !
+
+[05:20:59.0651] <gerard-majax>
+anything I can do to help on the leak that padenot mentionned ?
+
+[05:21:11.0044] <gerard-majax>
+my browser is barely usable for ~2 days
+
+[05:21:14.0266] <padenot>
+I can't repro since restarting...
+
+[05:21:29.0556] <gerard-majax>
+restarting what?
+
+[05:21:32.0980] <padenot>
+smaug said a CC log from `about:memory` could help him
+
+[05:21:44.0569] <padenot>
+restarting the browser
+
+[05:21:57.0379] <gerard-majax>
+let's hope
+
+[05:22:06.0333] <gerard-majax>
+last time I tried to get a cc log my browser crashed
+
+[05:22:32.0701] <gerard-majax>
+how do I capture a CC log ? I dont see such button
+
+[05:22:46.0123] <gerard-majax>
+save gc and cc ?
+
+[05:25:08.0908] <gerard-majax>
+Looping on that for now
+
+[05:25:14.0474] <gerard-majax>
+Crashed
+
+[05:25:16.0161] <padenot>
+yeah that's a bit expected
+
+[05:25:19.0109] <padenot>
+this is not
+
+[05:26:24.0389] <gerard-majax>
+https://crash-stats.mozilla.org/report/index/6c18dd8a-899e-4730-88af-b4e090231108
+
+[05:26:27.0464] <gerard-majax>
+wayland lost ?!
+
+[05:28:02.0588] <gerard-majax>
+so no log
+
+[05:28:04.0529] <gerard-majax>
+sorry.
+
+[05:30:35.0582] <gerard-majax>
+I'm being told it could be because of how badly the browser was blocked and wayland severed the connection
+
+[05:42:23.0978] <mccr8>
+FWIW, disabling LCP fixed it for me, on Twitter.
+
+[05:46:20.0840] <padenot>
+ah it's happening again for me
+
+[05:50:23.0172] <mccr8>
+> <@padenot:mozilla.org> ah it's happening again for me
+
+That's with LCP disabled?
+
+[05:50:37.0902] <padenot>
+no I kept it enabled to get a CC log to help diagnosing
+
+[05:50:57.0016] <padenot>
+but I took 1h30 to happen again after restarting the browser
+
+[05:51:57.0425] <padenot>
+the cc log is ~440MB uncompressed, is that something workable ?
+
+[05:54:10.0591] <mccr8>
+We should probably also take this discussion to DOM. 😄
+
+[05:54:20.0627] <mccr8>
+ * We should probably also take this discussion to #dom:mozilla.org . 😄
+
+[07:20:40.0479] <fncf0x>
+hello, just a question, once a ./mach build has finished, i see the binary is located at obj-x86_64-pc-linux-gnu/dist/bin/ but how to generate a final .deb packages ?
+
+[07:21:46.0725] <fncf0x>
+also for js, is it disable by default ? when i built the browser without adding MOZCONFIG then i run jit-test, is says that bin/js is not executable 🤷‍♂️ any ideas ? thanks ! 
+
+[07:22:04.0868] <fncf0x>
+new in browser hacking sorry ! 😛
+
+[07:27:29.0075] <arai>
+a taball can be generated by `./mach package`, but I don't think `.deb` package is part of mozilla-central
+
+[07:27:55.0538] <arai>
+and yes, js shell isn't built if you don't have mozconfig
+
+[07:27:57.0045] <arai>
+https://firefox-source-docs.mozilla.org/js/build.html
+
+[07:28:45.0781] <arai>
+you need to either use `ac_add_options --enable-project=js` to build only JS shell, or `ac_add_options --enable-js-shell` to build JS shell along with browser
+
+[07:29:10.0695] <arai>
+ * a tarball can be generated by `./mach package`, but I don't think `.deb` package is part of mozilla-central
+
+[07:37:04.0117] <fncf0x>
+thanks fellas! 
+
+[07:41:15.0203] <fncf0x>
+one last questions ^^ where can i find in the code where native builtins API call are called from JS, i mean after the IonMonkey and interpreter where a native function is called ? 
+
+[07:44:40.0841] <arai>
+in interpreter, function call is `JSOp::Call` and its variants, which is handed here https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/Interpreter.cpp#2992,3053
+```cpp
+CASE(Call)
+...
+      if (!CallFromStack(cx, args, reason)) {
+```
+
+[07:45:09.0320] <arai>
+that goes here https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/Interpreter.cpp#566
+```cpp
+return CallJSNative(cx, native, reason, args);
+```
+
+[07:45:52.0429] <arai>
+and this line calls the actual native function https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/Interpreter.cpp#472
+```cpp
+bool ok = native(cx, args.length(), args.base());
+```
+
+[07:48:33.0419] <fncf0x>
+thank you ! 
+
+[07:48:39.0984] <arai>
+with JIT, it depends on the layer, but warp builder handles the JSOp::Call here https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/jit/WarpBuilder.cpp#1795
+```cpp
+bool WarpBuilder::build_Call(BytecodeLocation loc) { return buildCallOp(loc); }
+```
+
+[08:09:35.0261] <iain>
+fncf0x: At a low level, we have two ways to call from JIT code into C++ code (for builtins implemented in C++, or anything else). If we know that the C++ code can't trigger a garbage collection, we can call using [MacroAssembler::callWithABI](https://searchfox.org/mozilla-central/search?path=&q=macroassembler%3A%3Acallwithabi), which generates code to call the C++ function using the platform ABI. Otherwise, we do a VM call, which calls a wrapper trampoline ([here](https://searchfox.org/mozilla-central/source/js/src/jit/x64/Trampoline-x64.cpp#656) is the code that generates the wrapper on x86-64) that does some bookkeeping to make it safe to GC before calling the target.
+
+[08:13:20.0370] <fncf0x>
+> <@iain:mozilla.org> fncf0x: At a low level, we have two ways to call from JIT code into C++ code (for builtins implemented in C++, or anything else). If we know that the C++ code can't trigger a garbage collection, we can call using [MacroAssembler::callWithABI](https://searchfox.org/mozilla-central/search?path=&q=macroassembler%3A%3Acallwithabi), which generates code to call the C++ function using the platform ABI. Otherwise, we do a VM call, which calls a wrapper trampoline ([here](https://searchfox.org/mozilla-central/source/js/src/jit/x64/Trampoline-x64.cpp#656) is the code that generates the wrapper on x86-64) that does some bookkeeping to make it safe to GC before calling the target.
+
+alright am not going that deep for the moment, it's just for debug purpose and to understand stuff, i will come to ABI later lol, thanks a lot !
+
+[08:46:35.0444] <fncf0x>
+hello again 😓 i just added '''std::cout << "check" << std::endl;''' before the '''bool ok = native(cx, args.length(), args.base());''' in Interpreter.cpp line 474 but after compiled in the stdout i see no print, i added 
+
+[08:47:26.0412] <fncf0x>
+ * hello again 😓 i just added `'''std::cout << "check" << std::endl;` before the `bool ok = native(cx, args.length(), args.base());` in Interpreter.cpp line 474 but after compiled in the stdout i see no print, i added 
+
+[08:47:35.0720] <fncf0x>
+ * hello again 😓 i just added `std::cout << "check" << std::endl;` before the `bool ok = native(cx, args.length(), args.base());` in Interpreter.cpp line 474 but after compiled in the stdout i see no print, i added
+
+[08:47:47.0601] <fncf0x>
+here is my mozconfig 
+
+[08:48:03.0977] <jandem>
+what is the JS code you're running?
+
+[08:48:29.0554] <fncf0x>
+visiting random websites like google ...etc
+
+[08:49:03.0556] <fncf0x>
+using this to
+
+[08:49:04.0161] <fncf0x>
+https://abrahamjuliot.github.io/creepjs/
+
+[08:50:32.0914] <jandem>
+if you use `--enable-project=js` you're only building the JS shell, not the browser
+
+[08:51:22.0445] <fncf0x>
+but when i don't use this i have no error on build, like it is not compiling Interpreter.cpp when removing it ,
+
+[08:52:25.0008] <fncf0x>
+i mean i tried a syntax error to check (removed semicolon ";"  ) and removed the  --enable-project=js and it build successfully so i guess removing it doen't compile it 🤷sorry am still newbi  
+
+[08:54:40.0433] <jandem>
+hm weird. Without the `--enable-project` it should do a browser build
+
+[08:54:52.0930] <jandem>
+ * hm weird. Without the `--enable-project=js` it should do a browser build
+
+[08:55:08.0771] <jandem>
+ * hm weird. Without the `--enable-project=js` it should do a browser build and that includes Interpreter.cpp
+
+[08:55:54.0984] <arai>
+is it still compiling successfully with syntax error right now?
+
+[08:56:32.0281] <arai>
+if so, what exact command do you run, and what's the output? can you post them to https://paste.mozilla.org/   ?
+
+[08:59:44.0917] <arai>
+after you pasted there, please post the URL of your paste here, so that others can see it
+
+[09:00:09.0236] <fncf0x>
+okey, sure !
+
+[09:06:27.0742] <fncf0x>
+lol nevermind, double-checked seems the problem was in the CKI ^^' 
+
+[09:06:31.0175] <fncf0x>
+thanks ! :p 
+
+[09:50:14.0331] <fncf0x>
+sorry am asking a lot of questions, you can tell me to stfu if it's too much lol, what is the best way to print basic infos on that part of the code https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/Interpreter.cpp#472
+
+1bool ok = native(cx, args.length(), args.base());
+
+
+[09:50:37.0498] <fncf0x>
+like nativefunction name, args and return value
+
+[09:51:51.0313] <fncf0x>
+covering most cases is enough, not covering every single cx ^^'
+
+[10:13:57.0447] <gerard-majax>
+I've disabled `dom.enable_largest_contentful_paint` and no issue
+
+[10:46:29.0786] <kfjvj>
+Does anyone know what information can be extracted form a JSScript ?
+
+[10:47:38.0531] <kfjvj>
+* Does anyone know what information can be extracted form a JSScript ?
+
+I see the type JSScript* used in various function definitions, but I'm not sure how it's supposed to be used.
+
+[12:03:01.0604] <mgaudet>
+> <@kfjvj:mozilla.org> Does anyone know what information can be extracted form a JSScript ?
+> 
+> I see the type JSScript* used in various function definitions, but I'm not sure how it's supposed to be used.
+
+Might be worth experimenting with https://searchfox.org/mozilla-central/source/js/src/util/DumpFunctions.cpp#214 
+
+
+2023-11-09
+[05:21:13.0753] <fncf0x>
+> <@fncf0x:mozilla.org> sorry am asking a lot of questions, you can tell me to stfu if it's too much lol, what is the best way to print basic infos on that part of the code https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/Interpreter.cpp#472
+> 
+> 1bool ok = native(cx, args.length(), args.base());
+
+hey, so any hints about this ?
+
+[05:23:55.0468] <arai>
+the function name could be retrieved from the `args.callee()` value, which is the function object
+
+[05:24:03.0147] <arai>
+it returns `JSObject*`
+
+[05:24:53.0726] <arai>
+and you can convert it to `JSFunction` like this https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/builtin/HandlerFunction-inl.h#85
+```cpp
+JSFunction& func = args.callee().as<JSFunction>();
+```
+
+[05:25:18.0015] <arai>
+`JSFunction` corresponds to the function object in JS side  https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/JSFunction.h#51
+```cpp
+class JSFunction : public js::NativeObject {
+```
+
+[05:26:04.0027] <arai>
+if you've built with `--enable-debug`, `func.maybePartialDisplayAtom()->dump()` will print the function name in stdout or stderr
+
+[05:27:11.0724] <arai>
+other arguments can also be retrieved from `args`.  `args.length()` returns the length of arguments, and `args[i]` returns i-th value as `JS::Value`
+
+[05:27:40.0012] <arai>
+for JS::Value, you can use `js::DumpValue`
+
+[05:27:54.0341] <arai>
+https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/util/DumpFunctions.cpp#197
+```cpp
+void js::DumpValue(const JS::Value& val) { DumpValue(val, stderr); }
+```
+
+[05:28:03.0060] <fncf0x>
+thanks ! what about the native function info, not the JS side ? 
+
+[05:28:10.0309] <arai>
+https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/public/friend/DumpFunctions.h#92
+```cpp
+extern JS_PUBLIC_API void DumpValue(const JS::Value& val);
+```
+
+[05:28:21.0330] <arai>
+what do you mean by "native function info" ?
+
+[05:29:04.0814] <fncf0x>
+i mean native function name, arg, ret value, origin script, origin JS function ? 
+
+[05:29:20.0631] <fncf0x>
+did i misunderstood something ? 
+
+[05:29:34.0558] <fncf0x>
+ * i mean native function name, args, ret value, origin script, origin JS function ? 
+
+[05:30:05.0061] <fncf0x>
+i may re-doc myself about spidermonkey and JS engine in general right ?
+
+[05:30:19.0886] <arai>
+if you're running with debugger, you can ask the debugger about the native function name
+
+[05:31:19.0323] <arai>
+if not, it's just a function pointer
+
+[05:31:43.0185] <arai>
+then, about the arguments, it's the above `args[i]`
+
+[05:32:09.0460] <arai>
+and after the `native` function returns, the return value is stored into `args.rval()`
+
+[05:32:30.0232] <arai>
+https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/public/CallArgs.h#115,159,212,247
+```cpp
+class MOZ_STACK_CLASS CallArgsBase {
+...
+  JSObject& callee() const { return calleev().toObject(); }
+...
+  MutableHandleValue operator[](unsigned i) const {
+...
+  MutableHandleValue rval() const {
+```
+
+[05:32:39.0242] <arai>
+the `args` there is this class
+
+[05:33:08.0357] <arai>
+then, what do you mean with "origin" in "origin script" and "origin JS function" ?
+
+[05:33:26.0848] <arai>
+is it "caller" of the function?
+
+[05:47:42.0442] <fncf0x>
+> <@arai:mozilla.org> is it "caller" of the function?
+
+yes that's it !
+
+[05:52:19.0626] <arai>
+The caller information isn't directly available there.  you'll need to iterate over the frame with [js::FrameIter](https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/FrameIter.h#208)
+
+[05:54:11.0397] <arai>
+like https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/builtin/TestingFunctions.cpp#4846,4850,4853,4855
+```cpp
+FrameIter iter(cx);
+...
+if (iter.done()) {
+...
+}
+...
+if (iter.hasScript()) {
+```
+
+[05:57:59.0513] <arai>
+the `iter.script()` returns `JSScript`
+
+[05:58:01.0365] <arai>
+ * the `iter.script()` returns `JSScript*`
+
+[05:59:43.0405] <arai>
+the corresponding function can be retrieved from `script->function()`
+
+[05:59:49.0388] <arai>
+https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/js/src/vm/JSScript.h#1514
+```cpp
+JSFunction* function() const { return function_; }
+```
+
+[10:40:51.0419] <sfink>
+iain: your discussion of finding the hash value reminded me that I'm constantly confused about the JSString layout, so I thought I'd [draw it out](https://docs.google.com/spreadsheets/d/1r4t6lfqLpk8dpTul_vEfMSOAEl5Zg1rFe0AMywUPu4s/edit#gid=0) so I could hopefully keep it straight.
+
+[10:41:44.0459] <sfink>
+(oops, I meant that to be fully public)
+
+[10:44:54.0386] <iain>
+sfink: Nice!
+
+[10:45:09.0708] <iain>
+Do we actually not use the third word in a NormalAtom for anything?
+
+[10:45:52.0881] <iain>
+Why don't we put the hash field there?
+
+[10:47:14.0754] <sfink>
+hm, that's a good question. Did I get that right?
+
+[10:48:05.0986] <sfink>
+I have to run, but staring at the diagram, my first thought is: could we shrink fat inline atoms a little and put the hashcode at the very end, and move it to the same place in a normal atom?
+
+[10:48:44.0968] <iain>
+That is a very interesting question
+
+[11:04:45.0889] <iain>
+sfink: [Here's a quick straw-proposal](https://docs.google.com/spreadsheets/d/1eqgMMFOtqRt0pZ-HyYXgpCN-5NXbrEcMNn7FmFoAIxY/edit#gid=0). Is this roughly what you were thinking?
+
+[11:05:32.0521] <iain>
+It does significantly reduce the maximum size of an inline atom (24->12), but how many atoms are 13-24 bytes long?
+
+[11:41:17.0981] <mgaudet>
+sfink: also, gentle review ping re the stack starting in  Bug 1843649 
+
+[11:41:21.0174] <botzilla>
+https://bugzil.la/1843649 — ASSIGNED (mgaudet) — Slow jstest  non262/extensions/clone-complex-object.js is failing
+
+[12:49:13.0934] <sfink>
+> <@iain:mozilla.org> sfink: [Here's a quick straw-proposal](https://docs.google.com/spreadsheets/d/1eqgMMFOtqRt0pZ-HyYXgpCN-5NXbrEcMNn7FmFoAIxY/edit#gid=0). Is this roughly what you were thinking?
+
+(back now) I hadn't been thinking of shrinking NormalAtom (since I didn't notice it was wasting space), so I was doing a more modest adjustment of dropping the max inline atom size 24 -> 20. 
+
+[12:50:42.0825] <sfink>
+jandem: is [the diagram](https://docs.google.com/spreadsheets/d/1r4t6lfqLpk8dpTul_vEfMSOAEl5Zg1rFe0AMywUPu4s/edit#gid=0) correct? Could NormalAtom be 24 bytes instead of 32 by putting `hash_` into `d.s.u3`, without losing anything? 
+
+
+2023-11-10
+[22:47:59.0585] <jandem>
+sfink: so `NormalAtom` is [also used for](https://searchfox.org/mozilla-central/rev/27ddf0064aa821af8238a99621df79fb1b301c7b/js/src/vm/StringType-inl.h#46) thin-inline atoms, I think that complicates things?
+
+[22:51:30.0145] <jandem>
+changing the number of thin/fat inline chars atoms have probably makes sense though?
+
+[22:53:42.0043] <jandem>
+the hash field was added to fix a security bug and the atom allocation code used to be shared with non-atom strings, but we can likely do better now
+
+[23:03:06.0087] <jandem>
+ * changing the number of thin/fat inline chars atoms have probably makes sense though
+
+[23:11:28.0875] <jandem>
+maybe if we make fat inline atoms smaller we don't need the thin inline kind
+
+
+2023-11-11
+[10:39:28.0210] <R>
+Hi. 1) I'm trying to compile spider monkey and receive the following error: error: no matching package named `compiler_builtins` found.  I cannot seem to figure what am I missing for this.
+2) How much Rust is used in the js engine and what is the last version that only used C and C++?
+
+
+2023-11-12
+[14:00:04.0246] <timvde>
+Not to rush anyone, but just wondering: are there still new blog posts going to be released on spidermonkey.dev? The blogs had been coming pretty consistently every 2 months, but the last one is 3 months ago :(
+
+
+2023-11-13
+[01:47:10.0590] <jandem>
+R: 1) how are you compiling spidermonkey? 2) Rust has been a requirement for a while now (for at least 3 years or so). There's not a lot of Rust in SM, but we do depend on it for some string encoding code for example
+
+[01:49:45.0290] <jandem>
+timvde: yes I skipped the last one, but should probably continue them at some point
+
+[01:54:57.0556] <R>
+> <@jandem:mozilla.org> R: 1) how are you compiling spidermonkey? 2) Rust has been a requirement for a while now (for at least 3 years or so). There's not a lot of Rust in SM, but we do depend on it for some string encoding code for example
+
+I've tried both ./mach build with `ac_add_options --enable-application=js` (following https://firefox-source-docs.mozilla.org/js/build.html ) and the autoconf2.13 (which I cannot find the link to at the moment).
+
+[01:56:25.0528] <R>
+I'm trying to build it on  Archlinux with rustup nightly (as I found it is required due to the -Z flag)
+
+[01:57:04.0242] <jandem>
+which spidermonkey version? you mean `--enable-project=js`?
+
+[01:58:54.0818] <R>
+I've tried both v115 and v102.
+
+[02:01:01.0169] <R>
+> <@jandem:mozilla.org> which spidermonkey version? you mean `--enable-project=js`?
+
+Oh. I missed that. Interesting. I did base myself for some part on the arch package build. https://gitlab.archlinux.org/archlinux/packaging/packages/js115/-/blob/main/PKGBUILD?ref_type=heads Which does seem to write `ac_add_options --enable-application=js`.
+
+[02:02:09.0027] <jandem>
+R: oh right, my own mozconfigs have `--enable-application=js` too so that part is fine
+
+[02:02:29.0120] <Redfire>
+you shouldn't need rust nightly, the gecko codebase only uses rust stable at most
+
+[02:04:05.0364] <Redfire>
+* you shouldn't need rust nightly, the gecko codebase only uses rust stable at most (there's special circumstances but I doubt you're running into them) 
+
+[02:06:06.0369] <R>
+> <@jandem:mozilla.org> R: oh right, my own mozconfigs have `--enable-application=js` too so that part is fine
+
+I see no change
+
+[02:08:36.0073] <jandem>
+yes I think `--enable-project` and `--enable-application` are aliases
+
+[02:12:59.0139] <R>
+> <@redfire75369:mozilla.org> you shouldn't need rust nightly, the gecko codebase only uses rust stable at most (there's special circumstances but I doubt you're running into them) 
+
+0:08.57 error: the `-Z` flag is only accepted on the nightly channel of Cargo, but this is the `stable` channel
+when using stable rust.
+
+[02:43:32.0332] <arai>
+can you post the output of `./mach build` to https://paste.mozilla.org/ ?
+
+[02:44:36.0537] <arai>
+the issue would come from that the build system behave differently for nightly and others.  on nightly, it downloads necessary tools and use them.  on others, by default, it uses tools provided by your system. and there might be something going wrong around it
+
+[02:45:32.0244] <arai>
+ * the issue would come from that the build system behave differently for nightly and others.  on nightly, it downloads necessary tools and use them.  on others (like esr, which is what you're using), by default, it uses tools provided by your system. and there might be something going wrong around it
+
+[02:55:41.0389] <arai>
+I don't hit the error with rustc stable 1.72.1, on esr115.  the output of the `./mach build` would contain more info about when and how it hits the error
+
+[03:07:05.0651] <arai>
+also there will be some more info in `obj-*/config.log` file
+
+[03:07:28.0069] <arai>
+R: ^
+
+[03:08:08.0549] <arai>
+ * also there will be some more info in `obj-*/config.log` file, about what exact command and input the build system used
+
+[06:35:49.0352] <R>
+> <@arai:mozilla.org> I don't hit the error with rustc stable 1.72.1, on esr115.  the output of the `./mach build` would contain more info about when and how it hits the error
+
+https://paste.mozilla.org/0arLp1hN
+
+[06:37:28.0481] <arai>
+what's your mozconfig?
+
+[06:37:50.0816] <arai>
+the output says you have `--enable-thread-sanitizer` ?
+
+[06:37:56.0199] <arai>
+ * the output says you have `--enable-thread-sanitizer` in it?
+
+[06:39:02.0657] <arai>
+if that's the case, then indeed, thread sanitizer uses -Z flag https://searchfox.org/mozilla-central/rev/fe8b30e982c86d26ccf1f14d825c0de870b91f27/config/makefiles/rust.mk#59-62
+```
+ifdef MOZ_TSAN
+cargo_build_flags += -Zbuild-std=std,panic_abort
+RUSTFLAGS += -Zsanitizer=thread
+endif
+```
+
+[06:39:19.0001] <arai>
+try building with simpler mozconfig first
+
+[07:27:08.0501] <R>
+> <@arai:mozilla.org> what's your mozconfig?
+
+The good news is a simpler config does work. Thanks. How should I get it to work with thread sanitizer?
+
+[07:29:52.0046] <arai>
+just to be clear, thread sanitizer is a special config for debugging purpose.  do you really want it?
+
+[07:31:03.0982] <R>
+Yeah. I'm working on race detection algorithms. I modify tsan on the compiler end (once I get it to compie normally first)
+
+[07:31:54.0373] <padenot>
+R: just making sure, you're following https://firefox-source-docs.mozilla.org/tools/sanitizer/tsan.html ?
+
+[07:32:36.0788] <padenot>
+I haven't seen it linked in this discussion and the rust toolchain override bit is important
+
+[07:33:29.0712] <R>
+I missed that part! Thanks!
+
+[07:34:28.0233] <padenot>
+I confirm those instructions work, as I've been doing TSAN builds recently, if it still doesn't compile / work after following them please tell us
+
+[07:35:31.0946] <R>
+Alright. Thank you very much! Can I safely replace ~/.mozbuild with $MOZBUILD_STATE_PATH ?
+
+[07:35:49.0766] <padenot>
+note: depending on your desktop environment / system (hardware accelerate, software rendering, gnome version, whatever), and if you're attempting to run the browser (something you might not be doing if you're here), there might be more issues
+
+[07:35:58.0574] <padenot>
+R: as long as you consistently do it it should work
+
+[07:37:03.0744] <R>
+Just the js engnine. I'm trying to follow the footsteps of papers that run spidermonkey / v8 on some js benchmarks from 2013. If there's a more up-to-date version that'd be nice.
+
+[08:25:52.0114] <mgaudet>
+jandem: You've got a trio of patches adding out-of-memory catches inbound from me (to clean up some intermittents from running slow tests); but I honestly would be equally OK if the response was "just delete these tests, they're bad" 
+
+[08:41:01.0960] <jandem>
+mgaudet: ah all three are pretty similar
+
+[08:41:23.0495] <mgaudet>
+Yeah, same root test case, and then variants I imainge
+
+[08:46:17.0362] <jandem>
+mgaudet: stamped but I'm also fine with deleting at least 2 of them
+
+[09:24:51.0652] <R>
+Thanks! It compiled.
+
+[11:09:30.0218] <kfjvj>
+Regarding import module requests, how does mozjs handle relative file paths for imports?
+
+
+2023-11-14
+[16:53:40.0650] <Redfire>
+It doesn't, that's up to your module resolver
+
+[14:25:02.0135] <mgaudet>
+Wow, [PGO on xul.dll is way slower than I thought](https://profiler.firefox.com/from-url/https%3A%2F%2Ffirefox-ci-tc.services.mozilla.com%2Fapi%2Fqueue%2Fv1%2Ftask%2FEJ8K33jQSTOu-PEJT24Zkw%2Fruns%2F0%2Fartifacts%2Fpublic%2Fbuild%2Fprofile_build_resources.json/marker-chart/?globalTrackOrder=0&thread=0&timelineType=stack&v=10) (Also, the new build profiling is super cool) 
+
+
+2023-11-15
+[08:12:47.0317] <sfink>
+I was attempting to answer a [question on Discourse](https://discourse.mozilla.org/t/is-it-possible-to-compile-script-in-one-realm-and-execute-it-in-another/124308) about wrapping a script, but discovered that my knowledge of JSAPI is inadequate. Is there a way to wrap a `JSScript*`? Or do you need to somehow make a `FunctionObject` and wrap that? My JSAPI knowledge has some gaping holes. Oh, should they be using `JS::CompileFunction` instead of `JS::Compile`?
+
+[09:57:47.0465] <jandem>
+scripts are per-realm and can't be wrapped. Maybe they can create a stencil and create separate scripts for each realm
+
+[09:58:17.0929] <jandem>
+ * scripts are per-realm and can't be wrapped. Maybe they can create a stencil and instantiate it as separate scripts for each realm
+
+[10:00:58.0529] <jandem>
+we've replaced script cloning with stencils
+
+
+2023-11-16
+[16:32:05.0795] <jrmuizel>
+iain: for `SetNonexistentProperty()` time under `completeWork()` we wanted to know if it's setting a property for the first time or not. Do you have any suggestions for how to check this?
+
+[07:54:52.0878] <R>
+Is there a test suite that I can use to execute thread sanitizer with? Turns out the benhcmarks I planned to execute are not multi-threaded in any way.
+
+[08:04:44.0791] <arai>
+what type of multi-thread situation are you looking into?  JS shell itself uses multi-thread for GC and compilation
+
+[08:07:56.0183] <arai>
+if it's about the situation where JS code executes in multiple threads (like Web Workers), then I'm not aware of thread-heavy suite for JS shell.  but some of existing jstests and jit-test testcases uses worker thread
+
+[08:13:32.0463] <R>
+I think what I need is something that would stress the multi-threaded code of the js shell itself.
+
+[08:17:39.0350] <arai>
+running the entire jstests and jit-tests with all option variants would sufficiently cover the multi-threaded code (except for things that interacts with gecko).  it doesn't specifically focus on the multi-threaded part tho
+
+[08:19:54.0048] <arai>
+that's what done by the tsan job in automation e.g. https://treeherder.mozilla.org/jobs?repo=mozilla-central&tier=1%2C2%2C3&searchStr=spider%2Ctsan&revision=30972f1e5f790da2db4cf542e49e522275787122&selectedTaskRun=Qr9gY8h8R-GVSBaGA7LvrQ.0
+
+[08:35:23.0996] <R>
+I'll try that! Thanks.
+
+[08:40:32.0169] <R>
+If I want to run them directly without mach, simply point the js exec at any .js file in the tests / jit-tests folder. Right?
+
+[08:42:25.0173] <arai>
+jit-test can be run by running `js/src/jit-test/jit_test.py -s JS_SHELL_PATH TESTS`
+
+[08:42:46.0168] <arai>
+if you omit TESTS, then all tests are executed,  if you pass, it's substring match against the test path
+
+[08:43:19.0275] <arai>
+jstests may require `mach`
+
+[08:43:45.0885] <arai>
+either `./mach jstests ...` or `cd js/src/tests; ./mach python jstests.py ...`
+
+[08:43:55.0210] <arai>
+ * either `./mach jstests ...` or `cd js/src/tests; ../../../mach python jstests.py ...`
+
+[08:44:49.0632] <R>
+If I compiled with the script at https://firefox-source-docs.mozilla.org/tools/sanitizer/tsan.html (which uses a custom folder), how do I point mach at the binary?
+
+[08:47:05.0444] <arai>
+`../../../mach python jstests.py --js-shell JS_SHELL_PATH`, according to [jstests.py](https://searchfox.org/mozilla-central/rev/f78093864e287014db7ac9383bb76c45edbf8559/js/src/tests/jstests.py#400)
+
+[08:47:37.0550] <arai>
+oh, the above jit_test command was wrong
+
+[08:47:49.0725] <arai>
+ * jit-test can be run by running `js/src/jit-test/jit_test.py --js_shell JS_SHELL_PATH TESTS`
+
+[08:48:12.0109] <arai>
+ * jit-test can be run by running `js/src/jit-test/jit_test.py JS_SHELL_PATH TESTS`
+
+[08:48:17.0778] <arai>
+ * `../../../mach python jstests.py JS_SHELL_PATH`, according to [jstests.py](https://searchfox.org/mozilla-central/rev/f78093864e287014db7ac9383bb76c45edbf8559/js/src/tests/jstests.py#400)
+
+[08:48:48.0369] <arai>
+fixed
+
+[08:49:23.0086] <R>
+Thank you very much!
+
+[08:52:49.0078] <sfink>
+you can also use the `-s` flag to make it display the command lines for running the JS shell directly. It's not always as simple as running a single .js file; sometimes it needs to load in other stuff, and some thing are set up with immediate scripts on the command line.
+
+[09:38:33.0925] <iain>
+> <@jrmuizel:mozilla.org> iain: for `SetNonexistentProperty()` time under `completeWork()` we wanted to know if it's setting a property for the first time or not. Do you have any suggestions for how to check this?
+
+That is a very good question. There are a few ways to check if an object has a property yet or not. Making it easy to tell for that particular callsite is a little harder, but maybe we can split SetNonexistentProperty into two versions depending on whether it's the first property or not. Let me try writing up a quick and dirty patch.
+
+[09:46:33.0020] <iain>
+jrmuizel: [This patch](https://prod.pastebin.prod.webservices.mozgcp.net/qCUakOGy) adds SetNonexistentFirstProperty and SetNonexistentNextProperty, and calls the appropriate one from SetNonexistentProperty. I think that should let us tell what's going on at your call site by looking at the profile.
+
+[10:18:11.0173] <jrmuizel>
+iain: perfect. Thanks
+
+[10:47:00.0349] <mgaudet>
+sfink: Would you be able to stamp https://github.com/mozilla-spidermonkey/spidermonkey.dev/pull/149 -- I didn't land one of dan's posts for a month, and it would be good to have a publication date that's not a month in the past 
+
+[10:47:40.0390] <mgaudet>
+Oh hold on -- I goofed with my gitting
+
+[10:48:43.0306] <mgaudet>
+There. 
+
+[10:56:54.0043] <sfink>
+(Sorry, had to navigate the authentication jungle.)
+
+[11:00:37.0651] <mgaudet>
+Awesome. Much appreciated.
+
+[11:00:54.0822] <mgaudet>
+https://spidermonkey.dev/blog/2023/11/16/spidermonkey-byte-sized-architectures.html for you dminor 
+
+[11:00:59.0315] <mgaudet>
+apologies again for the delay :) 
+
+[11:01:08.0586] <dminor>
+Thanks :)
+
+[13:19:06.0443] <iain>
+Outside of testing code, [this](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/HTMLAllCollectionBinding.cpp#1208-1219) is the only class that uses JSCLASS_EMULATES_UNDEFINED, and the only use of that class is in a call to CreateProxyObject [here](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/HTMLAllCollectionBinding.cpp#1285). Does that mean that [this code](https://searchfox.org/mozilla-central/source/js/src/jit/MacroAssembler-inl.h#561-563) (checking whether a non-proxy object emulates undefined) is dead code in production?
+
+[14:13:09.0408] <mgaudet>
+I think so :) So that's something.
+
+
+2023-11-17
+[00:25:01.0186] <Rakhi>
+Hello folks, I am trying to produce a shared object for Spidermokey api. I have already enabled  `--enable-export-js` and `--enable-shared-js` flags but it is still producing a static file `libjs_static.a`. I am wondering if i am missing something here.  Do you have any pointers?
+
+[00:25:45.0307] <Rakhi>
+oh also if it helps I am doing these changes in [mozjs](https://github.com/servo/mozjs)
+
+[00:46:02.0123] <gerard-majax>
+CPU spikes on my main process, https://share.firefox.dev/47GlkAZ
+
+[00:46:11.0561] <gerard-majax>
+there's some (too much ?) gc?
+
+[00:46:19.0551] <gerard-majax>
+gc/cc logs are 7.8GB :[
+
+[02:01:06.0776] <jonco>
+gerard-majax: which part of that profile are you looking at?
+
+[02:03:32.0986] <gerard-majax>
+jonco: I'm not sure I understand your question ?
+
+[02:06:47.0997] <jonco>
+I was looking for the CPU spikes.
+
+[02:08:04.0764] <jonco>
+There's a bunch of stuff going on but nothing terrible from a GC perspective.
+
+[02:51:54.0728] <Rakhi>
+> <@atbrakhi:igalia.com> Hello folks, I am trying to produce a shared object for Spidermokey api. I have already enabled  `--enable-export-js` and `--enable-shared-js` flags but it is still producing a static file `libjs_static.a`. I am wondering if i am missing something here.  Do you have any pointers?
+
+actually it produces `libjs_static_dylib.list` and i think it is not able to link properly in order to produce `.dylib`
+
+[03:59:38.0883] <dbezhetskov>
+Hey folks, I see that for `JS_SIMULATOR` we maintain signature of the call for `masm.callWithABI` but I think the resulted singature isn't right, let me show an example:
+
+`
+using Fn = void (*)(JSRuntime* rt, js::gc::Cell* cell);
+masm.passABIArg(scratch);
+masm.passABIArg(objReg);
+masm.callWithABI<Fn, PostWriteBarrier>();
+`
+
+each `passABIArg` will call `appendSignatureType` and that is ok
+but the call iself will add result type default in `callWithABINoProfiler`
+and so, the result signature will be (i32Ptr, i32Ptr) -> I32Ptr but the original runtime function returns `void`.
+Is it expected behavior?
+
+[04:00:07.0615] <dbezhetskov>
+ * Hey folks, I see that for `JS_SIMULATOR` we maintain signature of the call for `masm.callWithABI` but I think the resulted singature isn't right, let me show an example:
+
+```
+using Fn = void (*)(JSRuntime* rt, js::gc::Cell* cell);
+masm.passABIArg(scratch);
+masm.passABIArg(objReg);
+masm.callWithABI<Fn, PostWriteBarrier>();`
+
+each `passABIArg` will call `appendSignatureType` and that is ok
+but the call iself will add result type default in `callWithABINoProfiler`
+and so, the result signature will be (i32Ptr, i32Ptr) -> I32Ptr but the original runtime function returns `void`.
+Is it expected behavior?
+
+[04:00:13.0792] <dbezhetskov>
+ * Hey folks, I see that for `JS_SIMULATOR` we maintain signature of the call for `masm.callWithABI` but I think the resulted singature isn't right, let me show an example:
+
+```
+using Fn = void (*)(JSRuntime* rt, js::gc::Cell* cell);
+masm.passABIArg(scratch);
+masm.passABIArg(objReg);
+masm.callWithABI<Fn, PostWriteBarrier>();
+```
+
+each `passABIArg` will call `appendSignatureType` and that is ok
+but the call iself will add result type default in `callWithABINoProfiler`
+and so, the result signature will be (i32Ptr, i32Ptr) -> I32Ptr but the original runtime function returns `void`.
+Is it expected behavior?
+```
+
+[04:00:39.0645] <dbezhetskov>
+ * Hey folks, I see that for `JS_SIMULATOR` we maintain signature of the call for `masm.callWithABI` but I think the resulted singature isn't right, let me show an example:
+
+```
+using Fn = void (*)(JSRuntime* rt, js::gc::Cell* cell);
+masm.passABIArg(scratch);
+masm.passABIArg(objReg);
+masm.callWithABI<Fn, PostWriteBarrier>();
+```
+
+each `passABIArg` will call `appendSignatureType` and that is ok
+but the call iself will add result type default in `callWithABINoProfiler`
+and so, the result signature will be (i32Ptr, i32Ptr) -> I32Ptr but the original runtime function returns `void`.
+ Is it expected behavior?
+
+[04:09:16.0618] <nbp>
+The return register is unused by the callWithABI function. It is used to compute the "signature" which is the way WASM bundle its primitive calls instead of relying on VMFunction.
+
+[04:10:39.0269] <nbp>
+As the returned register is handled by the caller on most architecture, this has not been a problem until now.
+
+[04:15:39.0887] <dbezhetskov>
+I see, thanks nbp! I tried to use this to get exact signature of a runtime function
+
+[05:26:34.0510] <nbp>
+We never map to the exact type, but we do have some machinery in VMFunction.h to convert the signature of the functions to some constants.
+
+[05:27:05.0745] <nbp>
+the constants are then used to help us process the inputs by register kinds.
+
+
+2023-11-19
+[18:02:11.0815] <liam_g>
+Is there a way of calling `Function.toString()` from within the C++ API?
+
+[18:31:55.0356] <arai>
+liam_g: [JS::ToString](https://searchfox.org/mozilla-central/rev/2d5606f76a38d0907ea11d7a72ee3e3dbb69c1f7/js/public/Conversions.h#256)
+
+[18:51:13.0356] <Redfire>
+There should also be `JS_DecompileFunction`
+
+[18:56:14.0768] <arai>
+oh, indeed. that's more straightforward
+
+[19:18:44.0992] <liam_g>
+Oh yes, I knew about that already. Thanks for the pointer.
+
+[19:48:31.0681] <liam_g>
+I have a question about async Promise resolution and error handing. The `enqueuePromiseJob()` override function gives me a job object, which I am later calling like this: `JS::Call(cx, ths, job, JS::HandleValueArray::empty(), &rval)`. This seems to work fine, but if the awaited code in the async function throws an error, the `JS::Call` doesn't seem to return false. Is this expected, or am I doing something wrong? Ideally I'd like a way of catching all errors thrown from async code.
+
+[19:51:22.0370] <arai>
+the job function's result is unrelated to the reaction itself.  it fails only on internal error such like OOM.
+
+[19:52:15.0884] <arai>
+what kind of error are you thinking about?
+
+[19:52:56.0723] <arai>
+if you're targeting async function, any error inside it is propagated as rejection to the resulting promise
+
+[19:53:22.0938] <liam_g>
+I was thinking about errors thrown in user written code. Checking the promise for rejection seems feasible.
+
+[19:54:03.0964] <arai>
+maybe you want to check unhandled rejections?
+
+[19:54:19.0756] <liam_g>
+Yes, let me try that.
+
+[19:55:52.0515] <arai>
+then, this can be used https://searchfox.org/mozilla-central/rev/2d5606f76a38d0907ea11d7a72ee3e3dbb69c1f7/js/public/Promise.h#268-273
+```cpp
+/**
+ * Sets the callback that's invoked whenever a Promise is rejected without
+ * a rejection handler, and when a Promise that was previously rejected
+ * without a handler gets a handler attached.
+ */
+extern JS_PUBLIC_API void SetPromiseRejectionTrackerCallback(
+```
+
+[19:56:13.0562] <arai>
+example: https://searchfox.org/mozilla-central/rev/2d5606f76a38d0907ea11d7a72ee3e3dbb69c1f7/xpcom/base/CycleCollectedJSContext.cpp#141-142
+```cpp
+JS::SetPromiseRejectionTrackerCallback(mJSContext,
+                                       PromiseRejectionTrackerCallback, this);
+```
+
+[19:57:11.0586] <arai>
+the API notifies "rejection with no handler", and also the later handling on the rejection"
+
+[19:57:35.0647] <arai>
+you can track those events to generate a list of rejections which is not yet handled
+
+[20:15:43.0089] <liam_g>
+Got it, this callback makes things pretty easy.
+
+[20:16:13.0092] <liam_g>
+How do I get the debug info out of the rejected promise object?
+
+[20:17:45.0894] <liam_g>
+I can see it's there in a reserve slot...
+
+[20:18:47.0121] <arai>
+which debug info?  allocation site and resolution site?
+
+[20:19:02.0352] <arai>
+if so, https://searchfox.org/mozilla-central/rev/2d5606f76a38d0907ea11d7a72ee3e3dbb69c1f7/js/public/Promise.h#379,382
+```cpp
+extern JS_PUBLIC_API JSObject* GetPromiseAllocationSite(
+...
+extern JS_PUBLIC_API JSObject* GetPromiseResolutionSite(
+```
+
+[20:19:21.0816] <arai>
+also this is part of debug info https://searchfox.org/mozilla-central/rev/2d5606f76a38d0907ea11d7a72ee3e3dbb69c1f7/js/public/Promise.h#344
+```cpp
+JS_PUBLIC_API uint64_t GetPromiseID(JS::HandleObject promise);
+```
+
+[20:20:30.0764] <liam_g>
+I'm just looking for an error message that I can print to the console. Maybe this is different than debug info.
+
+[20:32:27.0817] <liam_g>
+If I dig into the reserved slots like this, I can see all of relevant error information:
+`````
+    JS::RootedValue rv(cx, JS::GetReservedSlot(promise, 1));
+    js::DumpObject(rv.toObjectOrNull());
+`````
+
+[20:32:39.0157] <liam_g>
+ * If I dig into the reserved slots like this, I can see all of relevant error information:
+
+```
+    JS::RootedValue rv(cx, JS::GetReservedSlot(rejectedPromise, 1));
+    js::DumpObject(rv.toObjectOrNull());
+```
+
+[20:33:41.0842] <liam_g>
+But doing `JS::GetReservedSlot` doesn't seem robust, and I'm wondering if there's a proper API function which generates the relevant error report.
+
+[20:39:11.0190] <arai>
+`GetPromiseResult` returns the rejection reason value
+
+[20:39:14.0982] <arai>
+ * `JS::GetPromiseResult` returns the rejection reason value
+
+[20:39:59.0555] <arai>
+that's what you get by `rejectedPromise.catch(e => { /* this e value */ })` in JS
+
+[20:42:09.0797] <arai>
+the value is what the user code throws or rejects.  it can be any value (not necessarily be `Error` object)
+
+[23:31:43.0297] <liam_g>
+It's working, thank you very much!
+
+
+2023-11-20
+[08:00:58.0952] <R>
+For the tests, when I tried to extract the commands to trigger them, they seem to have the following text: --selfhosted-xdr-path /tmp/tmpbmprxb20/shell.xdr --selfhosted-xdr-mode decode
+The path is generated and deleted later. Is this required? What does it do?
+
+[08:02:08.0936] <arai>
+those parameters are not required
+
+[08:02:24.0301] <arai>
+it's to reduce the time taken by parsing the self-hosted JS code for each test
+
+[08:04:34.0152] <arai>
+the automated test runs JS shell for each test and for each options.  and compiling the self-hosted JS code for each takes a lot of time.  we compile the self-hosted JS into a format called Stencil, and save it.  all subsequent test loads it instead of compiling the JS code
+
+[08:04:42.0736] <mgaudet>
+(When you run the harness to extract a command line, I belive you can disable the addition of those arguments through `--no-xdr`) 
+
+[08:11:59.0548] <R>
+Thanks! I just removed them manually from my list of to call things.
+
+[08:16:07.0724] <Redfire>
+Any reason why `esr115` isn't the default branch on https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples?
+
+[08:16:24.0630] <Redfire>
+* Any reason why 
+esr115 isn't the default branch on <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples>?
+
+[08:16:38.0486] <Redfire>
+* Any reason why esr115 isn't the default branch on <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples>?
+
+[08:16:59.0599] <Redfire>
+* Any reason why `esr115` isn't the default branch on 
+<https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples>?
+
+[08:17:14.0078] <Redfire>
+* Any reason why 
+`esr115` isn't the default branch on <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples>?
+
+[09:48:29.0129] <ptomato>
+> <@redfire75369:mozilla.org> Any reason why 
+> `esr115` isn't the default branch on <https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples>?
+
+no reason! probably just forgotten. I would change it right now but I seem to have lost my permission to do that, somewhere along the line. could anyone else have a look?
+
+[11:15:57.0338] <sfink>
+Huh. It seems like a problem that you do not have access to what I think of as basically your repository! But when I go there now, I don't seem to have admin access either. tcampbell?
+
+[11:34:50.0647] <tcampbell>
+I have no idea what permissions are needed for what tasks, but I've made you an admin sfink .
+
+
+2023-11-21
+[16:35:57.0262] <smaug>
+sfink: Does SM allocate functions and objects etc by default from nursery or is nursery limited to some subset?
+
+[16:41:23.0034] <smaug>
+hmm, maybe it had something to do with finalization. Trying to recall the setup.  DOM objects using nursery need to use JSCLASS_SKIP_NURSERY_FINALIZE class flag.
+
+[17:06:44.0660] <iain>
+smaug: Yeah, see [here](https://searchfox.org/mozilla-central/source/js/src/gc/AllocKind.h#54-56)
+
+[17:08:42.0281] <smaug>
+ah, and the define below seems to hint that functions and objects are nursery allocated
+
+[17:08:55.0267] <smaug>
+but interestingly scope, as an example, isn't
+
+[17:09:18.0462] <iain>
+Objects, strings, and bigints can be nursery allocated
+
+[17:09:18.0830] <iain>
+Other GC things are always tenured
+
+[17:09:21.0555] <iain>
+(Functions are objects)
+
+[17:10:27.0279] <smaug>
+sure
+
+[17:12:11.0058] <smaug>
+just trying to figure out if I could release some memory sooner by using nursery wrappers more often with DOM objects and also clearing some native-DOM -> JS edges when the relevant global is going away
+
+[17:13:39.0201] <smaug>
+interestingly based on Android results, that makes basically no difference in sp3 score. 
+
+[17:14:20.0098] <smaug>
+though Windows might behave differently
+
+[18:26:34.0625] <jlink>
+> <@sfink:mozilla.org> iain: your discussion of finding the hash value reminded me that I'm constantly confused about the JSString layout, so I thought I'd [draw it out](https://docs.google.com/spreadsheets/d/1r4t6lfqLpk8dpTul_vEfMSOAEl5Zg1rFe0AMywUPu4s/edit#gid=0) so I could hopefully keep it straight.
+
+All of the string talk from a a couple weeks ago got me thinking about [this talk](https://www.youtube.com/watch?v=kPR8h4-qZdk) that I watched a while back regarding what Facebook does (or did) for their strings. I'm particularly impressed with how they elegantly support 23-byte inline strings in 24-byte string object. (This is discussed starting around the 7:50 mark in the video.)
+
+[18:34:30.0555] <jlink>
+Is this similar at all to what we have? I'm not familiar enough with our string classes yet to know if there are any ideas there that we could (and don't) use.
+
+[18:36:32.0989] <jlink>
+(I realize that there are some concepts that are supported by our JStrings, like ropes, that would not be needed for a general string class.)
+
+[18:48:00.0999] <iain>
+jlink: We do have a small string optimization. We always have at least 8 bytes in a string allocation that aren't the string itself (see [here](https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#237-290) for what's in those bytes.)
+
+[18:52:46.0461] <iain>
+The "draw it out" link in the message you quoted has a decent summary. Everything has length/flags. Ropes have a left pointer and a right pointer. Boring linear strings just have a data pointer. Dependent strings have a data pointer (pointing somewhere inside the data for another string) and a base pointer (pointing to the string that owns that data). External strings have a data pointer that we didn't allocate ourselves. Extensible strings have a data pointer and a capacity. Inline strings have 16 bytes of inline data. Fat inline strings have 24 bytes of inline data.
+
+[18:53:31.0860] <iain>
+Atoms end with a hash field. The specific layout of atoms is being changed in bug 1865502.
+
+[18:53:33.0317] <botzilla>
+https://bugzil.la/1865502 — NEW (nobody) — Align hash fields in all atom subtypes
+
+[21:57:26.0819] <jlink>
+> <@iain:mozilla.org> The "draw it out" link in the message you quoted has a decent summary. Everything has length/flags. Ropes have a left pointer and a right pointer. Boring linear strings just have a data pointer. Dependent strings have a data pointer (pointing somewhere inside the data for another string) and a base pointer (pointing to the string that owns that data). External strings have a data pointer that we didn't allocate ourselves. Extensible strings have a data pointer and a capacity. Inline strings have 16 bytes of inline data. Fat inline strings have 24 bytes of inline data.
+
+Cool, thanks for the pointer to that bug. I was aware that we do SSO, I just wasn't sure if any of the ideas/tricks that they used to get 23 bytes of inline string out of a 24 byte multi-purpose string object could be used in our strings to squeeze any more characters out. (It seems like, after the above change, we will get 20 inline string bytes out of a 32 inline atom object so their string has much better utilization.) We of course, however, have so many additional things to support that I doubt we could come close to that, but that doesn't mean that there _couldn't_ be _something_ that we could do to squeeze out an extra byte or two.
+
+[22:12:23.0575] <Redfire>
+Would you consider adding an "ExternalLatin1String"?
+
+[22:13:50.0734] <arai>
+there's a patch in bug 1576076.  it's not added because there's no consumer yet
+
+[22:13:51.0859] <botzilla>
+https://bugzil.la/1576076 — NEW (nobody) — Latin1 strings: Add a Latin1 flavor of JSExternalString
+
+[22:16:32.0971] <arai>
+if you need it, I'm happy to resurrect the patch
+
+[22:24:14.0922] <Redfire>
+I was looking to add it for some slight ascii optimisations on my part 😅
+
+[22:24:28.0768] <Redfire>
+because text encoding is a colouring and rust uses utf-8
+
+[22:25:54.0812] <arai>
+okay, I'll look into the patch this week
+
+[07:04:49.0481] <jrmuizel>
+iain: could we allocate Map storage the same way we allocate Array storage?
+
+[07:17:53.0522] <kfjvj>
+I have a question about module resolution hooks.
+
+How can I determine which module sent the resolution request.
+
+For instance, a imports b,b imports c.  When I get the request for c, how do I know it came from b?
+
+[07:21:29.0806] <Redfire>
+I would suggest using `SetModulePrivate` to give it a path (for example), and then reading that private data through the second arg of your resolve hook
+
+[07:31:22.0453] <kfjvj>
+> <@redfire75369:mozilla.org> I would suggest using `SetModulePrivate` to give it a path (for example), and then reading that private data through the second arg of your resolve hook
+
+I tried that, and sometimes I get undefined values for the second arg.
+
+[07:33:22.0904] <Redfire>
+Are you sure you're using `SetModulePrivate` on *all* your modules?
+
+[07:33:53.0881] <kfjvj>
+Maybe not on the top level module.
+
+[08:43:52.0647] <iain>
+jrmuizel: Array storage is baked into every native object. An object is (roughly) a shape pointer, a pointer to the slots (for named properties) and a pointer to the elements (for integer-indexed properties). The only thing that distinguishes an Array from a normal object is some magic involving the `length` field.
+
+[08:45:24.0348] <iain>
+We can't reuse the elements storage in a Map to store the contents of the hashtable, because we still need that storage to be available if somebody does something like `map[0] = "hello"`.
+
+[10:11:15.0658] <sfink>
+jlink: that was an interesting talk. We do overlap a fair bit. We have not only an empty string, but a whole bunch of short shared strings. Our max length is under 2^32, so our length only requires 4 bytes though we also use a full 4 bytes for flags + other optimizations (smallish integer-valued strings cache their integral values in 16 bits of that). We used to have the \0 storage problem, but jandem successfully ripped it out a while back so we don't have to pay for that anymore. COW is unnecessary since our strings are immutable. (And that means we can also freely share substrings by using dependent strings, especially since we never \0 terminate anymore so we don't have to worry about dependent strings mangling their bases.)  
+
+[10:11:41.0638] <sfink>
+But it's true that we can only store 16 bytes in a 24 byte string, or 24 bytes in a 32 byte string.
+
+[10:14:14.0029] <sfink>
+and I don't see a fundamental reason why we couldn't improve that efficiency. Getting 21 bytes in a 24 byte string would be pretty straightforward, I think? When combined with other existing optimizations, I can't predict how much it would gain, but it's worth considering.
+
+[12:49:30.0957] <mgaudet>
+> <@iain:mozilla.org> Outside of testing code, [this](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/HTMLAllCollectionBinding.cpp#1208-1219) is the only class that uses JSCLASS_EMULATES_UNDEFINED, and the only use of that class is in a call to CreateProxyObject [here](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/HTMLAllCollectionBinding.cpp#1285). Does that mean that [this code](https://searchfox.org/mozilla-central/source/js/src/jit/MacroAssembler-inl.h#561-563) (checking whether a non-proxy object emulates undefined) is dead code in production?
+
+Do you have a bug/patch where you're planning on removing this branch? (am looking at fuse optimization in this area, and would build atop if you did) 
+
+[12:52:30.0882] <iain>
+mgaudet: [This](https://phabricator.services.mozilla.com/D172450) is the only patch I've written. I figured that your fuse work would replace it all anyway.
+
+[12:54:08.0385] <mgaudet>
+:P ok. Fair enough. Let's see what happens :D 
+
+[14:10:28.0847] <sfink>
+TIL: if you put `static_assert` inside a false `if constexpr (...)` clause, it will be checked and break the build. :-( Back to `#ifdef` for me...
+
+[14:21:48.0514] <iain>
+arai: While working through your (very detailed and helpful - thank you!) feedback on my waitAsync patches, I came up with an idea that might significantly simplify the handling of timeouts. I wrote up a [document](https://docs.google.com/document/d/1JRmYTPVDozVwFoRjAVKVevsgoNyXSdh2uWGbXkqDRdk/edit?usp=sharing) to describe it. It is based on the observable behaviour of the microtask queue, which you know much more about that I do. Can you take a look and let me know if you can see any big problems with my idea?
+
+
+2023-11-22
+[16:09:38.0228] <arai>
+sure, I'll look into it today 
+
+[16:30:38.0307] <iain>
+jonco: In the stupid questions meeting last week, I asked about tagged pointers, and you pointed me to InternalBarrierMethods. Looking into it, I think my question was badly worded. What I'm trying to do is something more like CalleeToken than TaggedProto. TaggedProto is either a small tag *or* a pointer. I want a pointer with a low-bit tag that the GC just ignores. CalleeToken seems to be doing it with a void* and bespoke handling. Is there a more idiomatic way of doing that?
+
+[16:34:25.0684] <iain>
+For context, I want to use these tagged pointers in the [trailing array of properties attached to a NativeIterator](https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.h#233-244), setting the low bit to indicate that the property was deleted from the object being iterated mid-iteration. If it helps, I think this change will make it so that we no longer need to move properties around inside the array (which we previously did in [SuppressDeletedProperty](https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.cpp#1805-1807)), so maybe the barriers are easier.
+
+[16:44:41.0597] <iain>
+ * jonco: In the stupid questions meeting last week, I asked about tagged pointers, and you pointed me to InternalBarrierMethods. Looking into it, I think my question was badly worded. What I'm trying to do is something more like CalleeToken than TaggedProto. TaggedProto is either a small tag _or_ a pointer. I want a pointer with a low-bit tag that the GC just ignores. CalleeToken seems to be doing it with a void\* and [bespoke handling](https://searchfox.org/mozilla-central/source/js/src/jit/BaselineFrame.cpp#31). Is there a more idiomatic way of doing that?
+
+[00:20:47.0818] <arai>
+now reading the spec around waitAsync again, and looks like I overlooked that the timeout uses a task instead of a microtask (we should clarify which "task" word in the code means a microtask in the HTML spec, or a task in the HTML spec, or a generic task as a unit).  so, it needs to be handled separately than the existing promise reaction order
+
+[00:23:25.0906] <arai>
+anyway, the decision around when to perform the "timeout's critical section" or the "promise reaction for timeout" cannot be done from JavaScript engine's side, but it needs to be handled by Gecko
+
+[00:24:00.0948] <arai>
+I'll summarize it shortly
+
+[00:29:35.0037] <jonco>
+iain: There's not a standard way to do this at the moment, although maybe we could add infrastructure for this. Currently at least jsid, GCCellPtr, CalleeToken and TaggedProto have a (possibly optional) pointer with some kind tag in the low bits.
+
+[00:35:14.0667] <jonco>
+oh and wasm::AnyRef
+
+[00:43:48.0276] <jonco>
+One factor is that when you trace a tagged pointer the GC needs to know the kind of GC thing it contains, and this typically comes from the tag. It can work this out in other ways but it's most efficient to get it from the tag. To do this requires handling specific to the tagged pointer type. Currently this happens by TraceTaggedPtrEdge calling a MapGCThingTyped overlaod provided by the tagged pointer.
+
+[00:44:08.0678] <jonco>
+Arguably the small efficiency gain is not worth the extra complexity though.
+
+[00:44:56.0857] <jonco>
+ * Arguably the small efficiency gain is not worth the extra complexity though (except for Value which uses this mechanism too)
+
+[00:54:58.0658] <jonco>
+I've filed bug 1866002 to investigate adding infrastructure for this
+
+[00:54:59.0981] <botzilla>
+https://bugzil.la/1866002 — NEW (nobody) — Investigate adding common infrastructure for handling tagged pointers
+
+[02:10:13.0942] <arai>
+iain: posted some comments, but now I think we have yet another option. I'll think about it tomorrow
+
+[02:12:02.0620] <arai>
+(or maybe tonight)
+
+[04:43:24.0702] <peterv>
+mgaudet: is this check for `MOZ_DOM_STREAMS` still needed: https://searchfox.org/mozilla-central/rev/d7f837add602d270f2b2958b3ab5206dc85965c0/dom/webidl/moz.build#1034 ?
+
+[06:43:53.0126] <evilpie>
+> <@pvanderbeken:mozilla.org> mgaudet: is this check for `MOZ_DOM_STREAMS` still needed: https://searchfox.org/mozilla-central/rev/d7f837add602d270f2b2958b3ab5206dc85965c0/dom/webidl/moz.build#1034 ?
+
+No. We only support DOM streams
+
+[06:44:09.0699] <peterv>
+ok, I'll remove it
+
+[08:21:32.0118] <jonco>
+smaug: do you remember what stops wrapper cached objects getting freed while they are in the mNurseryObjects list? This is for the  the JSObjectsTenured callback: https://searchfox.org/mozilla-central/source/xpcom/base/CycleCollectedJSRuntime.cpp#1565-1578
+
+[08:40:33.0802] <iain>
+arai: Thanks for the comments. I've added a short response at the bottom of the document.
+
+[08:55:19.0561] <arai>
+the revised approach looks good!
+
+[09:03:53.0279] <mgaudet>
+wow. Bug 1842701 happened totally under my radar, but is super cool. Thanks arai!
+
+[09:03:54.0748] <botzilla>
+https://bugzil.la/1842701 — RESOLVED (arai) — Fallback to no-extra-bindings-mode in Debugger.Object.prototype.executeInGlobalWithBindings if possible
+
+[09:04:50.0625] <smaug>
+jonco: getting freed? wrapper has strong reference to the native object
+
+[09:05:13.0789] <smaug>
+and when minorgc runs, the object is moved to the deferred finalize list
+
+[09:05:28.0869] <smaug>
+which will be cleared at some point (and usually that calls release)
+
+[09:07:25.0037] <smaug>
+Or rather, when finalize on the js object runs, that triggers putting the native object to the deferred finalize list
+
+[09:23:26.0595] <jonco>
+smaug: thanks, so it's XPCWrappedNative init/finalization that manages this
+
+[09:47:10.0374] <smaug>
+In case there is WN and it has nursery allocated wrapper. DOM object don't use WN, but webidl bindings
+
+[09:47:24.0379] <smaug>
+* In case there is WN and it has nursery allocated wrapper. DOM objects don't use WN, but webidl bindings
+
+[12:32:43.0020] <kfjvj>
+Is the pointer returned by JS::GetClass guaranteed to be equal to the clasp parameter passed in to JS_NewObject?
+
+[12:33:15.0551] <kfjvj>
+* Is the pointer returned by JS::GetClass guaranteed to be equal to the clasp parameter passed in to JS_NewObject?  (When called for an object created this way)
+
+[12:44:29.0160] <kfjvj>
+> <@kfjvj:mozilla.org> Is the pointer returned by JS::GetClass guaranteed to be equal to the clasp parameter passed in to JS_NewObject?  (When called for an object created this way)
+
+If not, is there a simple way to compare two class pointers to make sure they represent the same class.
+
+[12:59:25.0652] <iain>
+You should be able to compare class pointers using normal pointer equality
+
+[13:00:11.0420] <iain>
+But also the class pointer is immutable (with IIRC some weird exceptions involving brain transplants, but I don't think those are relevant here)
+
+[13:08:59.0683] <kfjvj>
+Also, what is the purpose of the function "slot0IsISupports" ?
+
+[13:12:43.0490] <iain>
+It's part of the DOM integration with the browser. If you're not Gecko, you can safely ignore it.
+
+[13:14:15.0532] <mccr8>
+The basic idea is that Firefox needs to stash non-SpiderMonkey C++ pointers into JS objects sometimes and then retrieve them later.
+
+
+2023-11-23
+[12:39:07.0285] <mgaudet>
+Whelp. First experience of Jujitsu was badly affected by a bug, but it seems promising enough to play with more www.mgaudet.ca/technical/2023/11/23/exploring-jujitsu-jj
+
+[12:59:28.0591] <Ms2ger>
+Thought you meant the sport 😅
+
+[13:00:40.0661] <mgaudet>
+Version control is a sport :P 
+
+
+2023-11-24
+[19:48:38.0951] <mayankleoboy1>
+> <@mgaudet:mozilla.org> Whelp. First experience of Jujitsu was badly affected by a bug, but it seems promising enough to play with more www.mgaudet.ca/technical/2023/11/23/exploring-jujitsu-jj
+
+You may like to have your blog federated via planet.mozilla.org
+
+[05:11:35.0263] <owl91>
+Hello, I am running CouchDB which uses spidermonkey version 91 and I have upgraded Ubuntu from 22.10 to 23.04. However 23.04 doesn't have SpiderMonkey 91 and I need it. Can you tell me how I install it please? Thanks
+
+[05:19:10.0747] <arai>
+owl91: what's the exact requirement here?  according to https://docs.couchdb.org/en/stable/install/unix.html#dependencies , it looks like CouchDB supports multiple versions of SpiderMonkey, and I see `libmozjs-78-dev` in ubuntu lunar.  doesn't it work?  or you need 91 specifically for some reason?
+
+[05:24:31.0261] <arai>
+if 91 is necessary, possible option would be to somehow install the older package, or build it manually. https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md describes how to build SpiderMonkey 91
+
+[06:23:10.0555] <owl91>
+thanks, when i try to configure couchdb, on Ubuntu 23.04 it complains that spidermonkey is not present. When I use the previous version of the machine before the upgrade it works (22.10)
+
+[06:30:33.0990] <owl91>
+i've seen it mentioned on couchdb github that it requires 91
+
+[06:31:59.0665] <owl91>
+https://github.com/apache/couchdb/issues/4825
+
+[06:37:26.0789] <arai>
+owl91: what exact output do you get for which command?  can you post the commands you've used and all output to https://paste.mozilla.org/ ?
+
+[06:55:03.0426] <owl91>
+i have two directories of couchdb in one i get the following:
+
+[06:55:31.0551] <owl91>
+ ./configure
+ERROR: SpiderMonkey 91 is not found. Please specify with --spidermonkey-version.
+
+
+[06:56:01.0799] <owl91>
+in the other it works. The issue is not to do with spidermonkey. Thanks for your time and sorry
+
+[07:05:37.0250] <arai>
+the error message sounds like you can specify different version such as 78
+
+[07:49:50.0291] <owl91>
+i just tried that, but unfortunately it also doesn't find version 78. I'm now compiling the source, but the tar's a bit big to download so it's taking a while. I'll try again on Monday. Thanks for your help, at least I've got the source now
+
+[07:51:36.0504] <arai>
+for the error for 78, have you installed the ubuntu's  libmozjs-78-dev package?
+
+[07:52:21.0350] <arai>
+(if you go with building 91, you won't need the 78 package tho)
+
+[08:08:43.0831] <mgaudet>
+> <@mayankleoboy1:mozilla.org> You may like to have your blog federated via planet.mozilla.org
+
+It's been in my todo list since about 2018 :P 
+
+[08:12:06.0975] <owl91>
+Yes thanks i'll stay with 91
+
+[09:19:23.0559] <mgaudet>
+> <@mgaudet:mozilla.org> It's been in my todo list since about 2018 :P
+
+Five years later: https://bugzilla.mozilla.org/show_bug.cgi?id=1866556 
+
+[09:21:20.0750] <nbp>
+That's a good way to DoS a Raspberry Pi?
+
+
+2023-11-27
+[22:23:54.0338] <mayankleoboy1>
+There is a JS demo that calculates pi (runs for maybe 10-20 minutes). During its run, each time you take a gecko profile , there are some bailout markers near the beginning of the profile. So if you take 10 profiles each 2 seconds long, each profile has bailout markers. However, if you take a single profile of 20 seconds, that will also show few bailout markers in the beginning (as opposed to bailout markers every 2 seconds). Is that expected, or worth filing a bug?
+
+[22:27:49.0517] <mayankleoboy1>
+* There is a JS demo that calculates pi (runs for maybe 10-20 minutes). During its run, each time you take a gecko profile , there are some bailout markers near the beginning of the profile. So if you take 10 profiles each 2 seconds long, each profile has bailout markers. However, if you take a single profile of 20 seconds, that will also show few bailout markers in the beginning (as opposed to bailout markers every 2 seconds).The code does run in ion throughout. Is that expected, or worth filing a bug?
+
+[03:48:36.0016] <jandem>
+mayankleoboy1: when the profiler is turned on we discard jit code so I think that behavior makes sense
+
+[04:09:41.0179] <arai>
+jandem: hi, now I'm looking into reducing the memory consumption around the atomization.  and the current plan is to use an offset into a large string instead of pointer (bug 1866643), so that it reduces the data size and also allow more data shared across processes.  It has one downside, which is, it prevents the compiler's string deduplication, and each string literal needs to be rewritten to refer the substring of the large string, with function call or macro (the comment 1 there).   it's similar to `js_SOMETHING_str` in previous code, but affects more cases.  can I have your opinion here?  do you think it's feasible, or it's too much troublesome?
+
+[04:09:43.0320] <botzilla>
+https://bugzil.la/1866643 — ASSIGNED (arai) — Remove pointer from WellKnownAtomInfo
+
+[04:14:18.0612] <arai>
+so, basically, we'll need to write `MACRO(something)` instead of `"something"` for any string literals that's part of well-known atoms
+
+[04:44:17.0839] <jandem>
+arai: so the issue is when a string is used both as well known atom and also as "string literal" in the C++ code?
+
+[04:44:33.0491] <jandem>
+ * arai: so the issue is when a string is used both as well known atom and also as `"string literal"` in the C++ code?
+
+[04:44:43.0572] <arai>
+yes
+
+[04:45:10.0313] <arai>
+such as, the method name is used in profiler label or error message
+
+[04:47:15.0633] <jandem>
+will the strings have null terminators or is the length stored separately?
+
+[04:48:29.0613] <arai>
+I'm thinking about putting null terminators in the large string. that's the same way as [xptcodegen.py](https://searchfox.org/mozilla-central/rev/f030995a79461379153293c0e07f4982afe9ac28/xpcom/reflect/xptinfo/xptcodegen.py#561)
+
+[04:49:15.0563] <arai>
+the length is stored into [js::WellKnownAtomInfo](https://searchfox.org/mozilla-central/rev/f030995a79461379153293c0e07f4982afe9ac28/js/src/vm/WellKnownAtom.h#41) array, separately than the large string itself. 
+
+[04:49:52.0799] <arai>
+putting null terminators allows the above `MACRO(something)`, to get the substring of the large string and use it in place of string literal
+
+[04:52:05.0816] <jandem>
+the macro is probably okay if it lets us save memory for the well known atoms, but it would be good to have some numbers for that
+
+[04:55:10.0734] <arai>
+is it the number of affected cases, or how much it affects in the memory consumption?
+
+[04:56:22.0055] <arai>
+for affected cases, there are ~1100 string literals with the same content as well-known atoms
+
+[04:57:04.0420] <arai>
+it will increase with bug 1847677 (given we'll add most of built-in properties)
+
+[04:57:05.0764] <botzilla>
+https://bugzil.la/1847677 — ASSIGNED (arai) — Add well-known-ids variant to JSPropertySpec
+
+[04:59:17.0633] <arai>
+I'll check the actual number for the memory consumption.
+
+[05:00:54.0155] <jandem>
+is the goal to improve performance too? it would be good to have some numbers for that too because it does make it a little more work to add a new property name
+
+[05:03:15.0652] <arai>
+yes, the final goal is the performance improvement around the atomization, both in SpiderMonkey and Gecko (including CreateInterfaceObjects)
+
+[05:03:42.0145] <arai>
+I'll test again with the patch stack with the above macro way
+
+[05:04:23.0833] <arai>
+ * yes, the final goal is the performance improvement around the atomization, both in SpiderMonkey and Gecko (including CreateInterfaceObjects (bug 1850344, bug 1846110))
+
+[05:04:25.0611] <botzilla>
+https://bugzil.la/1850344 — ASSIGNED (arai) — Use permanent atom for startup-related or frequently-used atoms, or all atoms used by bindings
+
+[05:04:26.0167] <botzilla>
+https://bugzil.la/1846110 — NEW (nobody) — Too much time spent in CreateInterfaceObjects during sp3
+
+[05:06:03.0874] <arai>
+I hope bug 1866644 patch ([prototype](https://treeherder.mozilla.org/jobs?repo=try&revision=b740130edd638336291ceb004b541a4cae1bb68c)) makes the new property work less troublesome
+
+[05:06:05.0695] <botzilla>
+https://bugzil.la/1866644 — ASSIGNED (arai) — Generate CommonPropertyNames.h from more structured data source
+
+[05:07:59.0540] <arai>
+(possible more ambitious plan would be to auto-generate all boilerplate things around built-ins, such as the JSClass definitions, property definitions, etc)
+
+[05:08:59.0951] <owl91>
+> <@arai:mozilla.org> (if you go with building 91, you won't need the 78 package tho)
+
+Hello again, I'm now trying to build 91, but I get an error that a directory _build/_virtualenvs/common/local/lib/python3.11/dist-packages' is not found. When  I look I see a directory site-packages. Can you tell me how i fix that please?
+
+[05:09:09.0798] <arai>
+(the patch will add static data for the built-in properties [example](https://hg.mozilla.org/try/rev/6565059a4a8bcb009e0740fc9d7e15ed3fb37464#l4.1168))
+
+[05:09:18.0743] <arai>
+ * (the patch will add static data for the built-in properties. [example](https://hg.mozilla.org/try/rev/6565059a4a8bcb009e0740fc9d7e15ed3fb37464#l4.1168))
+
+[05:09:54.0127] <arai>
+owl91: when do you hit the error?
+
+[05:10:29.0813] <owl91>
+when i run the ../configure command
+
+[05:12:43.0189] <jandem>
+arai: regarding auto-generating boilerplate for builtins, that's also related to the ideas to have WebIDL code generation in SM
+
+[05:12:52.0143] <arai>
+owl91: can you post the entire output of the configure command https://paste.mozilla.org/ ?  it may contain some more hint how that happened
+
+[05:15:21.0819] <owl91>
+i've pasted it, do you see it?
+
+[05:16:07.0486] <arai>
+jandem: yeah, if we can reuse the WebIDL code generation, this will also simplify the well-known atom code, given WebIDL bindings will also need to generate the similar atom data
+
+[05:16:51.0212] <arai>
+owl91: once you posted, you'll get the URL for your paste.  please post the URL here, so that others can see it
+
+[05:19:34.0749] <owl91>
+https://paste.mozilla.org/cjiQWBn6
+
+[05:21:55.0863] <arai>
+owl91: just to make sure, you're trying to build spidermonkey, right?  in that case, you need to run `js/src/configure` instead of `configure` at the top-level
+
+[05:22:25.0773] <arai>
+not sure it solves the issue tho
+
+[05:27:33.0168] <arai>
+I'll look into the WebIDL plan.  Using WebIDL as data source sounds more easy to maintain than the above prototype's python data
+
+[05:27:57.0784] <owl91>
+i was using the wrong one, but i used the right one and got exactly the same output and error
+
+[05:29:39.0106] <arai>
+maybe python3 support wasn't a thing at the point of 91? I guess the build system migration from python2 to python3 was a recent thing
+
+[05:31:51.0409] <arai>
+(I don't remember correctly...)
+
+[05:32:48.0772] <arai>
+or maybe, downgrading the python 3 version might solve
+
+[05:33:10.0854] <owl91>
+i got this dist-packages is the debian-specific directory where apt and friends install their stuff, and site-packages is the standard pip directory.
+
+[05:33:47.0937] <owl91>
+and someone solved it by creating a symlink between dist-packages and site-packages
+
+[05:33:56.0864] <arai>
+you could look into the `libmozjs91-dev` package's script and dependencies to see how it builds
+
+[05:34:25.0250] <arai>
+ * you could look into the `libmozjs91-dev` package's script (from older ubuntu) and dependencies to see how it builds
+
+[05:35:15.0655] <owl91>
+does that contain all the dependencies for spidermonkey
+
+[05:35:17.0506] <owl91>
+?
+
+[05:36:45.0825] <owl91>
+or is the spidermonkey 91 command available somewhere that i can just install on Ubuntu 23.04?
+
+[05:36:53.0868] <arai>
+oh, I mean, the script to build the `libmozjs91-dev` package
+
+[05:37:27.0750] <owl91>
+where can i get a built version of 91
+
+[05:37:43.0565] <arai>
+what I mean is.  there's `libmozjs91-dev` package on 22.04.  the package's build script should have sufficient information what we'll need
+
+[05:38:47.0753] <owl91>
+ok, sorry, i only really know the basics, so can you tell me where i would see the build script please?
+
+[05:39:34.0250] <arai>
+somewhere in https://packages.ubuntu.com/jammy/libmozjs-91-dev
+
+[05:40:06.0827] <arai>
+I don't know much about deb package internals
+
+[05:40:33.0753] <owl91>
+thanks, i'll dig
+
+[05:47:27.0625] <arai>
+if it comes from the python version difference, and in case you cannot use older python, you'll need to look into the build script and modify the code to workaround the error.  the file is `python/mozbuild/mozbuild/virtualenv.py`
+
+[05:48:32.0236] <arai>
+actually, [the function itself](https://searchfox.org/mozilla-esr91/source/python/mozbuild/mozbuild/virtualenv.py#569) is to workaround the distro python's special behavior.   so, you'll need to add yet another fix
+
+[05:48:33.0591] <owl91>
+ok, i'll follow that up, thanks a lot for your help
+
+[05:49:01.0530] <arai>
+or simply use older python
+
+[05:49:17.0857] <arai>
+ * or simply use older python, with pyenv or something
+
+[05:51:40.0636] <owl91>
+another option, thanks
+
+[10:17:00.0955] <Redfire>
+And... I've been bitted in the ass by LIFO constraints on `Rooted<T>` again.
+Time to switch to `Vec<Box<Heap<T>>>` ig
+
+[10:18:45.0963] <Redfire>
+* And... I've been bitted in the ass by LIFO constraints on `Rooted<T>` again.
+Time to switch to `Vec<Box<Heap<T>>>` ig
+
+[13:11:05.0327] <mgaudet>
+[non-compile-and-go scripts](https://searchfox.org/mozilla-central/search?q=compile-and-go&path=) are no longer a thing right? (as in, I have no idea what it would be) 
+
+[13:23:20.0290] <arai>
+it's removed in bug 679939
+
+[13:23:22.0143] <botzilla>
+https://bugzil.la/679939 — RESOLVED (bzbarsky) — remove COMPILE_N_GO
+
+[13:25:09.0821] <mgaudet>
+Ah, nice. Ok. I'll open a bug to update the comment -- thanks for the quick archaeology! 
+
+[13:50:10.0449] <Bryan Thrall [:bthrall]>
+Do we have a meta bug for updating [the SpiderMonkey source docs](https://firefox-source-docs.mozilla.org/js)?
+
+[14:08:54.0645] <mgaudet>
+I don't believe so... 
+
+[14:18:39.0055] <Bryan Thrall [:bthrall]>
+Ok, I'll just use the internal documentation one, then
+
+[14:41:08.0347] <arai>
+prototype with WebIDL https://hg.mozilla.org/try/rev/35c19dae1286d54ea3d884833efa487a8a55243b  it uses the dom/bindings' WebIDL parser. so we could later extend it to also utilize the binding codegen as well
+
+
+2023-11-28
+[09:08:17.0107] <hsivonen>
+Currently, `String.prototype.normalize` retains unpaired surrogates as unpaired surrogates across the normalization operation, because ICU4C does so. The spec doesn't say explicitly either way. In ICU4X, it was previously decided that output should always be well-formed. Therefore, it we switched `String.prototype.normalize` to be ICU4X-backed without changing ICU4X internals, `String.prototype.normalize` would in addition to normalization also do what `String.prototype.toWellFormed` does. I think this should be OK, since binary storage in JS strings use cases don't make sense combined with normalization. This has turned up as a discussion item to be rehashed. I think ICU4X should stick to guaranteeing well-formed output. Is anyone aware of an actual problem with `String.prototype.normalize` replacing unpaired surrogates with the REPLACEMENT CHARACTER?
+
+[09:51:55.0872] <dbezhetskov>
+is there a way to serialize/deserialize SM's JS bytecode? 
+
+[09:56:37.0203] <iain>
+dbezhetskov: The output of the parser is a stencil, which is designed to be serialized. See [here](https://searchfox.org/mozilla-central/source/js/src/frontend/Stencil.h#71)
+
+[09:57:17.0757] <arai>
+Stencil' transcoding API is provided in [js/public/experimental/JSStencil.h](https://searchfox.org/mozilla-central/rev/9bc264fbc5d6e618d8f3b9677a8f5e8550b94dbc/js/public/experimental/JSStencil.h#191-213)
+
+[10:03:46.0767] <dbezhetskov>
+thanks for the pointer!
+
+[10:03:49.0561] <dbezhetskov>
+ * thanks for the pointers!
+
+
+2023-11-29
+[06:59:04.0306] <jrmuizel>
+In this code from ReactDOM:
+```js
+
+[07:00:14.0710] <jrmuizel>
+ * In this code from ReactDOM:
+```js
+var randomKey = Math.random().toString(36).slice(2);
+var internalInstanceKey = "__reactInternalInstance$" + randomKey;
+var internalEventHandlersKey = "__reactEventHandlers$" + randomKey;
+var internalContainerInstanceKey = "__reactContainere$" + randomKey;
+function precacheFiberNode(hostInst, node) {
+  node[internalInstanceKey] = hostInst;
+}
+```
+
+Do we know or speculate the value of `internalInstanceKey` in `precacheFiberNode`?
+
+JSC does.
+
+[07:01:09.0183] <jrmuizel>
+I ask because we're spending an appreciable amount of time atomize the property key here: https://share.firefox.dev/3MUzgiA
+
+[07:13:08.0863] <smaug>
+jonco: I am having trouble to understand how https://phabricator.services.mozilla.com/D194766 fixes the assertion
+
+[07:13:45.0977] <smaug>
+is it that mModuleLoader->RemoveFetchedModule doesn't unlink the module or what?
+
+[07:15:00.0868] <smaug>
+so now we just let that module load get through, even if we have importmaps?  But doesn't that mean that we'll start to assert in MOZ_ASSERT(!mModuleLoader->HasImportMapRegistered()); 
+
+[07:51:03.0892] <jonco>
+smaug: That's a good point. I'll have another look at this.
+
+[07:51:47.0578] <smaug>
+jonco: I guess we don't have a testcase, only the crash report?
+
+[07:52:14.0296] <smaug>
+ * jonco: I guess we don't have a testcase, only the crash report? .... looks like so.
+
+[07:53:15.0360] <jonco>
+yeah
+
+[07:53:31.0300] <jonco>
+I'll have a go at writing a testcase to trigger this.
+
+[08:32:15.0450] <dbezhetskov>
+> <@arai:mozilla.org> Stencil' transcoding API is provided in [js/public/experimental/JSStencil.h](https://searchfox.org/mozilla-central/rev/9bc264fbc5d6e618d8f3b9677a8f5e8550b94dbc/js/public/experimental/JSStencil.h#191-213)
+
+stupid question, could I use Stencil to precompile source.js with one SM and then use it in another one SM? 
+
+[08:32:17.0558] <dbezhetskov>
+> <@arai:mozilla.org> Stencil' transcoding API is provided in [js/public/experimental/JSStencil.h](https://searchfox.org/mozilla-central/rev/9bc264fbc5d6e618d8f3b9677a8f5e8550b94dbc/js/public/experimental/JSStencil.h#191-213)
+
+ * stupid question, could I use Stencil to precompile source.js with one SM and then use it in another one SM?
+
+[08:35:22.0313] <arai>
+what's the detail of " one" and "another one" ?
+
+[08:36:24.0544] <dbezhetskov>
+> <@arai:mozilla.org> what's the detail of " one" and "another one" ?
+
+two different process of SM but with the same version and on the same machine
+
+[08:37:16.0960] <arai>
+in that case, it works
+
+[08:37:22.0338] <dbezhetskov>
+so, in general I want to use it as a precompilation step:
+source.js -> SM -> soruce.stencil
+soruce.stencil -> SM -> result
+
+[08:38:12.0119] <arai>
+stencil and it's serialization is compatible only with the specific build (revision, build ID, build options, etc)
+
+[08:38:28.0024] <arai>
+so, as long as those processes share single binary, it's okay
+
+[08:38:28.0860] <dbezhetskov>
+thanks arai !
+
+[08:58:07.0560] <iain>
+> <@jrmuizel:mozilla.org> In this code from ReactDOM:
+> ```js
+> var randomKey = Math.random().toString(36).slice(2);
+> var internalInstanceKey = "__reactInternalInstance$" + randomKey;
+> var internalEventHandlersKey = "__reactEventHandlers$" + randomKey;
+> var internalContainerInstanceKey = "__reactContainere$" + randomKey;
+> function precacheFiberNode(hostInst, node) {
+>   node[internalInstanceKey] = hostInst;
+> }
+> ```
+> 
+> Do we know or speculate the value of `internalInstanceKey` in `precacheFiberNode`?
+> 
+> JSC does.
+
+jrmuizel: No, we don't.
+
+[09:10:46.0146] <jrmuizel>
+iain: would do so require https://bugzilla.mozilla.org/show_bug.cgi?id=1830195?
+
+[09:10:52.0737] <jrmuizel>
+ * iain: would doing so require https://bugzilla.mozilla.org/show\_bug.cgi?id=1830195?
+
+[09:14:19.0816] <sfink>
+"The important parts of this bug aren't unique, and the unique parts aren't important." — nice soundbite by iain 
+
+[09:14:30.0228] <sfink>
+(bug 1693371)
+
+[09:14:31.0803] <botzilla>
+https://bugzil.la/1693371 — RESOLVED (nobody) — 50% slower JS execution than Chrome on this medium.com page
+
+[09:24:43.0093] <iain>
+jrmuizel: Yeah, something along those lines. In this particular case I can also imagine solving it by somehow pre-atomizing the key. The trick is figuring out a mechanism that is good in general, not just in this case.
+

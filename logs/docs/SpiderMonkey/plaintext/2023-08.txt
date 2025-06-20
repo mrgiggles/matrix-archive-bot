@@ -1,0 +1,2009 @@
+2023-08-01
+[02:31:57.0973] <nitwel>
+I've now followed the build local process for the js shell, but using the MOZCONFIG jandem provided, I get the following error: https://paste.mozilla.org/bvymMdab
+My guess is that it can't find wasm as the target. What do I have to do to fix this?
+
+[02:36:46.0040] <jandem>
+can you pastebin your mozconfig file? there seems to be a syntax issue
+
+[02:37:16.0781] <nitwel>
+https://paste.mozilla.org/rKrOqzko
+
+[02:38:49.0936] <jandem>
+and that's in C:/mozilla-source/MOZCONFIG ?
+
+[02:42:01.0578] <jandem>
+the error is `C:/mozilla-source/MOZCONFIG: Zeile 3: $'\342\200\213': Kommando nicht gefunden.`. Maybe a file encoding issue?
+
+[02:43:13.0712] <nitwel>
+The file is encoded in UTF-8. I guess that's correct?
+
+[02:44:26.0864] <nitwel>
+Ah wait, was editing the file with notepad++ before but when editing with VS Code, it shows me there are invisible characters. 😂
+
+[02:44:54.0415] <jandem>
+ah that explains it
+
+[02:45:33.0878] <nitwel>
+Now, I get this error: https://paste.mozilla.org/YvnTwyDK
+
+[02:47:46.0419] <jandem>
+you could try removing that flag. I just tested the mozconfig I pasted yesterday and it's building now though
+
+[02:48:05.0513] <jandem>
+I'm not sure if the wasi build will work on windows. I've only tested it on Linux and our CI build runs on linux too
+
+[02:49:44.0242] <nitwel>
+Will have to see, otherwise I guess I have to switch to wsl. Got this error now: ERROR: Cannot find a Visual C++ install for e.g. ATL headers.
+
+[03:34:52.0800] <nchevobbe>
+Hello folks, we are seeing crashes when pausing in the Browser Toolbox debugger, when inspecting a regular DevTools toolbox (pausing in [page-style.js](https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/devtools/server/actors/page-style.js#523))
+Here's the crash information:
+
+```
+Crashed Thread:        0  MainThread  Dispatch queue: com.apple.main-thread
+
+Exception Type:        EXC_BAD_ACCESS (SIGSEGV)
+Exception Codes:       KERN_INVALID_ADDRESS at 0x0000000000000008
+Exception Codes:       0x0000000000000001, 0x0000000000000008
+
+Termination Reason:    Namespace SIGNAL, Code 11 Segmentation fault: 11
+Terminating Process:   exc handler [73419]
+
+VM Region Info: 0x8 is not in any region.  Bytes before following region: 105553518919672
+      REGION TYPE                    START - END         [ VSIZE] PRT/MAX SHRMOD  REGION DETAIL
+      UNUSED SPACE AT START
+--->  
+      MALLOC_NANO (reserved)   600018000000-600020000000 [128.0M] rw-/rwx SM=NUL  ...(unallocated)
+
+Kernel Triage:
+VM - (arg = 0x0) pmap_enter retried due to resource shortage
+VM - (arg = 0x0) pmap_enter retried due to resource shortage
+VM - (arg = 0x0) pmap_enter retried due to resource shortage
+VM - (arg = 0x0) pmap_enter retried due to resource shortage
+VM - (arg = 0x0) pmap_enter retried due to resource shortage
+
+
+Thread 0 Crashed:: MainThread Dispatch queue: com.apple.main-thread
+0   XUL                           	       0x11ae76760 js::Scope::firstFrameSlot() const + 8
+1   XUL                           	       0x11e882984 (anonymous namespace)::DebugEnvironmentProxyHandler::handleUnaliasedAccess(JSContext*, JS::Handle<js::DebugEnvironmentProxy*>, JS::Handle<js::EnvironmentObject*>, JS::Handle<JS::PropertyKey>, (anonymous namespace)::DebugEnvironmentProxyHandler::Action, JS::MutableHandle<JS::Value>, (anonymous namespace)::DebugEnvironmentProxyHandler::AccessResult*) const + 1012
+2   XUL                           	       0x11e87d110 js::DebugEnvironmentProxy::getMaybeSentinelValue(JSContext*, JS::Handle<js::DebugEnvironmentProxy*>, JS::Handle<JS::PropertyKey>, JS::MutableHandle<JS::Value>) + 440
+3   XUL                           	       0x11e95ec44 js::DebuggerEnvironment::getVariable(JSContext*, JS::Handle<js::DebuggerEnvironment*>, JS::Handle<JS::PropertyKey>, JS::MutableHandle<JS::Value>) + 312
+4   XUL                           	       0x11e95eae8 js::DebuggerEnvironment::CallData::getVariableMethod() + 244
+5   XUL                           	       0x11e95fb30 bool js::DebuggerEnvironment::CallData::ToNative<&js::DebuggerEnvironment::CallData::getVariableMethod()>(JSContext*, unsigned int, JS::Value*) + 196
+6   XUL                           	       0x11ad3ca98 js::InternalCallOrConstruct(JSContext*, JS::CallArgs const&, js::MaybeConstruct, js::CallReason) + 3872
+7   XUL                           	       0x11ad4d578 js::Interpret(JSContext*, js::RunState&) + 30244
+8   XUL                           	       0x11ad3df24 js::Call(JSContext*, JS::Handle<JS::Value>, JS::Handle<JS::Value>, js::AnyInvokeArgs const&, JS::MutableHandle<JS::Value>, js::CallReason) + 1420
+9   XUL                           	       0x11adf3b9c js::fun_apply(JSContext*, unsigned int, JS::Value*) + 576
+10  XUL                           	       0x11ad3ca98 js::InternalCallOrConstruct(JSContext*, JS::CallArgs const&, js::MaybeConstruct, js::CallReason) + 3872
+11  XUL                           	       0x11b0fffe4 js::jit::DoCallFallback(JSContext*, js::jit::BaselineFrame*, js::jit::ICFallbackStub*, unsigned int, JS::Value*, JS::MutableHandle<JS::Value>) + 1028
+```
+
+does this look familiar to someone?
+I tried to run mozregression and the app crash is not consistent (got some tab crash too), but it seems to be within this range: https://hg.mozilla.org/integration/autoland/pushloghtml?fromchange=0a238650aa096b0da883226d02d11fc5178541f3&tochange=195161a06a7a71dbce0ee5e8ddb8c84f3cb03df7
+
+[03:39:52.0603] <nchevobbe>
+okay, https://bugzilla.mozilla.org/show_bug.cgi?id=1845270 looks like the regressor, I'll file a bug
+
+[03:41:47.0447] <nitwel>
+jandem: Okay, so I was able to build it on windows. Problem is that after looking into the js.cpp and getting stunned by 12k lines, I think implementing wasm imports for wasm is way out of my skillset. I still would love to see this feature so could you guide me on where to create a feature request for this so the idea can be discussed further?
+
+[03:45:20.0900] <nchevobbe>
+> <@nchevobbe:mozilla.org> okay, https://bugzilla.mozilla.org/show_bug.cgi?id=1845270 looks like the regressor, I'll file a bug
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1846487
+
+[03:46:39.0649] <jandem>
+nitwel: either [here](https://github.com/mozilla-spidermonkey/sm-wasi-demo) or [here](https://bugzilla.mozilla.org/enter_bug.cgi?product=Core&component=JavaScript%20Engine) would work
+
+[03:47:39.0387] <jandem>
+ * nitwel: filing a new bug either [here](https://github.com/mozilla-spidermonkey/sm-wasi-demo) or [here](https://bugzilla.mozilla.org/enter_bug.cgi?product=Core&component=JavaScript%20Engine) would work
+
+[03:56:14.0643] <nitwel>
+Thanks for all the help, submitted an issue to the github repo.
+
+[09:01:44.0434] <kfjvj>
+arai: I'm trying to get the resolve hook to be called, but I'm not seeing it in the logs.  What exactly am I doing wrong. (I know that I'm returning the wrong value from testResolveHook.  I just want to verify that it is run when I attempt an import)
+
+[09:25:15.0785] <kfjvj>
+> <@kfjvj:mozilla.org> sent an image.
+
+Our util::ExecuteCode function sets some compile options.  Maybe it has something to do with that.
+
+[10:02:55.0833] <arai>
+what function do you call to compile the code?
+
+[10:03:24.0050] <kfjvj>
+JS::Evaluate
+
+[10:10:54.0668] <arai>
+it compiles given source as global script. the import declaration is available only in module.  module and global script are different compile target
+
+[10:11:24.0986] <kfjvj>
+> <@arai:mozilla.org> it compiles given source as global script. the import declaration is available only in module.  module and global script are different compile target
+
+Oh.  Then what happens when an import statement is executed in a global script?
+
+[10:11:35.0245] <kfjvj>
+It's just not there at all?
+
+[10:11:36.0269] <arai>
+it's simply a syntax error
+
+[10:12:12.0960] <kfjvj>
+That seems really strange.  How else can you get functionality from modules?
+
+[10:13:25.0866] <arai>
+https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/public/Modules.h#168-174
+```cpp
+/**
+ * Parse the given source buffer as a module in the scope of the current global
+ * of cx and return a source text module record.
+ */
+extern JS_PUBLIC_API JSObject* CompileModule(
+    JSContext* cx, const ReadOnlyCompileOptions& options,
+    SourceText<char16_t>& srcBuf);
+```
+
+[10:13:32.0956] <arai>
+https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/public/Modules.h#203-211
+```cpp
+/*
+ * Perform the ModuleLink operation on the given source text module record.
+ *
+ * This transitively resolves all module dependencies (calling the
+ * HostResolveImportedModule hook) and initializes the environment record for
+ * the module.
+ */
+extern JS_PUBLIC_API bool ModuleLink(JSContext* cx,
+                                     Handle<JSObject*> moduleRecord);
+```
+
+[10:13:38.0247] <arai>
+https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/public/Modules.h#213-226
+```cpp
+/*
+ * Perform the ModuleEvaluate operation on the given source text module record
+ * and returns a bool. A result value is returned in result and is either
+ * undefined (and ignored) or a promise (if Top Level Await is enabled).
+ *
+ * If this module has already been evaluated, it returns the evaluation
+ * promise. Otherwise, it transitively evaluates all dependences of this module
+ * and then evaluates this module.
+ *
+ * ModuleLink must have completed prior to calling this.
+ */
+extern JS_PUBLIC_API bool ModuleEvaluate(JSContext* cx,
+                                         Handle<JSObject*> moduleRecord,
+                                         MutableHandleValue rval);
+```
+
+[10:13:52.0129] <kfjvj>
+OK, I see.
+
+[10:14:16.0404] <arai>
+example in https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/src/shell/ModuleLoader.cpp#485
+```cpp
+module = JS::CompileModule(cx, options, srcBuf);
+```
+https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/src/shell/ModuleLoader.cpp#186,190
+```cpp
+if (!JS::ModuleLink(cx, module)) {
+...
+return JS::ModuleEvaluate(cx, module, rval);
+```
+
+[11:46:07.0602] <kfjvj>
+> <@arai:mozilla.org> example in https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/src/shell/ModuleLoader.cpp#485
+> ```cpp
+> module = JS::CompileModule(cx, options, srcBuf);
+> ```
+> https://searchfox.org/mozilla-central/rev/4044c34031d035fadb588143297ba5421419d44b/js/src/shell/ModuleLoader.cpp#186,190
+> ```cpp
+> if (!JS::ModuleLink(cx, module)) {
+> ...
+> return JS::ModuleEvaluate(cx, module, rval);
+> ```
+
+I have some Questions:
+
+1.  Is ModuleInstantiate the old name for ModuleLink?  That's the closest I can find in my mozjs version.
+2. What is the purpose of the second parameter in the resolve hook?
+
+[12:00:20.0961] <kfjvj>
+arai:  I'm still failing to properly load a module with this code.  What am I doing wrong?
+
+```
+JSObject* testResolveHook(JSContext* ctx, JS::HandleValue referencingPrivate, JS::HandleObject requestArg) {
+
+
+    JS::RootedValue jsModName{ctx};
+    jsModName.setString(JS::GetModuleRequestSpecifier(ctx, requestArg));
+    std::string modName;
+    if (conversions::FromJs(ctx, jsModName, modName)) {
+        LogInfo() << "Loading module with name: " << modName;
+    }
+
+    JS::CompileOptions options{ctx};
+    options.topLevelAwait = false;
+
+    const std::string modSrc {R"js(
+        let a = 1;
+        let b = "b";
+
+        export {a,b};
+    )js"};
+
+    JS::SourceText<mozilla::Utf8Unit> source;
+    if (!source.init(ctx, modSrc.c_str(), modSrc.size(), JS::SourceOwnership::Borrowed)) {
+        LogError() << "Could not initialize source buffer.";
+        return nullptr;
+    }
+
+    return JS::CompileModule(ctx, options, source);
+}
+
+
+TEST_F(TestModules, resolveHook) {
+
+    JS::SetModuleResolveHook(JS_GetRuntime(ctx()), testResolveHook);
+
+    const std::string testSrc {
+        R"js(
+            import {a, b} from "fhtagn";
+            print(`Got values a: ${a} and b: ${b}`);
+        )js" 
+    };
+
+    JS::CompileOptions options{ctx()};
+    options.topLevelAwait = false;
+    JS::SourceText<mozilla::Utf8Unit> source;
+    ASSERT_TRUE(source.init(ctx(), testSrc.c_str(), testSrc.size(), JS::SourceOwnership::Borrowed));
+    JS::RootedObject modRec{ctx(), JS::CompileModule(ctx(), options, source)};
+    ASSERT_NE(modRec.get(), nullptr);
+    LogInfo() << "Mark 1";
+    // NOTE: ModuleInstantiate was renamed to ModuleLink in newer versions of mozjs.
+    // So, if we upgrade, that needs to change.
+    ASSERT_TRUE(JS::ModuleInstantiate(ctx(), modRec));
+    LogInfo() << "Mark 2";
+
+    JS::RootedValue rVal{ctx()};
+    ASSERT_TRUE(JS::ModuleEvaluate(ctx(), modRec, &rVal));
+
+    LogInfo() << "Mark 3";
+}
+```
+
+I get this output:
+
+```
+ [ RUN      ] TestModules.resolveHook
+1: 79814.1057   000 UT   DFLT 12993 info    [Mark 1]
+1: 79814.1568   001 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: 79814.1923   003 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: /home/kwheel28-local/host_workspace/JsBindings/jsbindings/impl/test/src/Test_Modules.cpp:90: Failure
+```
+
+For some reason, it tries to load it twice.
+
+[12:02:40.0351] <kfjvj>
+ * arai:  I'm still failing to properly load a module with this code.  What am I doing wrong?
+
+```
+JSObject* testResolveHook(JSContext* ctx, JS::HandleValue referencingPrivate, JS::HandleObject requestArg) {
+
+
+    JS::RootedValue jsModName{ctx};
+    jsModName.setString(JS::GetModuleRequestSpecifier(ctx, requestArg));
+    std::string modName;
+    if (conversions::FromJs(ctx, jsModName, modName)) {
+        LogInfo() << "Loading module with name: " << modName;
+    }
+
+    JS::CompileOptions options{ctx};
+    options.topLevelAwait = false;
+
+    const std::string modSrc {R"js(
+        let a = 1;
+        let b = "b";
+
+        export {a,b};
+    )js"};
+
+    JS::SourceText<mozilla::Utf8Unit> source;
+    if (!source.init(ctx, modSrc.c_str(), modSrc.size(), JS::SourceOwnership::Borrowed)) {
+        LogError() << "Could not initialize source buffer.";
+        return nullptr;
+    }
+
+    return JS::CompileModule(ctx, options, source);
+}
+
+
+TEST_F(TestModules, resolveHook) {
+
+    JS::SetModuleResolveHook(JS_GetRuntime(ctx()), testResolveHook);
+
+    const std::string testSrc {
+        R"js(
+            import {a, b} from "fhtagn";
+            print(`Got values a: ${a} and b: ${b}`);
+        )js" 
+    };
+
+    JS::CompileOptions options{ctx()};
+    options.topLevelAwait = false;
+    JS::SourceText<mozilla::Utf8Unit> source;
+    ASSERT_TRUE(source.init(ctx(), testSrc.c_str(), testSrc.size(), JS::SourceOwnership::Borrowed));
+    JS::RootedObject modRec{ctx(), JS::CompileModule(ctx(), options, source)};
+    ASSERT_NE(modRec.get(), nullptr);
+    LogInfo() << "Mark 1";
+    // NOTE: ModuleInstantiate was renamed to ModuleLink in newer versions of mozjs.
+    // So, if we upgrade, that needs to change.
+    ASSERT_TRUE(JS::ModuleInstantiate(ctx(), modRec));
+    LogInfo() << "Mark 2";
+
+    JS::RootedValue rVal{ctx()};
+    ASSERT_TRUE(JS::ModuleEvaluate(ctx(), modRec, &rVal));  // This is where it fails (line 90 in the original file)
+
+    LogInfo() << "Mark 3";
+}
+```
+
+I get this output:
+
+```
+ [ RUN      ] TestModules.resolveHook
+1: 79814.1057   000 UT   DFLT 12993 info    [Mark 1]
+1: 79814.1568   001 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: 79814.1923   003 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: /home/kwheel28-local/host_workspace/JsBindings/jsbindings/impl/test/src/Test_Modules.cpp:90: Failure
+```
+
+For some reason, it tries to load it twice.
+
+[12:03:00.0085] <kfjvj>
+ * arai:  I'm still failing to properly load a module with this code.  What am I doing wrong?
+
+```
+JSObject* testResolveHook(JSContext* ctx, JS::HandleValue referencingPrivate, JS::HandleObject requestArg) {
+
+
+    JS::RootedValue jsModName{ctx};
+    jsModName.setString(JS::GetModuleRequestSpecifier(ctx, requestArg));
+    std::string modName;
+    if (conversions::FromJs(ctx, jsModName, modName)) {
+        LogInfo() << "Loading module with name: " << modName;
+    }
+
+    JS::CompileOptions options{ctx};
+    options.topLevelAwait = false;
+
+    const std::string modSrc {R"js(
+        let a = 1;
+        let b = "b";
+
+        export {a,b};
+    )js"};
+
+    JS::SourceText<mozilla::Utf8Unit> source;
+    if (!source.init(ctx, modSrc.c_str(), modSrc.size(), JS::SourceOwnership::Borrowed)) {
+        LogError() << "Could not initialize source buffer.";
+        return nullptr;
+    }
+
+    return JS::CompileModule(ctx, options, source);
+}
+
+
+TEST_F(TestModules, resolveHook) {
+
+    JS::SetModuleResolveHook(JS_GetRuntime(ctx()), testResolveHook);
+
+    const std::string testSrc {
+        R"js(
+            import {a, b} from "fhtagn";
+            print(`Got values a: ${a} and b: ${b}`);
+        )js" 
+    };
+
+    JS::CompileOptions options{ctx()};
+    options.topLevelAwait = false;
+    JS::SourceText<mozilla::Utf8Unit> source;
+    ASSERT_TRUE(source.init(ctx(), testSrc.c_str(), testSrc.size(), JS::SourceOwnership::Borrowed));
+    JS::RootedObject modRec{ctx(), JS::CompileModule(ctx(), options, source)};
+    ASSERT_NE(modRec.get(), nullptr);
+    LogInfo() << "Mark 1";
+
+    ASSERT_TRUE(JS::ModuleInstantiate(ctx(), modRec));
+    LogInfo() << "Mark 2";
+
+    JS::RootedValue rVal{ctx()};
+    ASSERT_TRUE(JS::ModuleEvaluate(ctx(), modRec, &rVal));  // This is where it fails (line 90 in the original file)
+
+    LogInfo() << "Mark 3";
+}
+```
+
+I get this output:
+
+```
+ [ RUN      ] TestModules.resolveHook
+1: 79814.1057   000 UT   DFLT 12993 info    [Mark 1]
+1: 79814.1568   001 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: 79814.1923   003 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: /home/kwheel28-local/host_workspace/JsBindings/jsbindings/impl/test/src/Test_Modules.cpp:90: Failure
+```
+
+For some reason, it tries to load it twice.
+
+[12:03:10.0470] <kfjvj>
+ * arai:  I'm still failing to properly load a module with this code.  What am I doing wrong?
+
+```
+JSObject* testResolveHook(JSContext* ctx, JS::HandleValue referencingPrivate, JS::HandleObject requestArg) {
+
+    JS::RootedValue jsModName{ctx};
+    jsModName.setString(JS::GetModuleRequestSpecifier(ctx, requestArg));
+    std::string modName;
+    if (conversions::FromJs(ctx, jsModName, modName)) {
+        LogInfo() << "Loading module with name: " << modName;
+    }
+
+    JS::CompileOptions options{ctx};
+    options.topLevelAwait = false;
+
+    const std::string modSrc {R"js(
+        let a = 1;
+        let b = "b";
+
+        export {a,b};
+    )js"};
+
+    JS::SourceText<mozilla::Utf8Unit> source;
+    if (!source.init(ctx, modSrc.c_str(), modSrc.size(), JS::SourceOwnership::Borrowed)) {
+        LogError() << "Could not initialize source buffer.";
+        return nullptr;
+    }
+
+    return JS::CompileModule(ctx, options, source);
+}
+
+
+TEST_F(TestModules, resolveHook) {
+
+    JS::SetModuleResolveHook(JS_GetRuntime(ctx()), testResolveHook);
+
+    const std::string testSrc {
+        R"js(
+            import {a, b} from "fhtagn";
+            print(`Got values a: ${a} and b: ${b}`);
+        )js" 
+    };
+
+    JS::CompileOptions options{ctx()};
+    options.topLevelAwait = false;
+    JS::SourceText<mozilla::Utf8Unit> source;
+    ASSERT_TRUE(source.init(ctx(), testSrc.c_str(), testSrc.size(), JS::SourceOwnership::Borrowed));
+    JS::RootedObject modRec{ctx(), JS::CompileModule(ctx(), options, source)};
+    ASSERT_NE(modRec.get(), nullptr);
+    LogInfo() << "Mark 1";
+
+    ASSERT_TRUE(JS::ModuleInstantiate(ctx(), modRec));
+    LogInfo() << "Mark 2";
+
+    JS::RootedValue rVal{ctx()};
+    ASSERT_TRUE(JS::ModuleEvaluate(ctx(), modRec, &rVal));  // This is where it fails (line 90 in the original file)
+
+    LogInfo() << "Mark 3";
+}
+```
+
+I get this output:
+
+```
+ [ RUN      ] TestModules.resolveHook
+1: 79814.1057   000 UT   DFLT 12993 info    [Mark 1]
+1: 79814.1568   001 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: 79814.1923   003 UT   DFLT 12993 info    [Loading module with name:  fhtagn]
+1: /home/kwheel28-local/host_workspace/JsBindings/jsbindings/impl/test/src/Test_Modules.cpp:90: Failure
+```
+
+For some reason, it tries to load it twice.
+
+[12:05:08.0740] <arai>
+what happens if you don't use import declaration?
+
+[12:06:17.0541] <kfjvj>
+> <@arai:mozilla.org> what happens if you don't use import declaration?
+
+Let me try it.
+
+[12:08:51.0051] <kfjvj>
+> <@arai:mozilla.org> what happens if you don't use import declaration?
+
+It works fine.
+
+[12:15:01.0728] <kfjvj>
+> <@kfjvj:mozilla.org> It works fine.
+
+Of course, I changed the code not to reference a and b, which are exported from "fhtagn".  But other than that, it works fine.
+
+[13:21:29.0654] <kfjvj>
+Does anyone know what step I may be missing in the module-loading code I pasted earlier?
+
+[13:24:31.0298] <kfjvj>
+> <@kfjvj:mozilla.org> Does anyone know what step I may be missing in the module-loading code I pasted earlier?
+
+arai:   Sorry to bother you again, but I'm really stumped here.
+
+[14:31:11.0859] <arai>
+> <@kfjvj:mozilla.org> I have some Questions:
+> 
+> 1.  Is ModuleInstantiate the old name for ModuleLink?  That's the closest I can find in my mozjs version.
+> 2. What is the purpose of the second parameter in the resolve hook?
+
+1. Yes,  2. the value you can set with [JS::SetModulePrivate](https://searchfox.org/mozilla-central/rev/7a642b487e4b93309285e2eb235f87a0d4b86518/js/public/Modules.h#188), which can be used to associate embedding-specific data to the importer module
+
+[14:56:03.0999] <arai>
+if JSAPI fails, you can get the error details and print it. example in [AutoReportException](https://searchfox.org/mozilla-central/rev/7a642b487e4b93309285e2eb235f87a0d4b86518/js/src/shell/js.cpp#9900)
+
+[15:10:41.0157] <arai>
+then, about the issue, it's because of the `testResolveHook` doesn't follow the restriction:  https://searchfox.org/mozilla-central/rev/7a642b487e4b93309285e2eb235f87a0d4b86518/js/public/Modules.h#53,69-71
+```cpp
+* The HostResolveImportedModule hook.
+...
+* This hook must obey the restrictions defined in the spec:
+*  - Each time the hook is called with the same arguemnts, the same module must
+*    be returned.
+```
+
+[15:11:08.0509] <arai>
+per spec, the hook is called twice https://searchfox.org/mozilla-central/rev/7a642b487e4b93309285e2eb235f87a0d4b86518/js/src/vm/Modules.cpp#1154-1157
+```cpp
+// Step 9.a. Let requiredModule be ? HostResolveImportedModule(module,
+//           required).
+requiredModule = HostResolveImportedModule(cx, module, moduleRequest,
+                                           ModuleStatus::Unlinked);
+```
+https://searchfox.org/mozilla-central/rev/7a642b487e4b93309285e2eb235f87a0d4b86518/js/src/vm/Modules.cpp#954-958
+```cpp
+// Step 7.a. Let importedModule be ! HostResolveImportedModule(module,
+//           in.[[ModuleRequest]]).
+moduleRequest = in.moduleRequest();
+importedModule = HostResolveImportedModule(cx, module, moduleRequest,
+                                           ModuleStatus::Linking);
+```
+
+[15:11:25.0316] <arai>
+and the hook must return the same object for those 2 calls
+
+[15:12:01.0947] <arai>
+so, you need to have a map from the request to the module, and return the same one if the request is already handled
+
+
+2023-08-02
+[21:04:38.0235] <arai>
+just realized there are [jserror](https://bugzilla.mozilla.org/show_bug.cgi?id=622261) and [sm-error-messages](https://bugzilla.mozilla.org/show_bug.cgi?id=1741457) meta bugs.  they should be merged?
+
+[00:02:01.0683] <jandem>
+was surprised to see a SpiderMonkey patch while skimming this blog post :) https://www.nullpt.rs/evading-anti-debugging-techniques
+
+[00:02:11.0523] <jandem>
+ * I was surprised to see a SpiderMonkey patch while skimming this blog post :) https://www.nullpt.rs/evading-anti-debugging-techniques
+
+[07:18:08.0382] <Bryan Thrall [:bthrall]>
+> <@arai:mozilla.org> just realized there are [jserror](https://bugzilla.mozilla.org/show_bug.cgi?id=622261) and [sm-error-messages](https://bugzilla.mozilla.org/show_bug.cgi?id=1741457) meta bugs.  they should be merged?
+
+That seems like a good idea to me
+
+[09:41:23.0204] <yury>
+confession: landed wasm tail calls, monitoring wasm<->js calling issues
+
+[09:41:27.0475] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[10:27:28.0870] <sfink>
+jonco: if you have a chance, can you mark https://phabricator.services.mozilla.com/D176596 as reviewed? It lost your previous mark when it was moved between bugs and peterv & I commandeered it back and forth.
+
+[10:32:40.0362] <jonco>
+sfink: sure, done
+
+
+2023-08-03
+[20:54:57.0430] <arai>
+nbp:  I'm going to mark bug 1741457 as duplicate of bug 622261, moving dependencies/blocks to bug 622261. the problem is the alias.  should it be kept as `jserror`, or be changed to `sm-error-messages` ?
+
+[20:55:00.0749] <botzilla>
+https://bugzil.la/1741457 — NEW (nobody) — [meta] Improve SpiderMonkey Error Messages
+
+[20:55:01.0081] <botzilla>
+https://bugzil.la/622261 — NEW (nobody) — [meta] Error message/reporting bugs & enhancements
+
+[20:56:28.0321] <arai>
+or perhaps should we move remaining open bugs from bug 622261 to bug 1741457 and close bug 622261 ?
+
+[02:24:56.0002] <nbp>
+maybe make `sm-error-messages` is properly rooted, maybe move `jserror` as a dependency of `sm-error-messages`
+
+[02:25:04.0608] <nbp>
+ * `sm-error-messages` is properly rooted, maybe move `jserror` as a dependency of `sm-error-messages`
+
+[02:25:38.0683] <nbp>
+strangely I was thinking of a third bug which is about adding error description pages on MDN.
+
+[02:26:18.0798] <arai>
+okay, added dependency
+
+[07:18:22.0684] <l11d>
+when I have a `RootedScript`, (how) can I call a js function with a specific name from C++?
+
+[07:20:55.0807] <jandem>
+l11d: can you say a bit more about what you're trying to achieve? it'd make it easier to answer that
+
+[07:24:34.0860] <l11d>
+I have a js-snippet that defines a function ("function main() { ... }"). This snippet is fed to `JS_ExecuteScript`. after the script finished execution, I'd like to call "main()" once more. "main" neither takes parameters nor do I care about the return value
+
+[07:59:34.0639] <nbp>
+And writing a function in JS to call it twice?
+
+[08:03:28.0330] <l11d>
+I guess that could work too; I'll try whether that fits the use case
+
+[08:04:58.0629] <nbp>
+otherwise can't `JS_ExecuteScript` be called twice?
+
+[08:06:52.0439] <l11d>
+calling `JS_ExecuteScript` caused some `redeclaration of const` errors
+
+[08:06:58.0042] <l11d>
+ * calling `JS_ExecuteScript` twice caused some `redeclaration of const` errors
+
+[08:55:46.0455] <liam_g>
+Instead of compiling to a script, you could use `JS::Evaluate()` to compile it to an object, and then use `JS_CallFunction()` to call then function whenever you want.
+
+[10:25:49.0293] <smaug>
+we don't have any counter for js invocations? Something where some debug code could take the current counter value and then check later if js was run
+
+[10:34:44.0837] <nbp>
+How reliable do you want this counter to be?
+
+[10:36:08.0959] <smaug>
+nbp: increased by any js execution 
+
+[10:36:11.0881] <nbp>
+The most reliable one is the one made for code-coverage, but it can have some cost implied to it, which means that we only enable it when we need precise information, as this slows down the interpreter.
+
+[10:36:41.0119] <smaug>
+This would be only for ifdef DEBUG code
+
+[10:36:58.0130] <nbp>
+and then if you want it to be reliable, we also have to disable Ion :/
+
+[10:37:03.0759] <smaug>
+ah
+
+[10:37:48.0181] <nbp>
+Our JS code coverage results are made with it.
+
+[10:38:26.0261] <mgaudet>
+A runtime wide counter that you ++ inside of ExecuteKernel seems... plausibly fine
+
+[10:38:37.0837] <smaug>
+We do have MOZ_CAN_RUN_SCRIPT for static analysis, and in some cases we also use nsMutationGuard in DOM to check that DOM wasn't changed
+
+[10:39:04.0544] <mgaudet>
+if it's just 'did we run js' we should be able to build something that serves that; we don't enter Ion code without bouncing through C++ _somewhere_ 
+
+[10:39:41.0119] <iain>
+What do you intend to do with the result of this query?
+
+[10:39:42.0878] <nbp>
+`js::RunScript` would be a good starting point
+
+[10:39:43.0811] <mgaudet>
+(I would argue we don't have this capability today, but it should be accomplishable) 
+
+[10:40:10.0619] <nbp>
+I would argue that we probably have 5 variants of it today :P
+
+[10:40:17.0836] <smaug>
+iain: this would be just something for assertions, since MOZ_CAN_RUN_SCRIPTs aren't perfect
+
+[10:40:34.0886] <iain>
+So something like AutoAssertCannotRunJS?
+
+[10:40:52.0670] <smaug>
+yeah, something like that. Oh, we have the GC assertion, don't we?
+
+[10:41:10.0561] <smaug>
+I mean a way to check that GC shouldn't be able to run ...
+
+[10:41:43.0085] <nbp>
+If you can run JS you can run the GC.
+
+[10:41:52.0283] <nbp>
+Checking the GC is a stronger predicate.
+
+[10:42:08.0318] <smaug>
+exactly
+
+[10:42:24.0024] <nbp>
+We have `AutoAssertNoGC`
+
+[10:42:29.0683] <iain>
+And also [AutoCheckNoGC](https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#1119)
+
+[10:43:14.0764] <nbp>
+ * <del>We have `AutoAssertNoGC`</del> (iain suggestion is better)
+
+[10:43:34.0730] <smaug>
+ah, that I could use, thanks
+
+[10:44:00.0949] <iain>
+I thought that we already had something like `AutoAssertCannotRunJS`, but I couldn't find it anywhere
+
+[10:44:01.0485] <mgaudet>
+I think you could run script without tripping that though
+
+[10:44:17.0476] <mgaudet>
+as the only place that's checked is on object allocation
+
+[10:44:32.0749] <iain>
+AutoCheckCannotGC is also a rooting hazard
+
+[10:45:11.0197] <mgaudet>
+right -- but it doesn't serve as a dynamic check that you definitely 100% haven't run script
+
+[10:45:19.0397] <iain>
+Fair
+
+[10:45:40.0225] <mgaudet>
+Like, JS::Evaluate some function `f(a,b) { return a+b}` called with two ints would almost certainly not trigger that
+
+[10:46:05.0499] <iain>
+Wouldn't the call to JS::Evaluate get reported?
+
+[10:46:12.0060] <iain>
+By the hazard analysis, I mean?
+
+[10:46:41.0467] <mgaudet>
+Maybe -- but I saw the requirement here as a dynamic complement to static analysis
+
+[10:47:03.0810] <mgaudet>
+MOZ_CAN_RUN_SCRIPT already provides some static analysis, but is deeply limited
+
+[10:47:44.0074] <evilpie>
+I know we have AutoAssertNoContentJS which is a also related 
+
+[10:48:17.0446] <sfink>
+> <@mgaudet:mozilla.org> Like, JS::Evaluate some function `f(a,b) { return a+b}` called with two ints would almost certainly not trigger that
+
+It should, since it is [checked by js::RunScript](https://searchfox.org/mozilla-central/source/js/src/vm/Interpreter.cpp#419) and I assume that JS::Evaluate clals that.
+
+[10:48:25.0426] <sfink>
+> <@mgaudet:mozilla.org> Like, JS::Evaluate some function `f(a,b) { return a+b}` called with two ints would almost certainly not trigger that
+
+ * It should, since it is [checked by js::RunScript](https://searchfox.org/mozilla-central/source/js/src/vm/Interpreter.cpp#419) and I assume that JS::Evaluate calls that.
+
+[10:49:17.0143] <mgaudet>
+Oh, yes, you're right! I missed that call
+
+[10:50:44.0876] <smaug>
+ok, so AutoCheckNoGC should work rather well
+
+[10:51:05.0243] <iain>
+Oh, `AutoAssertNoContentJS` is what I was looking for. I missed it because I was looking for MOZ_RAII, not MOZ_STACK_CLASS
+
+
+2023-08-04
+[19:49:11.0076] <liam_g>
+In the app that I'm building, I suspect that the garbage collector never runs. It could be because of some misuse of `JS::Persistent`. Or it could just be that everything is fine and I just haven't run it long enough for the garbage collection to kick in. What can I do to test to see if garbage collection is working correctly?
+
+[20:12:16.0807] <arai>
+using debug-build of SpiderMonkey will check any leak in `JS_Shutdown`
+
+[20:12:43.0365] <arai>
+https://searchfox.org/mozilla-central/rev/0816653c3ab851fa0e362eaec48c643fb764eaf4/js/src/vm/Initialization.cpp#255-263
+```cpp
+#ifdef DEBUG
+  if (JSRuntime::hasLiveRuntimes()) {
+    // Gecko is too buggy to assert this just yet.
+    fprintf(stderr,
+            "WARNING: YOU ARE LEAKING THE WORLD (at least one JSRuntime "
+            "and everything alive inside it, that is) AT JS_ShutDown "
+            "TIME.  FIX THIS!\n");
+  }
+#endif
+```
+
+[20:51:35.0873] <liam_g>
+I don't firmly understand the connection between memory leaks and garbage collection. If I'm not hitting that warning, is it safe to assume that the garbage collector is working uninhibited?
+
+[20:55:51.0383] <arai>
+I thought, if you have `JS::PersistentRooted` holding a reference to an object beyond `JS_Shutdown`, GC cannot collect it and it will result in leaking the runtime
+
+[20:56:50.0218] <arai>
+err, so, you're right. it's not a way to test whether GC is working or not.  it's a way to test if you're using `JS::PersistentRooted` correctly
+
+[21:03:00.0393] <liam_g>
+Got it
+
+[07:35:24.0555] <evilpie>
+jandem: So to make RealmCreationOptions movable I think we would need to make RealmOptions movable, which will probably involve refactoring a few layers of JS_NewGlobalObject callers. 
+
+[08:03:54.0260] <jandem>
+evilpie: I see. Another option would be to pass it as separate argument similar to the principal..
+
+[08:04:41.0124] <jandem>
+having it in the options class is nice though
+
+[08:07:05.0831] <evilpie>
+yes ..
+
+[08:08:06.0682] <evilpie>
+I was thinking we could also limit locales to some reasonable size and just have an inline buffer. (I think technically locales can get large with some custom variants etc.)
+
+[08:40:49.0103] <jandem>
+evilpie: true. I can play with this a little on Monday too to see how bad it'd be to move unique ptrs 
+
+[08:43:15.0384] <jandem>
+there's always RefPtr too but if we can make it work with unique pointers it'd be preferable 
+
+[09:10:12.0301] <caleb.distributive>
+Hey, I'm embedding Spidermonkey into Python. Does anyone know if there is a way to determine the number of roots that a given JSObject is reachable from? I'm attempting to get the python cycle collector and the spidermonkey GC to coordinate, and this information would be very useful
+
+[09:13:52.0797] <sfink>
+I don't see any way to do that. If you have R1 -> A -> B and R2 -> A -> B, the traversal from R1 will mark A and B. Then when traversing from R2, it will see that A is already marked and stop before ever looking at B. A tracing GC is not going to count references.
+
+[12:46:07.0622] <kevin_wang_22>
+Hello, I have a question about Interruption.
+1. It seems calling **JS_RequestInterruptCallback()** before **JS::Evaluate()**, the interruption callback won't be invoked, is it right?
+2. How to know when it's the property time to calling **JS_RequestInterruptCallback()**, is there any functions to show it's ready for an interruption?
+3. After creating JsContext, I don't execute any code by functions, like: **JS::Evaluate()**, **JS::ModuleEvaluate()**, then **JS_RequestInterruptCallback()** won't cause interruption callback invoked, is this right?
+4. What operations can be interrupted? That is, which functions can be terminated by **JS_RequestInterruptCallback()**?
+
+Thank you
+
+[16:28:48.0195] <sfink>
+1. it depends on what code you're evaluating. Anything that can take significant amounts of time should [check whether an interrupt has been requested](https://searchfox.org/mozilla-central/search?q=symbol:_ZN2js17CheckForInterruptEP9JSContext&redirect=false). 2. That depends on why you want an interrupt. What are you trying to use it for? 3. Mostly yes, but there are things you might call through the JSAPI that will do a check. 4. Almost anything. Roughly speaking, you can think of it as any target of a backward branch. So loop heads, for example.
+
+[16:29:16.0734] <sfink>
+ * 1. it depends on what code you're evaluating. Anything that can take significant amounts of time should [check whether an interrupt has been requested](https://searchfox.org/mozilla-central/search?q=symbol:_ZN2js17CheckForInterruptEP9JSContext&redirect=false). 
+2. That depends on why you want an interrupt. What are you trying to use it for? 
+3. Mostly yes, but there are things you might call through the JSAPI that will do a check. 
+4. Almost anything. Roughly speaking, you can think of it as any target of a backward branch. So loop heads, for example.
+
+
+2023-08-07
+[13:23:27.0221] <wes>
+> <@caleb.distributive:mozilla.org> Hey, I'm embedding Spidermonkey into Python. Does anyone know if there is a way to determine the number of roots that a given JSObject is reachable from? I'm attempting to get the python cycle collector and the spidermonkey GC to coordinate, and this information would be very useful
+
+caleb.distributive: I had to solve a similar problem years ago when I was working on script-specified finalization of gpsee ffi objects years ago.  This was a decade ago, so my memory is a bit sketchy, but IIRC the only solution I could find was to keep a list of the JSObject *s I created in storage pointed to by the private member of the JSContext *.  Then I would use atomic CAS operations put stuff in that list and remove it. The benefit of the CAS here is that I arranged the support code so that failure to swap wasn't a correctness problem and then I could let my threads freely race, which was important at least then in JS GC since it could be called from off-thread. In your case it might mean, for example, not needing to hold the Python GIL.  That technique I learned from Brendan's lockless property access code in (early? still current?) spidermonkey code.
+
+A more direct answer to this that doesn't require book keeping is that you can know when the number of roots becomes zero by registering a JSGCCallback function that functions as an observer.  Once spidermonkey asks if you if it's okay to collect the object, you know that there are zero JS-land references to your object, and you *only* need to worry about Python references.
+
+[13:29:15.0534] <mccr8>
+> <@caleb.distributive:mozilla.org> Hey, I'm embedding Spidermonkey into Python. Does anyone know if there is a way to determine the number of roots that a given JSObject is reachable from? I'm attempting to get the python cycle collector and the spidermonkey GC to coordinate, and this information would be very useful
+
+Firefox has a cycle collector that it uses to break cycles between C++ and JS. It is not a simple task. The basic idea is that JS objects reachable from JS roots get marked black during a GC, while JS objects reachable only from C++ roots also get marked a special gray color. The cycle collector traces through JS held alive by C++ and treats non-gray objects as being definitely alive by not tracing through them.
+
+
+2023-08-08
+[23:39:24.0096] <luyahan>
+Hi all who can help me review patch ? https://phabricator.services.mozilla.com/D184678
+
+[01:11:51.0242] <jandem>
+jseward: ^
+
+[01:13:18.0549] <jseward>
+jandem: luyahan : I can look at it this morning.  I was on PTO the past few days; otherwise I would have looked at it already
+
+[01:15:12.0376] <jandem>
+ah that makes sense. Thanks!
+
+[01:36:14.0098] <jseward>
+luyahan: am I correct to understand that this patch is very similar to the Loongson64 version I reviewed recently?
+
+
+2023-08-09
+[08:46:31.0888] <jonco>
+sfink: ping
+
+
+2023-08-10
+[17:25:16.0399] <kfjvj>
+I was previously referred to this script as an example of how to make a module wrap around some native functions: https://searchfox.org/mozilla-esr102/rev/d2f5f3fdc3faf117b3ffe62ba2f327f8bf337ef7/toolkit/modules/Services.jsm#7
+
+```
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+var EXPORTED_SYMBOLS = ["Services"];
+
+var Services = Cu.createServicesCache();
+```
+
+If I were to load and instantiate this module, where would I set the value of "Cu"?
+
+[17:42:22.0417] <arai>
+where you create the global object, define the property on the global object
+
+[17:58:23.0653] <kfjvj>
+I thought that modules were evaluated independently of global objects
+
+[17:59:41.0440] <arai>
+module is evaluated in the current global, with module's own environment inside the global
+
+[18:00:34.0244] <arai>
+variables declared in the module are stored into the module's environment, but it can read the global's variable
+
+[18:04:18.0394] <kfjvj>
+Is there a way to insert something into the module's environment?
+
+[18:07:50.0379] <arai>
+I'm not aware of any
+
+[10:52:57.0744] <kfjvj>
+What exactly is the purpose of the Set/GetModulePrivate functions?
+
+[13:04:08.0401] <sfink>
+my guess is: whatever you want, but probably something that your module loader implementation is going to need. It looks like that's what Gecko uses it for.
+
+[14:32:09.0146] <mgaudet>
+I thought this was an interesting read https://pointieststick.com/2023/08/05/bug-fixes-are-a-good-thing-not-a-bad-thing/ 
+
+The idea of an 'unbounded problem space' is an idea I'll be sitting with for a whiel
+
+[14:32:11.0035] <mgaudet>
+ * I thought this was an interesting read https://pointieststick.com/2023/08/05/bug-fixes-are-a-good-thing-not-a-bad-thing/ 
+
+The idea of an 'unbounded problem space' is an idea I'll be sitting with for a while
+
+[14:40:01.0247] <kfjvj>
+> <@arai:mozilla.org> module is evaluated in the current global, with module's own environment inside the global
+
+I'm trying to find a way to have a module be able to access certain data without having it accessible from the global object.  Is there any way to do that?  Any variable or function that could be accessible within a module's environment that is not visible from the global scope?
+
+[14:40:40.0657] <kfjvj>
+> <@kfjvj:mozilla.org> I'm trying to find a way to have a module be able to access certain data without having it accessible from the global object.  Is there any way to do that?  Any variable or function that could be accessible within a module's environment that is not visible from the global scope?
+
+Or even a way to modify a module's variables after the module is compiled/initialized/evaluated?
+
+[14:40:58.0001] <arai>
+you mean, accessing certain data from module's script?
+
+[14:44:36.0853] <kfjvj>
+Yeah.  Basically, what I'm trying to do is have modules that provide bindings to C++ API's.  We already have the code that generates those bindings.  But at the moment, they're generated in the global scope.  I want to change them so they can be loaded from modules.  But, since it appears that we can't currently add our own functions to modules, the workaround is to have a short module script that wraps around calls to some internal implementation.
+
+But I would prefer if that internal implementation function was not accessible from anywhere other than the module.
+
+[14:47:36.0763] <arai>
+let me do some experiment
+
+[14:55:32.0570] <arai>
+hmm, actually it's possible to inject a value into module's environment with the current APIs, but not guaranteed to keep working
+
+[14:57:59.0594] <kfjvj>
+> <@arai:mozilla.org> hmm, actually it's possible to inject a value into module's environment with the current APIs, but not guaranteed to keep working
+
+ How?
+
+[14:58:01.0087] <arai>
+there's [JS::GetModuleEnvironment](https://searchfox.org/mozilla-central/rev/778df10b835ea87def2bfdbb83810ee36bc22c94/js/public/Modules.h#294-295) function, which returns an environment object of given module.  if a module has `var foo`, the environment object has `foo` property with `undefined` value at the point of immediately before evaluating.  setting the property can change the initial value
+
+[14:58:33.0020] <arai>
+the API was added only for read-only usage, but actually the environment object can be modified :P
+
+[14:58:46.0309] <kfjvj>
+OK, maybe I'll try it.  But, you say there's no guarantee that it keeps working.  Is there some upcoming breaking change in new versions?
+
+[14:59:16.0518] <arai>
+no planned change, but it's not expected way of using the API
+
+[15:00:43.0793] <arai>
+so, for example, some optimization can break it
+
+[15:01:54.0483] <kfjvj>
+What about putting something in the module metadata?  That also seems like kind of a hack, but could potentially work.
+
+[15:04:24.0598] <arai>
+if the currently-executing module object can be retrieved, I think you can have a built-in function that returns the currently-executing module's data, such as property.  so that the data is accessible only within the module
+
+[15:06:33.0581] <kfjvj>
+How could that be retrieved?
+
+[15:14:44.0093] <arai>
+hmm, I'm looking into a way to get the current script or current module, but so far I don't see it
+
+[15:19:34.0572] <arai>
+kfjvj: okay, there is.   [JS::GetScriptedCallerPrivate](https://searchfox.org/mozilla-central/rev/778df10b835ea87def2bfdbb83810ee36bc22c94/js/public/ScriptPrivate.h#33) can get the value of the currently executing top-level module script's private value, which is set by [JS::SetModulePrivate](https://searchfox.org/mozilla-central/rev/778df10b835ea87def2bfdbb83810ee36bc22c94/js/public/Modules.h#188)
+
+[15:22:09.0084] <arai>
+so, add a global function that gets currently executing module's private data and return it or some property
+
+[15:22:21.0708] <arai>
+this is safer than modifying the environment object
+
+[15:23:03.0289] <arai>
+the function just need to verify the private value is valid or not.  in order to avoid crash when it's called outside of module top-level
+
+
+2023-08-13
+[10:25:52.0480] <ptomato>
+what's the currently recommended way to get FinalizationRegistry-like functionality in c++? other than JSClassOps.finalize
+
+[10:27:34.0984] <ptomato>
+I have a function object that I stashed a pointer into with `js::NewFunctionWithReserved()`. I'd like to get a callback when the object is finalized so I can free my pointer, but since it's a function object I can't add a finalizer to its JSClassOps
+
+[10:32:15.0211] <ptomato>
+would it involve `WeakCache<GCHashSet>` with a subclass of GCHashSet that overrides traceWeakEntries?
+
+
+2023-08-14
+[04:06:04.0340] <evilpie>
+If you try out https://jsconsole.com/?new%20Intl.DateTimeFormat().resolvedOptions().timeZone do you see the time zone that you would expect?
+
+[04:11:07.0933] <arai>
+yes
+
+[04:12:44.0630] <arai>
+ptomato: how about storing an object with `JSClassOps.finalize` into the function's reserved slot?
+
+[04:45:15.0373] <evilpie>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1848615
+
+[08:01:05.0009] <ptomato>
+> <@arai:mozilla.org> ptomato: how about storing an object with `JSClassOps.finalize` into the function's reserved slot?
+
+yes, that would work. I was wondering though because that seems like a lot of hassle for solving a relatively simple problem...
+
+[10:34:53.0168] <yury>
+If I want to change js/src/jit/arm/Architecture-arm, who will be the best peer to have conversation with?
+
+[12:09:29.0389] <mgaudet>
+yury: I feel like npb might have opinions? 
+
+[13:36:31.0281] <mgaudet>
+confession. Well crap. Turns out `hg graft -d` and `hg rebase -d` have pretty damn different meanings for `-d` and I just threw away ten minutes of conflict resolution trying to get myself out of this
+
+[15:03:21.0059] <mgaudet>
+confession: Hmm -- 2 min before EOD got something working... but it's 10% slower rather than faster. Tomorrow problem :)
+
+[15:03:27.0029] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2023-08-15
+[14:31:00.0598] <iain>
+This paper about interpreters has some interesting stuff in it, although I am not at all convinced that we should replace our bytecode interpreter with an AST interpreter: https://stefan-marr.de/downloads/oopsla23-larose-et-al-ast-vs-bytecode-interpreters-in-the-age-of-meta-compilation.pdf
+
+[14:49:21.0381] <mgaudet>
+confession: The eternal challenge of doing performance work -- just because it's not wrong enough to crash, doesn't mean it's -right- either. 
+
+[16:15:05.0016] <Redfire>
+Random Question: Does anyone know if it's safe to cast a `*mut JSLinearString` to a `*mut JSString`, mostly wondering since I can't just easily do that in rust
+
+[16:20:40.0277] <iain>
+On the C++ side, the upcast is safe. I don't understand Rust's safety semantics well enough to assert with 100% confidence that the same is true for Rust, but it seems like it should be?
+
+[16:21:09.0977] <iain>
+ * Redfire: On the C++ side, the upcast is safe. I don't understand Rust's safety semantics well enough to assert with 100% confidence that the same is true for Rust, but it seems like it should be?
+
+[16:21:30.0092] <iain>
+But inheritance is not a Rust thing, so I don't know how it deals with subtypes in C++.
+
+[16:31:34.0928] <Redfire>
+That probably depends on ABI semantics, which I have no idea about. I'll probably just make a wrapper on the C++ side to do the casting.
+
+
+2023-08-16
+[02:07:30.0887] <nchevobbe>
+to whoever is handling the SpiderMonkey mastodon account, could you add a description text for the screenshot in https://mozilla.social/@SpiderMonkey/110898466841305951 ? :) 
+
+[03:50:15.0290] <jandem>
+Done! Thanks for the reminder :) 
+
+[04:13:05.0071] <Redfire>
+Is a `reinterpret_cast<JSString*>(JS_EnsureLinearString(cx, str))` sound? I was getting complains from the compiler about `JSLinearString` being an incomplete type and I'm not sure how to fix those.
+
+[04:21:31.0364] <jandem>
+Redfire: it's sound, but can't you just use `JSLinearString*` instead?
+
+[04:22:18.0607] <Redfire>
+I'm trying to cast it to `JSString*` so I can use it on the rust side with the functions that only take `JSString` (ex JS_ConcatStrings`)
+
+[04:22:42.0119] <Redfire>
+ * I'm trying to cast it to `JSString*` so I can use it on the rust side with the functions that only take `JSString` (ex `JS_ConcatStrings\`)
+
+[04:22:47.0024] <Redfire>
+ * I'm trying to cast it to `JSString*` so I can use it on the rust side with the functions that only take `JSString` (ex `JS_ConcatStrings`)
+
+[04:22:56.0130] <jandem>
+but then you don't need to call `JS_EnsureLinear` on it?
+
+[04:23:03.0450] <jandem>
+there's also `JS_FORGET_STRING_LINEARNESS` fwiw
+
+[04:23:54.0914] <jandem>
+(it's just a reinterpret-cast too)
+
+[04:25:00.0032] <Redfire>
+Frankly I just realised I don't need to manually call `JS_EnsureLinearString`, but I think it would still be good to have the capability to get the `JSString*` from it on the Rust side.
+
+[04:27:07.0737] <jandem>
+probably best to use `JS_FORGET_STRING_LINEARNESS` in that case
+
+[04:52:30.0201] <Redfire>
+Ah, didn't even notice that function existed, much thanks.
+
+[04:54:09.0377] <Redfire>
+Also, regarding my queries about `JS::GetPromiseResult` from some time ago, it seems it has something to do with the calling conventions for C++ functions with non-POD values in MSVC. 
+The comment in https://github.com/servo/mozjs/blob/821687091d68e9f98809a60a9111f6d612c0bdb9/rust-mozjs/src/jsglue.cpp#L978-L984 says so, although neither link works.
+
+[04:54:56.0338] <Redfire>
+ * Also, regarding my queries about `JS::GetPromiseResult` from some time ago, it seems it has something to do with the calling conventions for C++ functions with non-POD return values in MSVC.
+The comment in https://github.com/servo/mozjs/blob/821687091d68e9f98809a60a9111f6d612c0bdb9/rust-mozjs/src/jsglue.cpp#L978-L984 says so, although neither link works.
+
+[04:55:21.0591] <Redfire>
+After switching to the `JS_GetPromiseResult` glue/wrapper, works properly now.
+
+[06:02:34.0166] <nchevobbe>
+the client I use yell at me if I try to boost toot without alt text XD
+
+[07:27:43.0693] <Bryan Thrall [:bthrall]>
+I'm looking at [bug 1094154](https://bugzilla.mozilla.org/show_bug.cgi?id=1094154 ), and it references [tweaking self-hosted functions via `SetScriptHints()`](https://web.archive.org/web/20150425075918/https://developer.mozilla.org/en-US/docs/Mozilla/Projects/SpiderMonkey/Internals/self-hosting). That function doesn't exist anymore, but did it get renamed or is the same functionality available in some other way? (If it isn't available, I plan to close the bug as WONTFIX)
+
+[07:27:46.0326] <botzilla>
+https://bugzil.la/1094154 — NEW (nobody) — Make always-inlined self-hosted builtins not count towards the inlining depth limit
+
+[07:34:32.0926] <jandem>
+Bryan Thrall [:bthrall]: that doesn't exist anymore but we have a similar hint in the form of `SetIsInlinableLargeFunction`. We use it to bypass the size limit for some self-hosted functions that we really want to inline
+
+[07:35:00.0811] <jandem>
+closing that bug seems fine
+
+[07:35:36.0900] <Bryan Thrall [:bthrall]>
+Thanks!
+
+[09:09:09.0693] <sfink>
+@jonco @allstarschh https://bugzilla.mozilla.org/show_bug.cgi?id=1848524 maybe?
+
+[09:20:09.0436] <jonco>
+sfink: @allstarschh this one - it looks like there are still crashes happening after the fix landed - https://bugzilla.mozilla.org/show_bug.cgi?id=1835886
+
+[09:20:49.0818] <@allstarschh>
+jonco: can you CC me in that one
+
+[09:20:58.0532] <jonco>
+done
+
+[12:12:42.0118] <mgaudet>
+sfink: since sixgill is a whole program analysis, is there textual whole-program cfg that one could extract from the hazard builds? 
+
+[12:13:30.0274] <mgaudet>
+or, not cfg; call graph I mean
+
+[12:54:52.0074] <asuth>
+> <@mgaudet:mozilla.org> sfink: since sixgill is a whole program analysis, is there textual whole-program cfg that one could extract from the hazard builds?
+
+There's a callgraph.txt in there and there's some discussion of it in https://bugzilla.mozilla.org/show_bug.cgi?id=1736085 noting that searchfox has some call graph understanding and a growing diagramming capability, although it needs help understanding some stuff (ex: MakeRefPtr confuses searchfox)
+
+[12:55:58.0467] <mgaudet>
+asuth: Interesting -- callgraph.txt sounds like what I'm looking for, but it's not listed as one of the artifacts on a recent hazard build
+
+[12:56:03.0485] <mgaudet>
+do we have to ask for it specially?
+
+[12:58:24.0323] <asuth>
+> <@mgaudet:mozilla.org> asuth: Interesting -- callgraph.txt sounds like what I'm looking for, but it's not listed as one of the artifacts on a recent hazard build
+
+I see it in `hazardIntermediates.tar.xz`
+
+[12:58:38.0786] <mgaudet>
+oh! I didn't look in there. Perfect 
+
+[13:00:17.0028] <asuth>
+mgaudet: I'm always looking for interesting use-cases to support in my searchfox diagramming / code understanding tool (hobby) efforts, so if you have any specific use cases, I'd love to hear them / be pointed at bugs/etc. for context
+
+[13:02:02.0978] <mgaudet>
+asuth: this is very much a one-and-done analysis; hoping to identify functions which would become infallible if we were to adopt a crash-on-oom policy
+
+[13:03:41.0038] <mgaudet>
+asuth: do you know if callgraph.txt has any documentation? (mostly it seems straightforward, D <caller> <callee>, but some have `1:1` edges) 
+
+[13:03:54.0681] <mgaudet>
+`D 1:1 28709 151000` 
+
+[13:07:59.0646] <sfink>
+mgaudet: I have a tool that gives a REPL-like interface to the callgraph that'll probably do what you need
+
+[13:08:07.0461] <mgaudet>
+(Now that I think more of it, I think I probably would need to patch sixgill; don't think I quite have enough information from just the callgraph) 
+
+[13:08:23.0353] <mgaudet>
+but I need more time with some paper to think :D 
+
+[13:11:58.0954] <asuth>
+okay, I did teach searchfox how to use neato and fdp now too, so if you are like "I really want a giant messy diagram" you can do things like [calls to js_malloc](https://asuth.searchfox.org/mozilla-central/query/default?q=calls-to%3A%27JS_Malloc%27+depth%3A2+path-limit%3A32+hier%3Aflat+graph-layout%3Afdp)
+
+[13:12:10.0402] <asuth>
+ * okay, I did teach searchfox how to use neato and fdp now too, so if you are like "I really want a giant messy diagram" you can do things like [calls to js\_malloc using fdp](https://asuth.searchfox.org/mozilla-central/query/default?q=calls-to%3A%27JS_Malloc%27+depth%3A2+path-limit%3A32+hier%3Aflat+graph-layout%3Afdp)
+
+[13:12:55.0180] <sfink>
+mgaudet: we could discuss what you need. It sounds like you could probably use the existing support in the hazard analysis for pushing bits through the callgraph, plus a little bit of JS code to set the bits for the cases you care about. Maybe?
+
+[13:13:21.0529] <mgaudet>
+Possibly -- this would be a good drawing-on-whiteboard thing to talk about next week
+
+[13:13:50.0870] <sfink>
+there is a crate called `sfink_callgraph_traversal` that gives an interface to just the callgraph information. You can use it for things like finding a static call chain from function A to function B: `route from A to B`
+
+[13:14:26.0486] <mgaudet>
+> <@sfink:mozilla.org> there is a crate called `sfink_callgraph_traversal` that gives an interface to just the callgraph information. You can use it for things like finding a static call chain from function A to function B: `route from A to B`
+
+oh look, a reason to try to shave up my rust skills
+
+[13:14:33.0012] <mgaudet>
+:D 
+
+[13:16:01.0100] <sfink>
+2 warnings: (1) it's my rust learning project and (2) the compile throws lots of warnings because it can be compiled both as a binary (for the repl mentioned above) as well as a lib for extending Python. So lots of symbols are only used by one or the other, so the compile complains bitterly that there's a bunch of stuff you're not using. :-(
+
+[13:16:29.0358] <mgaudet>
+Good to know -- I won't be touching this till after All hands 
+
+[13:16:36.0276] <mgaudet>
+I'm definitely in an 'information gathering' phase
+
+[13:17:17.0188] <asuth>
+searchfox can also do some path finding via calls-between, ex: [calls-between:'js_malloc' calls-between:'js_newcontext' path-limit:128 depth:12](https://asuth.searchfox.org/mozilla-central/query/default?q=calls-between%3A%27js_malloc%27+calls-between%3A%27js_newcontext%27+path-limit%3A128+depth%3A12) gives us the above
+
+[13:26:02.0991] <sfink>
+nice!
+
+[13:29:52.0502] <mgaudet>
+Interesting! I'll have to keep that in mind when doing some explorations
+
+[13:36:43.0859] <sfink>
+> <@mgaudet:mozilla.org> `D 1:1 28709 151000`
+
+and for the record, that's one of the bits that I push through the graph, [`ATTR_GC_SUPPRESSED`](https://searchfox.org/mozilla-central/rev/d81e60336d9f498ad3985491dc17c2b77969ade4/js/src/devtools/rootAnalysis/utility.js#14) to be precise. `1:1` means this edge is sometimes (the first 1) and always (the 2nd 1) called within the scope of an `AutoSuppressGC` RAII object. That's an example of the sorts of bits that I propagate through the global callgraph.
+
+[13:37:28.0838] <mgaudet>
+Ah, ok. That is good to know
+
+[13:56:47.0609] <mgaudet>
+confession: Success! Optimization is activating... in baseline only (seems to be killing ion performance or invalidating ion script?) Will have to investigate more tomorrow. 
+
+[13:56:50.0242] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2023-08-17
+[00:05:07.0405] <zcorpan>
+ smaug jonco re https://github.com/whatwg/html/issues/9571
+On a first read, I agree with domenic, especially this:
+> Indeed, many web developers are used to an isomorphism: bundled code behaves the same as unbundled code. You are proposing to break that.
+
+[01:19:31.0815] <zcorpan>
+smaug: jonco Also, non-worker module scripts behave the same per spec afaict (same settings object for descendants)
+
+[01:20:02.0382] <jonco>
+Hey zcorpan 
+
+[01:20:13.0776] <jonco>
+First of all I agree that as much as possible bundled code should behave the same as unbundled code.
+
+[01:20:30.0158] <jonco>
+When I first read this I thought that what was being argued here was that an unbundled version of a site may now fail where the bundled version works because of a CSP violation on a static module load (which the bundled version would not perform).
+
+[01:20:48.0633] <jonco>
+However this it is already possible with an import of an absoulte URL not included in the CSP.
+
+[01:21:03.0584] <jonco>
+ * However this it is already possible with an import of an absolute URL not included in the CSP.
+
+[01:21:50.0376] <jonco>
+ * However this is already possible with an import of an absolute URL not included in the CSP.
+
+[01:24:02.0684] <jonco>
+So now I'm not sure.  Is domenic arguing something else here?
+
+[01:28:25.0984] <zcorpan>
+The page and the worker may have different CSPs. The expectation is that the fetches of the initial graph should either work or not work, regardless of whether it's multiple files or bundled to one file. At least assuming the outer CSP applies the same rules for all of those resources
+
+[01:29:12.0219] <jonco>
+Non-worker module scripts do use the same CSP for the root and the static imports.  They also use the same CSP for static and dynamic imports, which worker modules currently do not.
+
+[01:29:51.0965] <zcorpan>
+Aha. Why is there a difference for dynamic imports for worker modules?
+
+[01:30:25.0217] <jonco>
+Because currently they apply the worker CSP
+
+[01:31:35.0915] <zcorpan>
+Maybe for regular module scripts the global is still the window, so its CSP should apply. But workers have their own global
+
+[01:31:38.0094] <jonco>
+"The expectation is that the fetches of the initial graph should either work or not work, regardless of whether it's multiple files or bundled to one file" - how is this true? If it's multiple files there are addional CSP checks that can fail beyond the first one
+
+[01:32:00.0685] <smaug>
+(it is it odd inconsistency between static and dynamic imports in workers I don't like )
+
+[01:32:54.0445] <zcorpan>
+jonco: maybe more accurate is that the same CSP should apply
+
+[01:32:59.0732] <jonco>
+ * "The expectation is that the fetches of the initial graph should either work or not work, regardless of whether it's multiple files or bundled to one file" - how can this be work? If it's multiple files there are addional CSP checks that can fail beyond the first one
+
+[01:33:22.0049] <jonco>
+ * "The expectation is that the fetches of the initial graph should either work or not work, regardless of whether it's multiple files or bundled to one file" - how can this work? If it's multiple files there are addional CSP checks that can fail beyond the first one
+
+[01:38:13.0038] <jonco>
+I see that is desirable.  It's also desirable that static and dynamic imports get the same CSP.  I feel like not having the latter is more weird than not having the former.
+
+[01:38:35.0812] <jonco>
+ * "The expectation is that the fetches of the initial graph should either work or not work, regardless of whether it's multiple files or bundled to one file" - how can this work? If it's multiple files there are additional CSP checks that can fail beyond the first one
+
+[01:41:32.0858] <zcorpan>
+It's consistent with `importScripts()`
+
+[01:48:07.0682] <jonco>
+From the spec it looks like importScripts use the worker CSP to load the scripts
+
+[01:48:21.0245] <zcorpan>
+yes
+
+[01:50:02.0862] <jonco>
+Thanks for the discussion. This is not a hill I want to die on but I though it was worth raising the issue.
+
+[01:52:55.0229] <zcorpan>
+ty too :)
+
+[03:53:15.0793] <Redfire>
+Is there any reason that `AtomToLinearString` is public when `JSAtom` itself isn't?
+
+[03:57:33.0118] <arai>
+looks like it's for [JS::PropertyKey::toAtom](https://searchfox.org/mozilla-central/rev/d81e60336d9f498ad3985491dc17c2b77969ade4/js/public/Id.h#200)
+
+[03:57:42.0297] <arai>
+https://searchfox.org/mozilla-central/rev/d81e60336d9f498ad3985491dc17c2b77969ade4/dom/bindings/ProxyHandlerUtils.h#44
+```cpp
+JSLinearString* str = JS::AtomToLinearString(id.toAtom());
+```
+
+[03:58:03.0535] <arai>
+hm, but there's also [JS::PropertyKey::toLinearString](https://searchfox.org/mozilla-central/rev/d81e60336d9f498ad3985491dc17c2b77969ade4/js/public/Id.h#203) :/
+
+[05:13:20.0951] <Redfire>
+In [`JS::ObjectToCompletePropertyDescriptor`](https://searchfox.org/mozilla-central/source/js/src/jsapi.cpp#2044), what is the `HandleValue` used for?
+
+[05:17:21.0777] <evilpie>
+That is the descriptor value (like `{value: 1, configurable: true}`) that will be converted to a PropertyDescriptor
+
+[05:17:53.0000] <evilpie>
+The `Handle<JSObject*> obj` seems unused, and also the whole API is unused in gecko anyway
+
+[05:18:15.0974] <Redfire>
+oh wait, huh, very weird
+
+[05:21:01.0953] <Redfire>
+I thought it was the other way around from looking at the signature
+
+[05:28:51.0921] <evilpie>
+Do you need this API?
+
+[05:32:42.0113] <Redfire>
+As part of my rust wrapper, I'm just implementing as many of the APIs as I can into my API
+
+[05:33:09.0109] <evilpie>
+I see
+
+[06:01:17.0537] <Redfire>
+Are the attributes (writable, configurable, etc.) read-only on a `PropertyDescriptor`?
+and it's not safe to get a `MutableHandle` from their inner value/getter/setter right?
+
+[06:08:41.0043] <jandem>
+they're not read-only, you can do `desc.setWritable(true)` or something
+
+[06:10:39.0308] <Redfire>
+Well yes but it wouldn't change the object's property attrs that I got it from for example
+
+[06:44:39.0149] <arai>
+yeah, the descriptor is just an object for input and output. which is isolated from the internal state.  after modifying the descriptor, you can use it as input to create another object or properties with the modified state
+
+[11:03:51.0138] <mgaudet>
+confession: Fought through my mysterious problems (-shakes fist at getting type policy wrong-) to be rewarded with a zero percent speedup :) Glad I took the shortcut of custom coding the IC before doing more work (though, still curious if the approach could work on other things) 
+
+[11:03:55.0019] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[11:06:04.0234] <iain>
+mgaudet: This is for FoldMultipleAtoms?
+
+[11:06:12.0262] <iain>
+ * mgaudet: This is for GuardMultipleAtoms?
+
+[11:07:21.0378] <mgaudet>
+> <@iain:mozilla.org> mgaudet: This is for FoldMultipleAtoms?
+
+Yes. Lunch.  Can make more observations after 
+
+[12:11:01.0481] <sfink>
+yeah, I'm in the 0% speedup club too. I, uh, might have spent a little more time than you did getting there, though...
+
+[12:14:53.0098] <mgaudet>
+So you can see in the profile with the [change enabled](https://share.firefox.dev/44ga3oX) vs the one [without it enabled](https://share.firefox.dev/47zrgMR) that the change manages to shave about 1.5% off the ticks in shallowEqual, and get rid of the IonICs (as desired). But measurement on the react testcase can't see improvement. This patch stack is not general at all yet of course; it consists of custom IC attach code that using strcmp to find the shallowEqual target. 
+
+[12:26:19.0979] <iain>
+I guess the moral of the story is that Ion ICs are pretty good. I imagine that we'd see a bigger improvement in the 7-20 atom range where we can't attach enough Ion ICs, but we can fold a big GuardMultipleAtoms.
+
+[12:28:21.0120] <mgaudet>
+Yeah -- think that's true. 
+
+[12:28:37.0498] <mgaudet>
+In the mean time, I'll clean up this a smidge, but will shelve this for now.
+
+[12:29:57.0448] <mgaudet>
+I think next up I'll try to take a closer look at the `jsx` function previously highlighted
+
+[13:06:20.0600] <iain>
+mgaudet: Your patch builds on top of Nathan's original patches, right? Might make sense to have a link in the bug to those patches for posterity.
+
+[13:06:51.0200] <iain>
+I'm assuming that you didn't get far enough with the stub folding rewrite to justify testing it with laned shapeguards + laned load slots?
+
+[13:07:20.0140] <iain>
+I don't think we have a lot of evidence pushing for that right now, so I wouldn't bother unless you're already close.
+
+[13:08:09.0224] <mgaudet>
+iain: So, I got a rewritten analysis working (produces the exact same set of folding in jit-test as the original analysis); but I chickened out on adding laned support. Chose to do a target experiment insteada. 
+
+[13:09:33.0254] <mgaudet>
+The rewritten analysis is more complicated (more general, and I think should be clearer if we wanted to add laned support, but I still don't think we've got evidence to keep pushing here) 
+
+[14:45:58.0979] <mgaudet>
+confession: I miss logbot. 
+
+[14:46:21.0076] <mgaudet>
+(Search on logbot worked -- element search never seems to)
+
+
+2023-08-19
+[20:25:52.0359] <ptomato>
+any thoughts on why FinalizationRegistry might not be working correctly in an embedding? this snippet works as expected in jsshell:
+
+[20:25:55.0595] <ptomato>
+```js
+registry = new FinalizationRegistry(heldValue => print(heldValue))
+obj1 = {}
+registry.register(obj1, "obj1 has been finalized")
+obj1 = null
+gc()
+```
+
+[20:26:23.0028] <ptomato>
+in my embedding, the message never gets printed. I'm not sure what I've set up differently
+
+[21:31:36.0897] <arai>
+just to make sure, `print` is globally available?
+
+[21:33:35.0350] <arai>
+also, does it happen if you put `let` before `obj1` ?  any chance the global object is something special about global variable?
+
+[21:33:44.0920] <arai>
+ * also, does it happen if you put `let` before `obj1 = {}` ?  any chance the global object is something special about global variable?
+
+[21:36:48.0638] <arai>
+also, what does `gc` function do in the embedding?
+
+[22:37:37.0588] <Redfire>
+If I use `DefineFunctionWithReserved` and `SetFunctionNativeReserved`, within the native function body, I can use `CallArgs::callee` and `GetFunctionNativeReserved` to get that private data right?
+
+[03:09:21.0025] <jonco>
+ptomato: if you didn't do this, the embedding needs to set a hook to queue the cleanup work so that it happens at a spec-appropriate time - JS::see SetHostCleanupFinalizationRegistryCallback
+
+[03:52:45.0361] <arai>
+Redfire: yes. the almost same thing is done here [Promise.cpp](https://searchfox.org/mozilla-central/rev/19500c006ebf8dc4587eef55357ae26b772391e1/dom/promise/Promise.cpp#383,388,416,426-427)
+
+[04:13:42.0967] <Redfire>
+I was basically just wondering if I could use that to store rust callbacks/futures
+
+[13:44:48.0333] <ptomato>
+> <@arai:mozilla.org> also, what does `gc` function do in the embedding?
+
+it calls `JS_GC()`
+
+[13:45:02.0622] <ptomato>
+> <@jonco:mozilla.org> ptomato: if you didn't do this, the embedding needs to set a hook to queue the cleanup work so that it happens at a spec-appropriate time - JS::see SetHostCleanupFinalizationRegistryCallback
+
+it was this! thanks
+
+[15:15:26.0068] <ptomato>
+> <@jonco:mozilla.org> ptomato: if you didn't do this, the embedding needs to set a hook to queue the cleanup work so that it happens at a spec-appropriate time - JS::see SetHostCleanupFinalizationRegistryCallback
+
+same question, actually, for WeakRef; I've implemented the host cleanup callback for FinalizationRegistry and FinalizationRegistry seems to work as expected. but with WeakRef, this snippet works in jsshell
+```js
+weakRef = new WeakRef({})
+gc()
+weakRef.deref()
+```
+whereas in my embedding the weakref is still holding on to the object
+
+[15:16:30.0105] <ptomato>
+in a heap dump it shows up with an edge from the WeakRef to the target, labelled `WeakRefObject::target` - [this](https://searchfox.org/mozilla-central/source/js/src/builtin/WeakRefObject.cpp#120) suggests that something is causing it to intentionally trace weak edges
+
+[15:16:47.0944] <ptomato>
+(or is that because it's a heap dump?)
+
+
+2023-08-20
+[01:25:41.0872] <jonco>
+ptomato: You need to call JS::ClearKeptObjects.  The spec says "ECMAScript implementations are expected to call ClearKeptObjects when a synchronous sequence of ECMAScript executions completes". For HTML this happens after draining the microtask queue.
+
+[10:35:13.0571] <ptomato>
+thanks, golden tip! I'll try to write up an example in spidermonkey-embedding-examples
+
+
+2023-08-22
+[09:41:54.0012] <elliottt>
+i've been working on updating the fastly javascript sdk to spidermonkey 116, and noticed strange behavior around one specific test in our CI: the test raises "out of memory" if there is a string template with function calls inside it, in a branch that's never executed. naming the parts of the template that have function calls in it and using those names causes the problem to disappear. has anything changed with how string templates are handled that would make their presence in a function change behavior, even when they're on a path that's not executed?
+
+an additional wrinkle here is that i've only been able to reproduce this in CI, and it's in response to ssl requests from within github ci.
+
+[09:48:02.0161] <mgaudet>
+O.o That seems very peculiar. If you could write up anything about this an open a bug, because it's All Hands this week, you're going to get relatively long feedback time right now
+
+[09:48:39.0377] <mgaudet>
+(And I know it would be a lot of work, but a bisection of any sort would also help) 
+
+[09:48:44.0129] <elliottt>
+i've been trying to minimize it and get it reproducible outside of ci, and will continue working on that. worst case i'll have a minimal case that i can show a failure in ci :)
+
+[09:49:08.0312] <elliottt>
+i'll have a look at the diff between the 115 release we were using and 116 to see if anything jumps out
+
+[09:53:53.0448] <mgaudet>
+https://www.mgaudet.ca/technical/2020/9/1/how-do-generators-generate-in-spidermonkey 
+
+[12:14:59.0631] <elliottt>
+> <@mgaudet:mozilla.org> O.o That seems very peculiar. If you could write up anything about this an open a bug, because it's All Hands this week, you're going to get relatively long feedback time right now
+
+unfortunately i've now lost the ability to reproduce this in ci. i'll watch for it and work on minimizing if it shows up again :(
+
+
+2023-08-23
+[18:26:56.0566] <smaug>
+jonco: FYI some weird [results](https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=e3de12548b25bf18d952d40ed83ac02fd3e21eaf&originalSignature=4586009&newSignature=4586009&framework=13&application=firefox&originalRevision=5173e6287816ace74cb8e34812b0145719d5b98a&page=1&showOnlyConfident=1) I got from larger nursery + forced minor GC.  Just testing out how different kinds of tweaks affect the numbers.
+
+[06:20:00.0705] <liam_g>
+If I do JSON.stringify() on an object with circular references, it throws an error. But if I do console.log() on that object, most browsers do something clever to read past the circular reference and present it somehow. I'd like to take a look at the source code for this. Can anyone tell me which file(s) to look at?
+
+[07:20:51.0681] <nchevobbe>
+> <@lgoodacre:matrix.org> If I do JSON.stringify() on an object with circular references, it throws an error. But if I do console.log() on that object, most browsers do something clever to read past the circular reference and present it somehow. I'd like to take a look at the source code for this. Can anyone tell me which file(s) to look at?
+
+we don't use JSON to serialize the logged object, but some other kind of serialization, only retrieving the "direct children properties", which in turn can be expaded again if you click on it, which also return serialized objects
+
+[07:23:09.0047] <nchevobbe>
+we're using what we call object actors to handle this (https://searchfox.org/mozilla-central/source/devtools/server/actors/object.js) and various helpers to handle serializations and properties iteration (in https://searchfox.org/mozilla-central/source/devtools/server/actors/object). 
+
+
+[07:26:08.0674] <nchevobbe>
+this is for DevTools console by the way, then we have a set of helpers that take the serialize data and turn it into dom elements to be displayed.
+We also have something directly in c++ to print to stdout which can be found here: https://searchfox.org/mozilla-central/source/dom/console/Console.cpp#2686
+
+[07:26:27.0946] <nchevobbe>
+hop this helps
+
+[08:37:46.0429] <liam_g>
+Very helpful, thank you!
+
+[10:16:25.0577] <sfink>
+liam_g: do you want this for display or for serialization/deserialization? If it is for the latter, you might want structured cloning instead. It will handle circular references, though it does not handle many other things (eg prototypes) so it totally depends on your needs.
+
+
+2023-08-25
+[05:25:29.0219] <arai>
+do we coordinate JavaScript performance between browsers?  question comes up in [bug 1850106](https://bugzilla.mozilla.org/show_bug.cgi?id=1850106) about async/await performance with already-resolved promise
+
+[05:25:31.0962] <botzilla>
+https://bugzil.la/1850106 — NEW (nobody) — await for resolved promise is too slow
+
+[05:37:59.0100] <mgaudet>
+As far as I know, not really. A test like this becoming part of a benchmark suite that's seen as important (ala Speedometer3)  would be the best mechanism  for 'coordination' 
+
+[05:39:18.0708] <arai>
+okay, thanks :)  I'll look into figuring out the testcase which can be added to benchmark, possibly from the example there
+
+[05:42:36.0097] <mgaudet>
+the big thing (at least for SP3) is that the desire is that it match approximately the 'web-as-it-exists-today'; I don't know particularly well how to handle a case like this where perhaps it's best described as 'adding new capabilities to the web platform'; I think Brian Grinstead might be the best person to tease apart these pieces
+
+[05:52:35.0909] <arai>
+I see :)
+
+[06:01:42.0934] <kevin_wang_22>
+Hi Team, 
+
+When create a JsContext with JS_NewContext(uint32_t maxbytes, JSRuntime* parentRuntime),  how does it affect the memory usage if I set 'maxbytes' to a very high value?
+Does it increase the virtual memory size of the process too?
+Thx
+
+[06:11:20.0816] <jandem>
+kevin_wang_22: no it doesn't
+
+[06:11:26.0665] <jandem>
+it's just the limit
+
+[06:27:31.0087] <kevin_wang_22>
+Thank you
+
+[11:37:06.0207] <smaug>
+jonco: FYI, using a new compartment/zone for the iframes doesn't help at all,  it might even increase memory usage
+
+[12:24:35.0693] <jonco>
+smaug: ok, thanks for checking
+
+
+2023-08-26
+[05:31:03.0864] <jonco>
+smaug: BTW my experiments with discarding JIT code for realms we think should be dead did not get anwhere
+
+[06:40:28.0824] <smaug>
+jonco: you mean it is hard to discard jit code or it didn't help?
+
+[06:44:00.0348] <smaug>
+denispal: just out of curiosity, have you checked what happens to performance number if you tweak that one method to discard always jit code when GCing?
+
+[06:44:05.0897] <smaug>
+ * denispal: just out of curiosity, have you checked what happens to performance numbers if you tweak that one method to discard always jit code when GCing?
+
+[06:44:49.0581] <denispal>
+smaug: I think I did try it a while ago and saw no difference in sp3
+
+[06:45:04.0622] <denispal>
+I can try it again to confirm
+
+[06:46:15.0713] <smaug>
+oh, interesting. Though I guess we re-compile anyhow on each subtest run. So dropping jit code might be fine for sp3, but bad on real world sites
+
+[06:47:28.0047] <denispal>
+It seems the gc majors are generally well scheduled to run outside the subtests too so I guess it doesn't impact the numbers while running too much
+
+[06:47:56.0617] <denispal>
+maybe worth to try some tp6 tests though
+
+[06:51:14.0200] <denispal>
+jonco: smaug btw I turned off background threads for the GC and it seems to help android sp3 quite a bit https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=b499289b3c7a470f5f10130e279b1caf4ee2d5b5&originalSignature=4590278&newSignature=4590278&framework=13&application=geckoview&originalRevision=23c3983bdb65ebde5dd7448024d72368054ad09e&page=1&showOnlyImportant=1&replicates=1
+
+[06:52:31.0661] <smaug>
+on Android mostly, looks like so
+
+[06:52:56.0775] <denispal>
+Yeah, desktop is much more mixed
+
+[06:53:18.0671] <smaug>
+...so that issue would be similar to stylo then. Hmm, I did play with TaskController threads and setAffinity, and couldn't see improvements.
+
+[06:54:43.0641] <denispal>
+I don't know if we block the main thread at some point waiting for background sweeping to finish?  maybe the sweeping is done on a little core and making things worse
+
+[06:55:40.0498] <smaug>
+right. I have seen little cores being used for TaskController background threads - so for ion compilation and gc
+
+[07:42:24.0695] <jonco>
+> <@denispal:mozilla.org> I don't know if we block the main thread at some point waiting for background sweeping to finish?  maybe the sweeping is done on a little core and making things worse
+
+we don't normally block the main thread on background sweeping
+
+[07:43:14.0813] <jonco>
+is there a way to find out how many big vs little cores there are? this should feed into how we calculate how many background threads to use
+
+[07:44:11.0442] <jonco>
+> <@smaug:mozilla.org> jonco: you mean it is hard to discard jit code or it didn't help?
+
+I think my quick change only discarded Ion code, and it didn't help.  I was able to get discarding Ion and baseline working
+
+[07:44:18.0267] <jonco>
+> <@smaug:mozilla.org> jonco: you mean it is hard to discard jit code or it didn't help?
+
+ * I think my quick change only discarded Ion code, and it didn't help.  I wasn't able to get discarding Ion and baseline working
+
+[07:50:07.0318] <denispal>
+I'm not actually sure what our android device info is for CI (maybe it was the A50?) but I can find out.  
+
+[07:54:19.0895] <denispal>
+> <@jonco:mozilla.org> we don't normally block the main thread on background sweeping
+
+I'm wondering if maybe we're waiting here https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#3690 for a background task on a little core to finish and that's what's causing the regressions.  But I can probably get more detailed info
+
+[07:55:06.0556] <jonco>
+denispal: we don't wait in incremental GCs https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#3802-3814
+
+[07:55:38.0000] <denispal>
+jonco: ahh, okay
+
+[07:56:06.0870] <jonco>
+hmm, unless this returns true, which could be happening: https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#3522-3533
+
+[09:02:43.0831] <ptomato>
+anybody got some time to review the embedders migration guide for 102->115?
+
+[09:06:03.0183] <arai>
+I can review
+
+[09:25:11.0421] <ptomato>
+I intended to append a link to that message! sorry, here it is: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples
+
+[09:25:26.0259] <ptomato>
+ * I intended to append a link to that message! sorry, here it is: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/73
+
+[09:52:33.0197] <arai>
+ptomato: do you happen to know the bug or patch that caused the `JS::FinishDynamicModuleImport` behavior difference?  so far I don't find any difference in the code between 102 and 115
+
+[09:56:23.0241] <ptomato>
+I don't think I looked it up, sorry. I can try to write a minimal example of the different behaviour
+
+[09:57:12.0838] <arai>
+okay, I'll look into it tomorrow.  I'll finish remaining part today.
+
+
+2023-08-27
+[14:20:39.0472] <twisniewski>
+JSC just optimized Array#splice for the case where no elements are inserted: https://github.com/WebKit/WebKit/commit/ebb72756b2c74492690c9f9dc1e83e29ac16be5e
+
+
+2023-08-28
+[17:03:59.0039] <ptomato>
+would someone with admin privileges mind setting the `esr115` branch as the new default branch on spidermonkey-embedding-examples? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/tree/esr115
+
+[07:23:11.0461] <smaug>
+jonco: we don't have any memory usage counters for jit code? Something which shouldPreserveJITCode could check. Though, I guess per Realm code should still work better
+
+[07:27:33.0743] <jonco>
+I think there's a counter that discards jit code when memory is close to full, but there are none like the ones that trigger GC based on a multiple of the retained size
+
+[07:31:45.0459] <nbp>
+We have a [ProcessExecutableMemory::bytesAllocated](https://searchfox.org/mozilla-central/source/js/src/jit/ProcessExecutableMemory.cpp#711) function, I have not yet looked deeper yet.
+
+[07:33:51.0857] <nbp>
+The only thing I can see so far is us disabling tiering (ion) if we expect to consume too much executable memory.
+
+[07:34:13.0335] <nbp>
+ * The only thing I can see so far is us disabling tiering (wasm-ion) if we expect to consume too much executable memory.
+
+[07:35:22.0235] <nbp>
+We do preserve JIT code unless we can no longer allocate any.
+
+[07:35:46.0574] <nbp>
+ * We do [preserve JIT code unless we can no longer allocate any](https://searchfox.org/mozilla-central/source/js/src/gc/GC.cpp#2263).
+
+
+2023-08-29
+[07:24:15.0411] <arai>
+I'm hitting this assertion failure with [my patch](https://treeherder.mozilla.org/jobs?repo=try&revision=660c0938076617a7078cc00115f14edd48bb50f6&group_state=expanded&selectedTaskRun=P821Vp6fTAGjvLvRGicQRg.0) that adds more permanent atoms.  what's the assumption around permanent atom there?  why it shouldn't appear?  https://searchfox.org/mozilla-central/rev/ddb4ab256d0e0a6bad3cbefa93546656284fa472/js/src/gc/TraceMethods-inl.h#111
+```cpp
+MOZ_ASSERT(!linearStr->isPermanentAtom());
+```
+
+[07:46:55.0015] <jonco>
+arai: I can't think why that's there.  It seems like it would be simple enough to hit that assert though so I wonder why that hasn't happened before.
+
+[07:52:34.0475] <arai>
+okay, I'll look into how a regular case with unpatched code avoids that path
+
+
+2023-08-30
+[20:29:37.0872] <luyahan>
+Hi all Who can help me land this  cl(https://phabricator.services.mozilla.com/D184678)?
+
+[20:29:58.0647] <luyahan>
+ * Hi all ~   Who can help me land this  cl(https://phabricator.services.mozilla.com/D184678)?
+
+[20:30:52.0766] <arai>
+jseward: ^
+
+[21:49:46.0191] <jseward>
+luyahan: arai : I can land it this week
+
+[01:05:13.0028] <jseward>
+luyahan: D184678 still applies OK to the the tree, but it fails in compilation.  At least when I tried it with `--enable-debug --enable-simulator=riscv64`.  Can you check/update it?
+
+[01:25:53.0091] <Redfire>
+Is there any way to get the "digits" (uint64_t) from a BigInt? 
+
+[05:25:36.0913] <jandem>
+Redfire: we have [these APIs](https://searchfox.org/mozilla-central/rev/e7b8d13b7513b6fbd97d69e882d7faeed05309d0/js/public/BigInt.h#179-187) and `BigIntToString`
+
+[05:27:03.0264] <jandem>
+I don't think we currently expose the internal digits data for larger bigints
+
+[07:05:16.0669] <Redfire>
+Is there any reason they're not exposed?
+
+[07:07:38.0485] <jandem>
+we could add something. We just want to be careful to not rely too much on the current implementation, so we could copy to a Vector or something so we could still change that
+
+[07:07:55.0990] <jandem>
+ * we could add something. We just want to be careful to not rely too much on the current implementation, so we could copy to a Vector or something so we could still change the internal representation
+
+[07:18:32.0817] <Redfire>
+I guess I'll just defer to the current functions and leave it at that.
+
+[07:27:44.0302] <sfink>
+please don't hand out any internal pointers if we don't have to (speaking from a GC hazard perspective)
+
+[08:01:51.0497] <ptomato>
+Redfire: what do you need to do with the digits? another option is to add public API to do whatever operation that you'd otherwise do with the digits
+
+[08:12:31.0464] <Redfire>
+Mostly was just to construct bigints from rust that can then be passed to js and vice versa
+
+[08:15:35.0384] <ptomato>
+the existing public BigInt API pretty much consists of "whatever functions were needed for GNOME" so if there's something missing you can probably add more
+
+
+2023-08-31
+[04:22:38.0637] <smaug>
+jandem: jonco  so jit code is bound to a zone, right?  But if any of the realms has been animating, we wait up to [30s](https://searchfox.org/mozilla-central/rev/bdd5b85b56885cd48bd91d262647e0d3499b3a27/js/src/gc/GC.cpp#1585-1586) before discarding jit code.  Could we bound jit code to a realm and let it go away with realm?
+
+[04:27:43.0516] <smaug>
+JitScript seems to have a pointer to owning JSScript, so I guess one could check the realm from that... but then there is this ion stuff I don't understand yet
+
+[04:27:56.0993] <jandem>
+I think the issue is pointers from the outer realm (the page embedding the iframe) referencing objects/shapes etc from the iframe's realm?
+
+[04:29:37.0304] <jandem>
+discarding jit code for a single realm would require some work but it shouldn't be too bad I think
+
+[04:34:41.0861] <smaug>
+jandem: these days, I think, we do collect quite a bit garbage, if we end up collecting jit code
+
+[04:35:04.0787] <smaug>
+I'm not seeing the same issue we had anymore
+
+[04:36:01.0912] <smaug>
+and didn't denispal  say that if shouldPreserveJITCode returns false, then memory usage stays low
+
+[04:37:18.0129] <jandem>
+maybe we could retry the heuristic we talked about before, discard JIT code more eagerly when gecko marks the zone as having a dead realm
+
+[04:39:03.0990] <smaug>
+Right, and change those zone level checks to realm level https://searchfox.org/mozilla-central/rev/bdd5b85b56885cd48bd91d262647e0d3499b3a27/js/src/gc/GC.cpp#2738,2740
+
+[05:00:30.0638] <l11d>
+are all objects that can be moved during GC stored in memory allocated by `TenuredChunk::allocate(GCRuntime* gc)`?
+
+[05:04:07.0516] <smaug>
+just tested again and returning false from shouldPreserveJITCode helps significantly 
+
+[05:04:40.0470] <smaug>
+But that is of course zone level, so it might get rid of even too much jit code
+
+[05:53:31.0110] <jandem>
+smaug: is anyone looking into this atm? I could spend some time on it if it's stuck on "jit code"
+
+[05:53:58.0461] <smaug>
+jandem: jonco was possibly looking into some of that
+
+[05:54:10.0110] <jandem>
+(I don't want to step on any toes if people are still investigating)
+
+[05:54:35.0929] <smaug>
+I've been just investigating various things we could release sooner
+
+[05:54:58.0393] <jonco>
+jandem: I'm looking into it right now, but will be on PTO from tomorrow so if you want to take over that would be great
+
+[05:55:28.0670] <jonco>
+I didn't see any improvement from disabling JIT compilation (tried all tiers) 
+
+[05:56:08.0487] <jonco>
+I'll check returning false from shouldPreserveJITCode 
+
+[05:56:50.0620] <jandem>
+that's interesting
+
+[05:59:26.0667] <jonco>
+l11d: yes, we only move GC heap cells, never malloc memory
+
+[06:00:32.0577] <jonco>
+smaug: how are you measuring the improvements?
+
+[06:01:03.0191] <jonco>
+Trying this locally we still get 1.1GB allocated over the course of the test when shouldPreserveJitCode returns false, vs 1.3GB normally: https://share.firefox.dev/3Ph72QK
+
+[06:01:51.0265] <smaug>
+I was just looking at the system monitor. The numbers do vary quite a bit, and typically without changes I get >1GB, but with the tweak it seemed to stay <700MB, and also it dropped often quite a bit down
+
+[06:02:12.0188] <smaug>
+denispal has been doing some more systematic measurements
+
+[06:04:58.0494] <smaug>
+Also, I wonder if we need some tweaks to GC/CC heuristics - if there are lots of possibly-garbage globals/realms around, perhaps CC/GC should run more often? 
+
+[06:06:26.0671] <jonco>
+Retying using activity monitor...
+
+[06:07:02.0386] <jonco>
+We GC plenty in speedometer3, probably too much from a batter life perspective, and everything is in the same zone so there's nothing that should stop it being collected
+
+[06:07:24.0881] <smaug>
+Profiler itself isn't showing useful memory numbers atm, but jesup has some patches to fix that
+
+[06:08:08.0823] <jandem>
+doesn't the profiler also display the realm count somewhere?
+
+[06:08:09.0003] <smaug>
+well, sp3 is very unrealistic from GC/CC point of view, since it is creating so many realms
+
+[06:08:27.0418] <smaug>
+jandem: oh, does it? 
+
+[06:10:48.0694] <jandem>
+I see the number of Zones and Compartments for GCMajor markers. Maybe realms could be added
+
+[06:11:31.0325] <jonco>
+I'm not seeing any improvement with the change to shouldPreserveJitCode on macOS when using the activity monitor. In both cases content process memory rises to roughly 1.2GB and then falls off
+
+[06:11:53.0004] <jonco>
+Realms would be useful, sp3 creates tons of them and they are not cleaned up promptly
+
+[06:13:39.0750] <jonco>
+smaug: yes, for general useage we could trigger GC based on zone/compartment/realm counts exceeding some multiple of those at the end of the last GC
+
+[06:13:49.0553] <jonco>
+ * smaug: yes, for general usage we could trigger GC based on zone/compartment/realm counts exceeding some multiple of those at the end of the last GC
+
+[06:14:00.0969] <jonco>
+that would probably clean up more memory in some cases
+
+[06:14:17.0025] <jonco>
+ * We GC plenty in speedometer3, probably too much from a battery life perspective, and everything is in the same zone so there's nothing that should stop it being collected
+
+[08:07:36.0378] <denispal|sick>
+smaug: jonco those were the numbers I see locally on linux
+
+[08:29:36.0454] <@allstarschh>
+jonco: for your comment in https://phabricator.services.mozilla.com/D186944?id=757670#inline-1036982, so ScriptLoadRequest will store a RefPtr<ScriptFetchOptions> and a ReferrerPolicy ?
+
+[08:30:40.0752] <@allstarschh>
+or you mean ScriptLoadRequest should store a ScriptFetchOptions? (without the RefPtr)
+
+[08:31:25.0831] <jonco>
+The former.  Since it's potentially different for every request might as well store the ReferrerPolicy in ScriptLoadRequest.
+
+[08:33:03.0454] <@allstarschh>
+jonco: then for the ModuleLoadRequest cstor, should I add anotehr parameter for referrerPolicy as well ? https://searchfox.org/mozilla-central/source/dom/script/ModuleLoader.cpp#250
+
+[08:34:20.0108] <@allstarschh>
+because aParent->mFetchOptions is still the original ScriptFetchOptions,
+
+[08:34:39.0567] <jonco>
+yes, if you need to pass this in
+
+[08:37:01.0369] <@allstarschh>
+jonco: in that case, isn't my original patch simpler? because the original ScriptFetchOptions->mReferrerPolicy isn't useful anymore if there's a new referrerPolicy available
+
+[08:38:44.0123] <@allstarschh>
+I feel like there's a duplicated referrerPolicy field, one in ScriptFetchOptions, and the other one in ScriptLoadRequest
+
+[08:39:05.0404] <jonco>
+No, I mean remove the one from ScriptFetchOptions and move it to ScriptLoadRequest
+
+[08:39:38.0335] <jonco>
+The idea is to avoid copying the ScriptFetchOptions for every request and share these for a module graph as previously.  It's not a huge deal though.
+
+[08:42:54.0965] <@allstarschh>
+jonco: so in that case, I'll need to add a referrerPolicy member in module script and classic script, because they both require a ScriptFetchOptions as well
+
+[08:43:31.0623] <@allstarschh>
+https://searchfox.org/mozilla-central/source/js/loader/LoadedScript.cpp#124
+
+[08:43:53.0019] <@allstarschh>
+https://searchfox.org/mozilla-central/source/js/loader/LoadedScript.cpp#97
+
+[08:45:09.0741] <jonco>
+Or you could put it in LoadedScript.  But this does make it more complicated yes.
+

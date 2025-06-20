@@ -1,0 +1,4775 @@
+2022-09-01
+[04:59:42.0787] <liam_g>
+I'm trying to schedule Promise objects within C++. I'm using JS:: NewPromiseObject to create a new promise with a given executor. Do i then need to call enqueuePromiseJob() directly on the JobQueue? Or is there some other way of scheduling it?
+
+[05:59:03.0971] <arai>
+`you don't have to call `enqueuePromiseJob` directly
+
+[05:59:09.0036] <arai>
+ * you don't have to call `enqueuePromiseJob` directly
+
+[05:59:44.0552] <arai>
+that's called by engine
+
+[05:59:57.0386] <arai>
+ * that's called by engine when a job is created
+
+[06:02:18.0991] <arai>
+for example, if you call `then` on a pending promise, and once the promise is resolved after that, a reaction job is created and enqueued
+
+[06:02:41.0452] <arai>
+at that point `enqueuePromiseJob` is called by engine, and a function is passed to it
+
+[06:03:03.0718] <arai>
+embedding need to call the job function at some point
+
+[06:07:51.0938] <liam_g>
+In that case, what's the C++ equivalent of "then"?
+
+[06:09:17.0078] <arai>
+get "then" property of the promise and call it with onFulfilled and onRejected functions
+
+[06:10:11.0506] <arai>
+or, `JS::CallOriginalPromiseThen` if you want to ignore the possibly modified properties of the promise object
+
+[06:11:43.0692] <arai>
+there are 3 variants of specialized functions [Promise.h](https://searchfox.org/mozilla-central/rev/fa81b64fc1a339e2b2b1f6a8637a689916e13c4e/js/public/Promise.h#427-477)
+
+[06:11:49.0214] <arai>
+ * there are 3 variants of specialized functions in [Promise.h](https://searchfox.org/mozilla-central/rev/fa81b64fc1a339e2b2b1f6a8637a689916e13c4e/js/public/Promise.h#427-477)
+
+[06:12:27.0193] <arai>
+but, in general, just calling the property is the equivalent
+
+[06:12:56.0441] <liam_g>
+Thank you so much!
+
+[06:30:25.0024] <liam_g>
+Hmmm, I'm calling JS::CallOriginalPromiseThen(), but nothing gets scheduled.
+
+[06:31:23.0313] <arai>
+is the promise resolved?
+
+[06:31:46.0371] <liam_g>
+I have a breakpoint inside enqueuePromiseJob. It gets hit if I call "then" in javascript, but not if i run CallOriginalPromiseThen.
+
+[06:32:25.0507] <arai>
+can you provide the relevant codelet?
+
+[06:36:52.0725] <liam_g>
+Here: https://paste.mozilla.org/oXUynOxd
+
+[06:37:29.0527] <liam_g>
+It's a bit of a mess, because I'm still poking around and trying to make it work. But hopefully it's simple enough to follow.
+
+[06:38:05.0050] <liam_g>
+To answer your question above, the Promise is not resolved. I'm trying to add it to the job queue, so that it can be resolved later.
+
+[06:38:16.0369] <liam_g>
+(Using my own implementation of the Job Queue).
+
+[06:38:56.0314] <arai>
+what does the executor do? does it call resolve?
+
+[06:39:57.0488] <arai>
+also, try checking each return value. there may be some error
+
+[06:41:04.0127] <arai>
+* what does the executor do? does it call resolve (the first parameter) ?
+
+[06:45:03.0483] <arai>
+oh, sorry. I missed your reply
+
+[06:45:27.0476] <arai>
+if the promise is not yet resolved, no job is enqueued
+
+[06:46:47.0957] <arai>
+the reaction is appended to the promise object itself, and when the promise is resolved, job for each reaction is created and enqueued
+
+[06:47:49.0471] <liam_g>
+I see. So resolve happens before accept / reject.
+
+[06:48:18.0891] <arai>
+job queue is a queue of ready to be executed jobs
+
+[06:50:17.0549] <arai>
+yes, the order is: a promise is resolved (either fulfilled or rejected), reaction jobs are created and enqueued, and embedding runs those jobs at some point
+
+[06:51:38.0908] <liam_g>
+Ok, i think I understand. But I'm still a bit confused about what the Executor is. I thought it was just a container for the accept and reject functions. Is that right?
+
+[06:52:39.0521] <arai>
+executor is a function that receives 2 functions for fulfilling and rejecting the promise
+
+[06:53:05.0003] <arai>
+the parameter of Promise constructor in JS
+
+[06:54:34.0066] <liam_g>
+So if i set the executor, can I skip calling JS::AddPromiseReactions()?
+
+[06:58:44.0929] <arai>
+they're unrelated
+
+[06:59:24.0313] <arai>
+executor eventually resolves the promise. `then`  or `JS::AddPromiseReactions` etc add reactions for when the promise is resolved
+
+[07:49:15.0721] <arai>
+here's basic scenario:  when a promise is created, it's in "pending" state.  you can add reactions by calling `then` on it, but the reactions are stored into the promise itself and nothing else happens.  the promise can be resolved by calling the functions passed to executor.  and once the promise is resolved, all reactions held by the promise is converted into reaction job, and enqueued.  after that point when you call `then` on the promise, a reaction job is immediately created for the reaction and enqueued
+
+[07:54:03.0369] <Bryan Thrall [:bthrall]>
+> <@bthrall:mozilla.org> Mohamed Atef and arai I forgot about some changes needed for bug 1786117 that I just rediscovered: there are 11 function that should be cleaned up (they are no longer needed). The functions all have a "TODO bug 1783951" comment to indicate they should be cleaned up.
+> 
+> Do you want to fix these for that bug, or (since the patch is ready to land) or I could create another bug to clean them up in?
+
+Ping?
+
+[07:57:05.0579] <arai>
+looks like they're busy.  can we go with the current patch and do followup in separate bug?
+
+[08:11:32.0636] <Bryan Thrall [:bthrall]>
+Sounds good, I'll open a separate bug!
+
+[08:13:34.0607] <Bryan Thrall [:bthrall]>
+And I'll land the current patch
+
+[08:56:17.0031] <Bryan Thrall [:bthrall]>
+The patch for bug 1786117 needs to be rebased, so I'll wait to land it until Mohamed Atef can fix it up
+
+[08:56:19.0098] <botzilla>
+https://bugzil.la/1786117 — REOPENED (mohamedatef1698) — Use ErrorContext-variant of `ReportOutOfMemory` in Stencil XDR
+
+[10:02:39.0188] <kfjvj>
+> <@arai:mozilla.org> then you can use private slot of the object
+
+I can't seem to find any definition of JS::GetPrivate or SetPrivate anywhere in the headers for version 68
+
+[10:03:42.0274] <arai>
+oh, it was `JS_GetPrivate`
+
+[10:05:29.0954] <kfjvj>
+> <@arai:mozilla.org> oh, it was `JS_GetPrivate`
+
+Wow.  That's very confusing.  The example code (presumably from a newer version) uses JS::GetPrivate.  I was worried the API was just missing that function.  Thanks.
+
+[10:41:14.0478] <liam_g>
+, 6',y cyyyyyywe,   z i,iziisi, ii s,,,,iii, i,ii, ec, c,,a,,,,a,,a,,aa,a,aa,a,, a ,*,,, ,, y.    , ,,. ,.   
+
+[11:23:31.0360] <kfjvj>
+> <@lgoodacre:matrix.org> , 6',y cyyyyyywe,   z i,iziisi, ii s,,,,iii, i,ii, ec, c,,a,,,,a,,a,,aa,a,aa,a,, a ,*,,, ,, y.    , ,,. ,.
+
+I agree.
+
+[11:33:37.0712] <kfjvj>
+Does anyone here know if there's some equivalent to a destructor for JS objects in spidermonkey?  I need to be able to deallocate private data once an object's lifetime is over.
+
+[11:35:15.0288] <kfjvj>
+It looks like what I'm looking for might be called 'finalize'
+
+[11:43:49.0227] <arai>
+yes
+
+[11:43:49.0766] <arai>
+https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/public/Class.h#465-470
+```cpp
+/**
+ * Finalize obj, which the garbage collector has determined to be unreachable
+ * from other live objects or from GC roots.  Obviously, finalizers must never
+ * store a reference to obj.
+ */
+typedef void (*JSFinalizeOp)(JSFreeOp* fop, JSObject* obj);
+```
+
+[11:44:41.0702] <arai>
+there are 2 JSClass flags related to finalize
+
+[11:44:48.0620] <arai>
+`JSCLASS_BACKGROUND_FINALIZE` and `JSCLASS_FOREGROUND_FINALIZE`
+
+[11:45:02.0099] <arai>
+that tells where the finalize function can be called
+
+[11:45:18.0509] <arai>
+`FOREGROUND` tells the function needs to be called on main thread
+
+[11:45:19.0820] <kfjvj>
+I'm assuming Background just means that the GC handles it?
+
+[11:45:34.0432] <arai>
+`BACKGROUND` tells the function can be called off main thread
+
+[11:45:43.0576] <kfjvj>
+oh, so it's a thread issue.  I see
+
+[11:46:08.0378] <arai>
+so, if the finalize function touches something not-thread-safe, you'll want foreground
+
+[11:47:02.0686] <kfjvj>
+Now, that calls into question thread safety.  I think most of the time the memory allocated to the private slot will only be accessed through the js object
+
+[11:47:56.0450] <kfjvj>
+But that's good to know about the different flags
+
+[11:48:49.0331] <kfjvj>
+Is there some document that goes over the core concepts in spidermonkey?  So far I feel like I'm just piecing things together through examples and chat messages.
+
+[11:53:28.0775] <iain>
+kfjvj: There's this: https://firefox-source-docs.mozilla.org/js/index.html
+
+[11:56:53.0829] <iain>
+For individual concepts you can also look for `[SMDOC]` comments: https://searchfox.org/mozilla-central/search?path=&q=%5BSMDOC%5D
+
+
+2022-09-02
+[18:07:26.0366] <liam_g>
+> <@lgoodacre:matrix.org> , 6',y cyyyyyywe,   z i,iziisi, ii s,,,,iii, i,ii, ec, c,,a,,,,a,,a,,aa,a,aa,a,, a ,*,,, ,, y.    , ,,. ,.   
+
+Oh no, this was pocket typing (I'm using this applet on my phone). I do apologise for the noise. Still, it probably makes more sense than some of my other posts 😆
+
+[08:22:21.0230] <arai>
+decoder: is fuzzing performed on beta and release channels' JS shell?
+
+[10:35:25.0419] <decoder>
+No, we fuzz nightly only
+
+[10:41:17.0208] <arai>
+thanks!
+
+
+2022-09-03
+[20:37:03.0790] <Redfire>
+What's the difference between `JS_CLASS_BACKGROUND_FINALIZE ` and `JS_CLASS_FOREGROUND_FINALIZE`?
+https://searchfox.org/mozilla-central/source/js/public/Class.h#548-551
+
+[20:43:56.0489] <arai>
+whether the object can be finalized on background thread or not
+
+[20:44:30.0389] <arai>
+if you specify BACKGROUND, the class's `finalize` can be called either on background thread or main thread
+
+[20:44:43.0304] <arai>
+if you specify FOREGROUND, it can be called only on main thread
+
+[21:02:22.0199] <Redfire>
+`JS_GetInstancePrivate` requires a `CallArgs`
+Is there any way I can call it from a `JSResolveOp`?
+
+[21:08:46.0294] <arai>
+`CallArgs*` there is for reporting error when the `HandleObject` is not instance of `JSClass`, and you can pass `nullptr` if you don't need the error reporting
+
+[21:08:50.0237] <arai>
+https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/src/jsapi.cpp#1555-1557
+```cpp
+if (args) {
+  ReportIncompatibleMethod(cx, *args, Valueify(clasp));
+}
+```
+
+[22:10:17.0327] <Redfire>
+Oh wait, I can't even use `JS_GetInstancePrivate` since it requires a `JSContext`.
+Is there any way to get the `JSContext` if its in the foreground?
+
+[06:17:42.0286] <arai>
+`JSResolveOp` receives `JSContext*` as first parameter I think?
+
+[06:21:54.0588] <arai>
+it's possible to store `JSContext*` somewhere in global and get it, but I'd suggest passing through `JSContext*` via parameter, so that functions between them are also aware of it
+
+
+2022-09-05
+[03:43:16.0895] <liam_g>
+I'm trying to get async functions up and running in a custom embedding. Last week, @arai got me up and running with resolving Promise objects to schedule them on the Job Queue. This part seems to be working, so my next challenge is executing those Promises at the right time. I'm wondering how I can access arguments of the Promise inside the `enqueuePromiseJob` function. (Specifically, I want to pass in a time (double) argument which `enqueuePromiseJob` will use to decide the right time to execute the job. Can I store a double in the reserve slot of the Promise? Or just store it as a regular property? I've tried both but can't seem to access them inside `enqueuePromiseJob`. What's the usual way of passing / receiving custom information here?
+
+[06:27:55.0856] <arai>
+liam_g: what do you mean by "arguments of the Promise inside the enqueuePromiseJob function" part? is it about `promise`, `job`, `allocationSite`, and `incumbentGlobal` in [JobQueue:enqueuePromiseJob](https://searchfox.org/mozilla-esr102/rev/a6829d8ca2842dffd63add69db14c1484fd8acbe/js/public/Promise.h#56-59) ?
+
+[06:28:12.0358] <arai>
+or do you want to propagate some other arguments to `enqueuePromiseJob` ?
+
+[06:29:22.0557] <arai>
+what kind of custom information is it?
+
+[06:34:11.0763] <liam_g>
+What I was trying to do was something like this: 
+
+    `JS::RootedObject pr (cx, JS::NewPromiseObject(cx, nullptr));
+    JS_SetReservedSlot(pr, 2, myDoubleValue);
+    JS::ResolvePromise(pr);`
+
+[06:34:50.0577] <liam_g>
+So the Promise object has a hidden value which I can access inside `enqueuePromiseJob()`.
+
+[06:35:20.0810] <liam_g>
+But maybe that's a silly thing to do.
+
+[06:35:45.0878] <liam_g>
+ * What I was trying to do was something like this:
+
+```
+`JS::RootedObject pr (cx, JS::NewPromiseObject(cx, nullptr));
+JS_SetReservedSlot(pr, 2, myDoubleValue);
+JS::ResolvePromise(cx, pr);`
+```
+
+[06:36:22.0725] <liam_g>
+I've also tried doing this:
+
+`    JS::RootedObject pr (cx, JS::NewPromiseObject(cx, nullptr));
+    JS::ResolvePromise(cx, pr, myDoubleValue);`
+
+
+
+[06:36:32.0452] <liam_g>
+ * I've also tried doing this:
+
+`    JS::RootedObject pr (cx, JS::NewPromiseObject(cx, nullptr));JS::ResolvePromise(cx, pr, myDoubleValue);`
+
+[06:36:41.0362] <liam_g>
+ * I've also tried doing this:
+
+`    JS::RootedObject pr (cx, JS::NewPromiseObject(cx, nullptr));
+      JS::ResolvePromise(cx, pr, myDoubleValue);`
+
+[06:38:02.0203] <arai>
+what does the value mean?
+
+[06:39:20.0371] <liam_g>
+It's a time value, stored as a double, which I'm using to decide at what time to execute the promise on the job queue.
+
+[06:41:52.0778] <liam_g>
+I'm basically trying to create my own version of `setTimeOut()`.
+
+[06:42:44.0988] <arai>
+during handling promise and reactions, promises are internally created, and the promise passed to `enqueuePromiseJob` is different than the one created by `JS::NewPromiseObject` above
+
+[06:43:13.0163] <arai>
+in the spec, "NewPromiseCapability" creates the promise, https://tc39.es/ecma262/#sec-promise.prototype.then
+
+[06:43:28.0238] <liam_g>
+Right
+
+[06:43:47.0063] <arai>
+how and where is the time value calculated?
+
+[06:43:59.0282] <arai>
+how is it semantically associated with the promise or job?
+
+[06:44:20.0911] <liam_g>
+OK, I'll provide some more information. I hope I can explain it in a simple way.
+
+[06:45:10.0136] <liam_g>
+My basic aim is to be able to execute code like this:
+`
+doThis()
+wait(1)
+doThat()
+
+[06:45:17.0379] <liam_g>
+ * My basic aim is to be able to execute code like this:
+\`
+doThis()
+wait(1)
+doThat()`
+
+[06:45:32.0765] <liam_g>
+ * My basic aim is to be able to execute code like this:
+`doThis()
+wait(1)
+doThat()`
+
+[06:45:58.0397] <liam_g>
+ * My basic aim is to be able to execute code like this:
+`````
+doThis()
+wait(1)
+doThat()
+`````
+
+[06:46:43.0260] <liam_g>
+The wait() function acts like a C++ sleep() function, but of course it's not that, it's just scheduling the next command asynchronously on the job queue.
+
+[06:47:47.0050] <liam_g>
+If you wanted to do this in standard JS, you'd need to do promise.then(...).then(...). But I'm trying to avoid this syntax.
+
+[06:49:21.0799] <arai>
+usually that's achieved by by async function with the following body, with job queue and timer:
+```
+function wait(t) {
+  return new Promise(resolve => setTimeout(resolve, 1));
+}
+
+doThis();
+await wait(1)
+doThat();
+```
+
+
+[06:49:37.0045] <arai>
+ * usually that's achieved by by async function with the following body, with job queue and timer:
+
+```
+function wait(t) {
+  return new Promise(resolve => setTimeout(resolve, t));
+}
+
+doThis();
+await wait(1)
+doThat();
+```
+
+[06:50:28.0764] <liam_g>
+Yes. But in my Domain Specific Language, I'm trying to have simpler syntax, like above.
+
+[06:50:43.0413] <liam_g>
+I think it's possible, and I feel like I'm close. But it's hard!
+
+[06:50:43.0593] <arai>
+oh, is the above not JS ?
+
+[06:53:21.0717] <liam_g>
+It is Javascript, and I'm using Spidermonkey. But I'm trying to get a few built-in functions to operate in a specific way
+
+[06:53:43.0407] <arai>
+what is `wait` supposed to do exactly?
+
+[06:54:15.0691] <liam_g>
+It's supposed to insert a delay of x seconds before the next command is executed
+
+[06:54:15.0960] <arai>
+does it block the execution like `sleep` ?
+
+[06:54:42.0223] <arai>
+or does it suspend the execution and  return the execution back to caller or something?
+
+[06:55:35.0327] <liam_g>
+So it's not really blocking (i.e. the app will continue to function). But it means that the next command is scheduled x seconds later.
+
+[06:56:11.0166] <arai>
+if it's inside regular script on main thread, that's not possible, unfortunately
+
+[06:56:39.0380] <liam_g>
+I'll try to describe what I've done so far to achieve it. I think it might be possible (though I'm not sure).
+
+[06:57:06.0410] <arai>
+if it's on different thread, you can block the execution and wait for some condition
+
+[06:57:37.0007] <liam_g>
+I'm trying to do this all on one thread, just using scheduluing.
+
+[06:58:32.0268] <arai>
+oh, I was wrong.  it's possible if the application logic can be executed *inside* `wait` function
+
+[06:59:44.0105] <liam_g>
+My plan was this: all of the "special" functions in the DSL (let's just call them doThis() and doThat()) creates and then resolves a promise, which then schedules a job on the job queue. 
+
+[07:00:06.0083] <arai>
+oh
+
+[07:00:19.0724] <arai>
+okay, I misunderstood
+
+[07:01:01.0280] <arai>
+so, `doThat` is immediately executed after `wait`, but "that" is not executed immediately but scheduled, right?
+
+[07:01:39.0162] <liam_g>
+exactly
+
+[07:02:32.0020] <liam_g>
+I'm trying to work on telling it "when" to schedule. That's the "double" argument that I was talking about in the beginning.
+
+[07:03:26.0090] <liam_g>
+Inside the JSNative function, it knows the right time to schedule. But I haven't yet found a way of sending that information so it is picked up inside `enqueueJob()`
+
+[07:03:49.0796] <liam_g>
+ * Inside the JSNative function, it knows the right time to schedule. But I haven't yet found a way of sending that information so it is picked up inside `enqueuePromiseJob()`
+
+[07:04:21.0484] <arai>
+how are you using promise in the machinery?
+
+[07:05:13.0260] <liam_g>
+Do you mean inside the JSNative part? Or inside `enqueuePromiseJob()`?
+
+[07:05:38.0298] <arai>
+I mean, the semantics of promise
+
+[07:06:44.0872] <arai>
+if the thing that the DSL wants to achieve is a simple scheduling with timeout, promise has nothing to do with it
+
+[07:07:54.0969] <liam_g>
+Is there another method for achieving asynchronous code in Javascript?
+
+[07:10:18.0591] <arai>
+so far, I don't see asynchronous-ness in the example.  maybe there are some more primitives in the DSL that provides scheduling and dependency management?
+
+[07:11:31.0083] <arai>
+err, let me explain in different way
+
+[07:14:50.0261] <liam_g>
+Maybe I can try to explain in a different way. I know that I'm not being easy to follow.
+
+[07:15:07.0022] <liam_g>
+I'm making a music app that sequences midi messages. The user has access to a special DSL for sequencing notes. So the user can write:
+`````
+playNote(90)
+wait(1)
+playNote(95)
+`````
+and it will play note 90, wait for 1 second, and then play note 95. The user never thinks to himself "I'm writing asynchronous code". But the code is interpreted asynchronously to facilitate the playback.
+
+[07:15:07.0540] <arai>
+If the thing the code `doThis(); wait(1); doThat();` do is to describe the order of tasks, those 3 functions just need to append information into a list, and then your application needs to execute the tasks in right order and timeout
+
+[07:15:39.0898] <liam_g>
+Hmmm, maybe you're right...
+
+[07:15:53.0532] <arai>
+does the task execute JavaScript code?
+
+[07:17:04.0712] <liam_g>
+Yes, this is Javascript (though I concede that as a DSL it's not really standard Javascript, and that makes my requests challenging, and perhaps unreasonable).
+
+[07:17:20.0424] <arai>
+sorry, my question was unclear
+
+[07:17:35.0026] <arai>
+does "playing note at some point" execute JavaScript code?
+
+[07:18:26.0760] <liam_g>
+It executes a JSNative function.
+
+[07:18:46.0080] <liam_g>
+But the arguments might be JS
+
+[07:19:09.0656] <liam_g>
+So the user could do something like `playMidiNote(myOwnJSFunction())`
+
+[07:19:43.0482] <liam_g>
+where playMidiNote() is a native function that I have defined, and myOwnJSFunction() is not.
+
+[07:21:40.0899] <arai>
+what does `myOwnFunction` do?
+
+[07:22:05.0765] <liam_g>
+it generates an int in some way that the user has defined.
+
+[07:22:17.0651] <liam_g>
+And in this case specifies a midi note number.
+
+[07:22:54.0171] <arai>
+my question so far is, when each code is executed and when each note is played?
+
+[07:23:36.0333] <arai>
+and so far what I see is that all JS code is executed before starting playing notes
+
+[07:24:10.0512] <arai>
+is it correct?  or is there any other case that code is executed during playing note?
+
+[07:26:53.0683] <arai>
+if all JS code is executed before starting playing, then the JS code and DSL has no asynchronous-ness
+
+[07:29:06.0364] <liam_g>
+These are good questions... I would love it if each line of code could be executed "right before" the note is played. That way, it responds to any changes in the code almost instantaneously. But making this work is not easy. So with the current system I'm working on, the whole code executes immediately, but then schedules notes to be played later.
+
+[07:32:51.0430] <liam_g>
+> <@arai:mozilla.org> if all JS code is executed before starting playing, then the JS code and DSL has no asynchronous-ness
+
+I see what you're saying. Perhaps I'm getting confused then.
+
+[07:35:27.0917] <liam_g>
+If I understand it correctly though, there might be an asynchronous solution to the problem though.
+
+[07:36:29.0545] <liam_g>
+ * If I understand it correctly though, there might be an asynchronous solution to the problem.
+
+[07:37:50.0363] <arai>
+other possible implementations are:
+  * (a) run the code in background thread.  `playNote` plays note and blocks execution until it ends. also, `wait` blocks execution for specified time
+  * (b) run the code in main thread, `playNote` plays note and wait for it, and at the same time, handles application UI events.  also, `wait` waits for specified time, handling the application UI events.
+
+
+[07:38:33.0442] <arai>
+err, maybe I misunderstand what `playNote` does
+
+[07:39:01.0006] <liam_g>
+I've thought a lot about the multi-threaded option. I'd like to avoid it if at all possible.
+
+[07:39:38.0661] <liam_g>
+I feel like there might be an asynchronous option available. Let me see if I can explain it.
+
+[07:39:53.0238] <liam_g>
+I'm sorry because I know I've been very unclear in some of these comments.
+
+[07:41:32.0388] <arai>
+oh, one more option:
+  * (c) pre-process the DSL to make it async function and prepend `await` for each call. execute it with promise, job queue, and timer callback
+
+
+[07:42:24.0281] <liam_g>
+I've thought about pre-processing also. This was my backup solution, for if I can't get the asynchronous option to work.
+
+[07:44:40.0821] <liam_g>
+Let's say there are two functions,  `playMidiNote()` and `wait()`. They are both implemented in JSNative functions, so I can implement them in C++. Both functions return null. But inside the JSNative function, they create a new Promise object, and bind it to the last one. The result is that if the user types
+
+`````
+playMidiNote(9)
+wait(1)
+playMidiNote(10)
+`````
+
+It's as if they had written a JS promise chain.
+
+[07:46:15.0167] <liam_g>
+So it's as if they'd written something like:
+`````
+midiNotePromise1.then(()=>{ wait.then(() => { midiNotePromise2 }) })
+`````
+
+
+[07:46:31.0142] <liam_g>
+(Sorry if my Javascript is terrible!)
+
+[07:47:50.0036] <arai>
+hmm, maybe I miss something
+
+[07:48:59.0927] <arai>
+so, the question now is "if each line of code could be executed "right before" the note is played" part.  what do you want to achieve with it?
+
+[07:50:16.0642] <liam_g>
+So if we went with the "list" option that you proposed above, where the whole script executes at once and then tells the audio engine what to do, then we have the following problem:
+
+[07:51:28.0993] <liam_g>
+If the user types
+
+``````
+wait(10)
+playMidiNote(someVariable)
+`````
+
+then it won't respond to updates in `someVariable` after the code has been executed but before the note has played
+
+[07:51:35.0796] <liam_g>
+ * If the user types
+
+``````
+wait(10)
+playMidiNote(someVariable)
+``````
+
+then it won't respond to updates in `someVariable` after the code has been executed but before the note has played
+``````
+
+[07:51:51.0061] <liam_g>
+ * If the user types
+
+```
+wait(10)
+playMidiNote(someVariable)
+```
+
+then it won't respond to updates in `someVariable` after the code has been executed but before the note has played
+
+[07:51:59.0457] <liam_g>
+(which in this case is 10 seconds)
+
+[07:52:11.0152] <liam_g>
+I'd like it to be more responsive than that if possible
+
+[07:53:45.0697] <arai>
+it sounds like `someVariable` is modified during playing notes, and it means JS code keeps running?
+
+[07:53:59.0329] <arai>
+or is `someVariable` modified by something else?
+
+[07:54:10.0317] <liam_g>
+Yes
+
+[07:56:15.0552] <arai>
+how is JS code triggered?
+
+[07:57:20.0575] <liam_g>
+The user clicks a button, which schedules an event on my own job queue.
+
+[07:58:04.0765] <arai>
+is that same for the first code that does `playMidiNote(someVariable)` ?
+
+[07:58:58.0043] <arai>
+sorry, I'm trying to figure out how all things interact each other
+
+[07:59:12.0168] <arai>
+that will tell the requirements
+
+[08:00:53.0073] <liam_g>
+There's a continuous loop running like this:
+
+`````
+while(true)
+{
+   doJSStuff();
+   threadSleep(1);
+}
+`````
+
+doJSStuff() picks up any jobs that the user has scheduled, or any jobs that are left pending.\
+
+[08:02:34.0536] <liam_g>
+Does that make sense?
+
+[08:02:56.0510] <arai>
+so, user schedules JS code at random timing, and the code can do 1. play note, 2. wait, 3. modify variables ?
+
+[08:03:37.0676] <arai>
+and variables are shared across all code?
+
+[08:04:19.0873] <liam_g>
+Yes
+
+[08:05:33.0029] <arai>
+and if your schedules 2 JS codes that plays some different music, they're played concurrently?
+
+[08:06:24.0855] <liam_g>
+yes!
+
+[08:06:59.0251] <arai>
+I see
+
+[08:07:54.0934] <arai>
+hmm, then, internally creating the promise chain doesn't contribute to the purpose
+
+[08:08:18.0305] <arai>
+because the code user writes executes immetiately
+
+[08:08:48.0741] <arai>
+ * because the code user writes executes immediately
+
+[08:09:48.0110] <arai>
+and it has the same effect as scheduling the MIDI commands directly
+
+[08:11:03.0585] <liam_g>
+But the user can write a wait() command, which is implemented asynchronously.
+
+[08:11:37.0168] <liam_g>
+If I use a wait() command, it schedules the *next* command asynchronously
+
+[08:12:11.0870] <liam_g>
+`````
+playMidiNote(9)
+wait(1)
+playMidiNote(10)	// <--- this is scheduled 1 second into the future
+`````
+
+[08:12:27.0928] <arai>
+how is "1 second into the future" implemented?
+
+[08:13:34.0273] <arai>
+to my understanding, that part is not related to promise or job queue
+
+[08:13:49.0675] <liam_g>
+right, but I'm implementing it elsewhere.
+
+[08:14:16.0226] <arai>
+yes, so, you don't have to use promise or job queue between `wait` function and it
+
+[08:14:20.0176] <liam_g>
+On each pass of the `doJSStuff()` function I mentioned above, it logs the current time (we don't have to worry here about how it gets the time).
+
+[08:15:08.0718] <liam_g>
+Then it compares the current time against the queued jobs, and executes them if they are <=
+
+[08:16:23.0501] <liam_g>
+> <@arai:mozilla.org> yes, so, you don't have to use promise or job queue between `wait` function and it
+
+I could implement it without promises, but then we're back to the responsiveness problem I mentioned above. I'd much prefer that it can respond to changes that there made *after* the code was evaluated and *before* the next note is played.
+
+[08:16:34.0822] <arai>
+I guess, there's misunderstanding between us around "job queue"?
+
+[08:16:45.0791] <liam_g>
+Maybe...
+
+[08:18:07.0507] <liam_g>
+I have an array of jobs, which `doJSStuff()` passes over many times per second. On each pass, it will execute those jobs that agree with its current time range, and ignore those that don't.
+
+[08:18:39.0047] <liam_g>
+If a job is executed, it is then removed. If it is not executed, it waits around until its time range has come.
+
+[08:19:01.0499] <arai>
+I see. then, the job is different than the "job" in the promise's context
+
+[08:19:32.0760] <arai>
+in the promise's context, "job" is a function that's ready to be executed.  it has no condition or something
+
+[08:19:57.0179] <liam_g>
+OK, I see. 
+
+[08:20:19.0380] <arai>
+so, if you use promise, you need to have different type of job queue, apart from the one above
+
+[08:25:40.0606] <liam_g>
+Would my approach lead to any problems though? I don't see the problem if a given job is delayed for a few cycles.
+
+[08:27:35.0077] <liam_g>
+Maybe there's a simpler line of questioning. How does `setTimeOut()` work on the inside? Surely it must be similar to what I'm describing.
+
+[08:28:07.0581] <liam_g>
+I.e. it doesn't really sleep the CPU, but instead schedules a callback for a future time.
+
+[08:30:27.0483] <arai>
+that job system works, but I mean, it's unrelated to promise
+
+[08:30:51.0514] <liam_g>
+I see
+
+[08:39:11.0291] <arai>
+so, to rephrase what I said, the functions provided by DSL doesn't have to create promise, but it can directly create jobs
+
+[08:39:40.0242] <arai>
+without using the promise or job APIs
+
+[08:40:22.0164] <arai>
+and using it without actually creating the user-provided JS code "async", it doesn't contribute to the purpose of responsiveness
+
+[08:40:41.0743] <arai>
+ * and using promise without actually creating the user-provided JS code "async", it doesn't contribute to the purpose of responsiveness
+
+[08:41:48.0924] <arai>
+so, there are 2 options I can think of:  1. take the pre-process way,  2. add some magic to variables
+
+[08:42:26.0837] <arai>
+so, the problem with the responsiveness with variables is that, the value of the variable is read at the point of executing the code
+
+[08:43:06.0537] <arai>
+the option 2 is that, do not read the value of the variable at the point of executing the code, but read the value when doing the scheduled job
+
+[08:45:02.0700] <arai>
+so, something like the following, with maybe more fancy way to hide the details from user:
+```
+var x = { value: 10 };
+wait(1);         // let the next job scheduled after 1 second
+playMidiNote(x); // schedule job that reads `x.value` and play it (after 1 second)
+```
+
+
+[08:46:44.0221] <arai>
+that way, the modification to `x.value` is reflected
+
+[08:47:59.0536] <liam_g>
+I understand what you're saying.
+
+[08:49:33.0572] <liam_g>
+And both options might work.
+
+[09:00:41.0477] <liam_g>
+Thank you for your help @arai. I've taken up too much of your time and too much space on this board. I'll have a think about what my best options are.
+
+[09:02:22.0002] <arai>
+no problem 
+
+[09:56:31.0272] <nbp>
+yulia: IIUC, the `ScriptLoaderInterface` is common to modules and scripts, and would be the ideal place to have a reference to a singleton cache?
+
+[09:56:52.0021] <yulia>
+thats right -- at the moment it is fully virtual
+
+[09:56:53.0969] <yulia>
+but that can change
+
+[09:57:16.0073] <yulia>
+it is currently not implemented by the mozJSComponentLoader
+
+[09:57:23.0567] <yulia>
+and it is about to land for workers, so some of this is still in flight
+
+[09:57:42.0780] <nbp>
+ok :)
+
+[15:03:01.0150] <Tim>
+Hello, would anyone mind landing https://phabricator.services.mozilla.com/D152571 ? Thanks!
+
+[15:11:03.0672] <arai>
+queued for landing
+
+[15:14:35.0962] <Tim>
+> <@arai:mozilla.org> queued for landing
+
+thanks!
+
+
+2022-09-06
+[06:01:02.0457] <nbp>
+yulia: jonco: If an imported module fails to load, does the failure propagate back and prevents the execution?
+
+[06:01:20.0357] <yulia>
+if it is part of a module tree, yes
+
+[06:01:27.0412] <nbp>
+Thanks.
+
+[06:01:28.0539] <jonco>
+yulia: yes
+
+
+2022-09-07
+[05:25:41.0621] <liam_g>
+If Spidermonkey encounters an `await`, does it schedule a job on the same job queue as if it were a promise? I.e. through `enqueuePromiseJob()`? Or does it go somewhere else?
+
+[05:25:49.0381] <liam_g>
+Also, can I compile an asyn function using `JS::CompileFunction()`? Or do I have to do `JS::Compile()` and then `JS_ExecuteScript()`?
+
+[07:23:31.0988] <Bryan Thrall [:bthrall]>
+nbp: I would guess [bug 1789528 ](https://bugzilla.mozilla.org/show_bug.cgi?id=1789528 ) has to do with delazification. Do you have any ideas why it might be failing part of the time?
+
+[07:23:33.0770] <botzilla>
+https://bugzil.la/1789528 — NEW (nobody) — Perma [Tier-2] tests/jit-test/jit-test/tests/bug1787730.js | [CodeCoverage] Setting handlers for process 2077. (code -11, args "--delazification-mode=concurrent-df+on-demand") [0.0 s]
+
+[09:13:17.0374] <sfink>
+liam_g: I'm no expert, but `await` is definitely a Promise thing in the [spec](https://262.ecma-international.org/13.0/#await). So yes, it would be the same job queue.
+
+[12:05:56.0156] <arai>
+liam_g: yes, same job.  and `JS::CompileFunction` isn't compatible with async function (or generator or async generator)
+
+[12:06:34.0168] <arai>
+so, you need to compile a enclosing script
+
+[15:17:51.0877] <arai>
+or, get the async function constructor and call it.  the equivalent in JS is: `Object.getPrototypeOf(async () => {}).constructor("x", "y", "return await x + await y");`
+
+[15:18:29.0318] <arai>
+ * or, get the async function constructor and call it.  the equivalent in JS is: `(async () => {}).constructor("x", "y", "return await x + await y");`
+
+[15:18:34.0303] <arai>
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncFunction
+
+[15:20:30.0388] <arai>
+the C++ APIs for async/generator don't exist simply because there was no consumer.  so, if it's necessary, it makes sense to add them as new public C++ API
+
+[15:20:50.0891] <arai>
+(`JS::CompileFunction` is used by DOM event listener `e.g. <button onclick="...">`)
+
+
+2022-09-08
+[21:16:07.0389] <samratrocks>
+Hey guys, I've just started contributing to Firefox Desktop (as in have submitted one patch 😅).
+At this point in my programming journey with JS, I want to move onto understanding the engine itself and understand the internals.
+That's why I feel like contributing to spidermonkey could be one of the best things I do. To that end
+https://bugzilla.mozilla.org/show_bug.cgi?id=1778696
+I wanted to grab this bug. But I don't have any professional C++ development (did it in school) so it might take me a little bit.
+What is the required level of C++ before diving into these bugs?
+Also any suggestion on how to approach C++ / Spidermonkey would be a great help. I've started looking at this page:
+https://spidermonkey.dev/docs/
+
+[21:16:31.0684] <samratrocks>
+ * Hey guys, I've just started contributing to Firefox Desktop (as in have submitted one patch 😅).
+At this point in my programming journey with JS, I want to move onto understanding the engine itself and understand the internals.
+That's why I feel like contributing to spidermonkey could be one of the best things I can do. To that end
+https://bugzilla.mozilla.org/show\_bug.cgi?id=1778696
+I wanted to grab this bug. But I don't have any professional C++ development (did it in school) so it might take me a little bit.
+What is the required level of C++ before diving into these bugs?
+Also any suggestion on how to approach C++ / Spidermonkey would be a great help. I've started looking at this page:
+https://spidermonkey.dev/docs/
+
+[21:16:56.0692] <samratrocks>
+ * Hey guys, I've just started contributing to Firefox Desktop (as in have submitted one patch 😅).
+At this point in my programming journey with JS, I want to move onto understanding the engine itself and understand the internals.
+That's why I feel like contributing to spidermonkey could be one of the best things I can do. To that end
+https://bugzilla.mozilla.org/show\_bug.cgi?id=1778696
+I wanted to grab this bug. But I don't have any professional C++ development (did it in school) so it might take me a little bit.
+What is the required level of C++ before diving into these bugs?
+Also any suggestion on how to approach C++ / Spidermonkey would be a great help. I've started looking at this page: https://spidermonkey.dev/docs/
+
+Ty.
+
+[21:17:16.0584] <samratrocks>
+ * Hey guys, I've just started contributing to Firefox Desktop (as in have submitted one patch 😅).
+At this point in my programming journey with JS, I want to move onto understanding the engine itself and understand the internals.
+That's why I feel like contributing to spidermonkey would be one of the best things I can do. To that end
+https://bugzilla.mozilla.org/show\_bug.cgi?id=1778696
+I wanted to grab this bug. But I don't have any professional C++ development (did it in school) so it might take me a little bit.
+What is the required level of C++ before diving into these bugs?
+Also any suggestion on how to approach C++ / Spidermonkey would be a great help. I've started looking at this page: https://spidermonkey.dev/docs/
+
+Ty.
+
+[02:15:05.0774] <nbp>
+Bryan Thrall [:bthrall]: Code coverage is not compatible with concurrent delazification. Code coverage expects an eager delazification such that we can iterate over the bytecode to find out which lines contains code, as we have to make a report when the script is finished. However, if the script does not exists, because it is unused, then we would not make any report, and would not report the lack of usage.
+
+We already have a few test cases specific to code coverage, you might find inspiration in these. Usually this is a `skip-if` tag, or a condition with a call to `quit()` or `crash()`.
+
+[03:32:28.0669] <yulia>
+I am at a bit of a loss. How does one build webrender enabled versions of tests? for example Linux 18.04 x64 WebRender opt -- I don't know what is different about this build from a non-webrender build, but my tests do not fail locally and I am not sure what I am doing wrong
+
+[03:33:12.0967] <yulia>
+ah... maybe this... https://searchfox.org/mozilla-central/source/gfx/webrender_bindings/README.webrender
+
+[03:49:51.0194] <nbp>
+Thanks for the link, that would explain tons of things!
+
+[05:54:22.0440] <jandem>
+yulia: WR is the default now, you shouldn't have to do anything to enable it
+
+[05:55:00.0462] <yulia>
+i am trying the build on my mac now, maybe i can reproduce here
+
+[06:20:11.0957] <yulia>
+yes, its reproducable on the mac. Looks like i don't get the timing issues that CI are seeing on the build machine. Interesting
+
+[07:03:08.0975] <parry30>
+hi, let me ask a simple question.
+why is `for` loop with `var` statement such slower than with `let` statement?
+```js
+console.time('var')
+for (var i = 0; i < 1000000; i++) void 0;
+console.timeEnd('var')
+
+console.time('let')
+for (let i = 0; i < 1000000; i++) void 0;
+console.timeEnd('let')
+
+// var: 330ms
+// let: 6ms
+```
+
+[07:04:58.0531] <parry30>
+i tried this on Firefox 104.0.1, x86_64, Linux.
+
+[07:15:08.0127] <parry30>
+buildin js components seem to have a lot of old-style `var` loops.
+https://searchfox.org/mozilla-central/source/js/src/builtin/Array.js
+if those are replaced by `let`, will they be faster?
+
+[07:30:31.0769] <mccr8>
+I don't know anything about the JIT, but given the massive difference, I assume that for some reason the JIT can eliminate the let loop entirely but not the var one.
+
+[07:31:07.0358] <Ms2ger 💉💉>
+The var one puts a property on the global and the let one doesn't?
+
+[07:31:12.0589] <mccr8>
+If you have lots of empty loops in your code that don't do anything, you might want to remove those!
+
+[07:43:51.0313] <parry30>
+i just tried a slightly different test.
+
+```
+console.time('var')
+for (let i = 0; i < 1000000; i++) { var x = 0 };
+console.timeEnd('var')
+
+console.time('let')
+for (let i = 0; i < 1000000; i++) { let x = 0 };
+console.timeEnd('let')
+
+// var: 128ms
+// let: 6ms
+```
+
+
+[07:44:08.0309] <parry30>
+ * i just tried a slightly different test.
+
+```js
+console.time('var')
+for (let i = 0; i < 1000000; i++) { var x = 0 };
+console.timeEnd('var')
+
+console.time('let')
+for (let i = 0; i < 1000000; i++) { let x = 0 };
+console.timeEnd('let')
+
+// var: 128ms
+// let: 6ms
+```
+
+[07:45:06.0372] <parry30>
+looking at this result, `let` statement looks match faster than `var` one...
+
+[07:53:13.0163] <mccr8>
+That's still a loop that is doing nothing. With a let it is probably easier for the JIT to figure out that the loop can be deleted.
+
+[07:54:25.0743] <mccr8>
+You could also try `console.time('nothing'); console.time('nothing')`
+
+[07:56:47.0504] <parry30>
+```js
+console.time('nothing');
+console.timeEnd('nothing')
+
+// nothing: 0ms
+```
+
+[07:57:18.0129] <parry30>
+0ms!
+
+[08:04:22.0572] <parry30>
+is the following avoiding the effect of the JIT?
+
+```js
+console.time('var')
+for (let i = 0; i < 1000000; i++) { var x = i + 1 };
+console.timeEnd('var')
+
+console.time('let')
+for (let i = 0; i < 1000000; i++) { let x = i + 1 };
+console.timeEnd('let')
+
+
+// var: 147ms
+// let: 13ms
+```
+
+[08:04:53.0400] <parry30>
+i don't know anything about the JIT too...
+
+[08:10:00.0803] <l11d>
+the main difference is that the former loops (`var` case) puts `x` in the global scope, whereas the latter doesn't. in particular, the former loop updates the globals => there is a `storedynamicslot` instruction. hence the `var` loop "does more"
+
+[08:15:03.0975] <l11d>
+interestingly, the difference between the loops is much smaller in the js shell.
+
+[08:26:22.0416] <parry30>
+i see. thank you guys! i'll look into StoreDynamicSlot.
+
+[08:28:44.0435] <iain>
+Note that this only happens because your loops are in the top-level script. If you wrapped the var loop in a function, it should be at least as fast as the let loop.
+
+[08:32:34.0451] <iain>
+The reason is that vars in top-level scripts live in the global, whereas lets have reasonable lexical scope:
+```
+for (let i = 0; i < 100; i++) { var v = i + 1; }
+console.log(v); // 101
+for (let i = 0; i < 100; i++) { let l = i + 1; }
+console.log(l); // ReferenceError: l is not defined
+```
+
+[08:32:49.0536] <iain>
+ * The reason is that vars in top-level scripts live in the global, whereas lets have reasonable lexical scope:
+
+```
+for (let i = 0; i < 100; i++) { var v = i + 1; }
+console.log(v); // 100
+for (let i = 0; i < 100; i++) { let l = i + 1; }
+console.log(l); // ReferenceError: l is not defined
+```
+
+[08:34:05.0393] <iain>
+So the compiler can't eliminate `v = i + 1`, because `v` could be used later, but it can eliminate `l = i + 1`, because `l` stops existing when the loop exits.
+
+[08:46:20.0402] <parry30>
+as iain said, the difference become tiny in function scope!
+thanks!
+
+```js
+function testVar(i) { var x = i + 1 }
+function testLet(i) { let x = i + 1 }
+
+console.time('var')
+for (let i = 0; i < 1000000; i++) { testVar(i); }
+console.timeEnd('var')
+
+console.time('let')
+for (let i = 0; i < 1000000; i++) { testLet(i); }
+console.timeEnd('let')
+
+// var: 237ms
+// let: 194ms
+```
+
+[10:11:25.0377] <davidj361>
+does anyone know if spidermonkey has anything similar to this? https://github.com/Chobolabs/jsbind
+
+[10:11:56.0885] <davidj361>
+i would like to do embedded development of binding C++ to JavaScript, vice-versa, without it being too reliant on spidermonkey api
+
+[10:14:33.0464] <iain>
+davidj361: I am not aware of any such project
+
+[10:16:01.0363] <ptomato>
+GJS is basically this, but for object-oriented-style C rather than C++; although it's specific to the GNOME desktop, you might get something out of it
+
+[10:25:49.0856] <davidj361>
+> <@pchimento:igalia.com> GJS is basically this, but for object-oriented-style C rather than C++; although it's specific to the GNOME desktop, you might get something out of it
+
+the only backend for that is SpiderMonkey though right?
+
+[10:25:56.0833] <ptomato>
+yes
+
+[10:25:58.0539] <davidj361>
+> <@pchimento:igalia.com> GJS is basically this, but for object-oriented-style C rather than C++; although it's specific to the GNOME desktop, you might get something out of it
+
+ * the only supported backend for that is SpiderMonkey though right?
+
+[10:26:31.0007] <ptomato>
+sorry, I thought you were asking about something with a SpiderMonkey backend specifically - since jsbind doesn't have one
+
+[10:26:48.0114] <ptomato>
+but you want to know if there is something with multiple backends that include SpiderMonkey?
+
+[10:27:04.0466] <davidj361>
+yes
+
+[10:27:26.0818] <ptomato>
+then I don't know of any either, sorry 😄
+
+[10:27:43.0083] <davidj361>
+it's ok :)
+
+[14:36:05.0057] <arai>
+samratrocks: hi, welcome :)  the bug is for XPConnect, that's somewhere between SpiderMonkey and XPCOM, and I guess people in #xpcom:mozilla.org would know better about the bug and the context around the discussion
+
+
+2022-09-09
+[04:00:03.0893] <liam_g>
+> <@arai:mozilla.org> the C++ APIs for async/generator don't exist simply because there was no consumer.  so, if it's necessary, it makes sense to add them as new public C++ API
+
+Thanks @arai, I'll use the script option for now. If an API function becomes available, that would be great.
+
+[04:02:17.0420] <liam_g>
+BTW, the text-preprocessor / `await` solution you had proposed to my problem is working 😁
+
+[08:55:10.0066] <usva.techdev>
+Hello everyone I'm building a yocto recipe for 68.9.0esr but I'm having this error... any suggestions:
+
+| /home/ulisesv/host_workspace/qemu-x86/build/tmp/work/core2-64-poky-linux/mozjs/68.9-r0/firefox-68.9.0/third_party/python/virtualenv/virtualenv.py:1047: DeprecationWarning: the imp module is deprecated in favour of importlib; see the module's documentation for alternative uses
+|   import imp
+
+[09:12:22.0624] <nbp>
+Maybe because 68.9 was last released 2 years ago, and probably because we kept using deprecated versions of python at the time. You might have to use python 3.3: https://docs.python.org/3/library/imp.html
+
+[09:13:08.0191] <jcristau>
+a deprecation warning isn't an error though
+
+[09:16:53.0299] <nbp>
+[Python 3.4 was end-of-life in 2019-03-18](https://en.wikipedia.org/wiki/History_of_Python). [Firefox 68 was first released in 2019-07-09](https://wiki.mozilla.org/Release_Management/Calendar). [The `imp` module was Deprecated in 3.4](https://docs.python.org/3/library/imp.html).
+Conclusion: Firefox 68.0 was released while using a deprecated version of python or a deprecated feature of python.
+
+[10:10:30.0707] <usva.techdev>
+understood... v68.9 because I can only compile with c++14..  is it possible to build spyder monkey 68.9 with the python version of newer release like esr91 or something earlier???
+
+[10:16:25.0101] <usva.techdev>
+ * understood... I want to use v68.9 because I can only compile with c++14..  is it possible to build spyder monkey 68.9 with the python version of newer release like esr91 or something earlier???
+
+[10:31:22.0444] <nbp>
+Python is an external dependency taken from your build environment. You can build with whatever python, but you might have to explicitly use it by name `python33 ./mach build`
+
+
+2022-09-10
+[10:48:43.0572] <Redfire>
+What exactly am I missing such that SpiderMonkey complains about `top level await is not currently supported`?
+
+[11:18:24.0551] <sfink>
+there's a CompileOptions topLevelAwait field. It must be false in your situation, I guess?
+
+[11:19:28.0628] <sfink>
+Redfire:  the JS shell has an option `--enable-top-level-await` to enable it, but I thought it defaulted to true now.
+
+
+2022-09-11
+[18:22:59.0938] <Redfire>
+oh.., its on `ContextOptions`
+I thought it would be directly on `CompileOptions`
+I see (It's not defaulted to true because I'm still on SM 96)
+
+[15:14:13.0339] <devscripter>
+hello
+
+[15:14:58.0559] <devscripter>
+can anyone tell me more about the 'artifact' mode when building spidermonkey for embedding in c++ windows?
+
+[15:52:25.0055] <Redfire>
+Is there any way I can get the underlying `ArrayBuffer` as a `JSObject*` of a `TypedArray`?
+or does `UnwrapArrayBuffer` just working other `TypedArray` too?
+
+[15:53:41.0774] <Redfire>
+* Is there any way I can get the underlying `ArrayBuffer` as a `JSObject*` of a `TypedArray`?
+or does `UnwrapArrayBuffer`/`UnwrapArrayBufferView` just work on `TypedArray`s too?
+
+On that note, what even is a `ArrayBufferView`?
+
+[15:53:48.0180] <Redfire>
+* Is there any way I can get the underlying `ArrayBuffer` as a `JSObject*` of a `TypedArray`?
+or does `UnwrapArrayBuffer`/`UnwrapArrayBufferView` just work on `TypedArray`s too?
+
+On that note, what even is a `ArrayBufferView`?
+
+[16:02:13.0198] <iain>
+devscripter: See [here](https://firefox-source-docs.mozilla.org/contributing/build/artifact_builds.html). Note that only full browser builds are supported; there is no artifact mode for SM.
+
+[16:02:37.0053] <devscripter>
+ye read that but still dont understand, like does it generate lib files for me?
+
+[16:04:32.0475] <iain>
+If you are working on the browser, and you're only going to be changing code written in JS, then instead of building the C++ parts yourself, you can use artifact builds to download the C++ components and save compilation time. SM compiles much faster than the full browser, and it's mostly written in C++, so there's no point in artifact builds.
+
+[16:05:13.0156] <devscripter>
+oh ok and this is for windows right?
+
+[16:05:19.0733] <devscripter>
+cuz m on windows
+
+[16:05:45.0820] <arai>
+the artifact is a set of intermediate files for building Firefox, for each OS
+
+[16:06:25.0704] <arai>
+basically it's not for other embedding
+
+[16:06:27.0830] <arai>
+ * basically it's not for other embeddings
+
+[16:06:41.0269] <devscripter>
+a couple months ago i asked in this forum if it was possible to build spidermonkey only (the embeddable js engine) for C++,and i was told i HAVE to download the entire 40 gigs of firefox. is this really necessary? I am only trying to embed javascript like I would embed Lua or something in c++ 
+
+[16:10:58.0218] <iain>
+devscripter: Yes. SpiderMonkey lives in the same repository as the rest of the browser. 
+
+[16:11:47.0518] <devscripter>
+right, so there's just no way to go about it other than downloading all the source right?
+
+[16:12:20.0983] <arai>
+downloading the all source is the easiest way
+
+[16:13:28.0735] <devscripter>
+so what are these branches? "esr-68" "esr-91" are these also the entire browser?
+
+[16:13:43.0257] <arai>
+oh, maybe I misunderstood the "artifact" you mentioned
+
+[16:14:05.0370] <Redfire>
+http://ftp.mozilla.org/pub/firefox/releases/101.0/source/ There's stuff like this which should be less than 40GB
+
+[16:14:13.0689] <devscripter>
+yea nvm the artifact
+
+[16:14:21.0879] <Redfire>
+If I remember correctly, the actual spidermonkey part is around 4 GB
+
+[16:14:32.0148] <arai>
+if it was referring the artifact of SpiderMonkey package job, it's smaller
+
+[16:15:40.0382] <devscripter>
+> <@redfire75369:mozilla.org> http://ftp.mozilla.org/pub/firefox/releases/101.0/source/ There's stuff like this which should be less than 40GB
+
+i downloaded the same one except it's esr-91, and i also downloaded mozilla build, i just dont know where to go from here
+
+[16:16:19.0598] <devscripter>
+although i recall bootstrap downloaded all the tools necessary, but it also installed the 40 gigs of firefox which i mostly dont need
+
+[16:16:47.0220] <Redfire>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md Probably will be helpful 
+
+[16:17:29.0321] <devscripter>
+thats great and all except its for linux
+
+[16:17:39.0382] <devscripter>
+> <@redfire75369:mozilla.org> https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md Probably will be helpful
+
+m running windows
+
+[16:18:53.0070] <iain>
+ Redfire What are you trying to do with a TypedArray? `UnwrapArrayBuffer` is about removing cross-compartment wrappers.
+
+[16:19:22.0965] <iain>
+ArrayBufferView` is the shared ancestor of TypedArray and [DataView](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView)
+
+[16:19:29.0132] <iain>
+ * `ArrayBufferView\` is the shared ancestor of TypedArray and [DataView](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView)
+
+[16:19:43.0134] <iain>
+ * `ArrayBufferView` is the shared ancestor of TypedArray and [DataView](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView)
+
+[16:20:20.0054] <Redfire>
+devscripter:
+Use these two in conjunction
+https://firefox-source-docs.mozilla.org/setup/windows_build.html
+https://firefox-source-docs.mozilla.org/js/build.html
+
+[16:22:06.0716] <Redfire>
+> <@iain:mozilla.org>  Redfire What are you trying to do with a TypedArray? `UnwrapArrayBuffer` is about removing cross-compartment wrappers.
+
+Trying to get the byte (u8) representation of `TypedArray`
+I'm currently checking through every type of `TypedArray` (Uint8Array, Float32Array, etc.), which is clearly not the greatest 
+
+[16:22:16.0746] <devscripter>
+boostrap downloads all the 40 gigs i just want esr-91 like the link Redfire provided except it should be for windows not linux
+
+[16:24:34.0310] <arai>
+there are 2 types of bootstrap
+
+[16:24:54.0017] <arai>
+one is to download `https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py` and run it, as explained in the document
+
+[16:25:12.0722] <arai>
+the script downloads the repository and then runs the remaining of the bootstrap process
+
+[16:25:24.0716] <arai>
+other is to run `./mach bootstrap` inside the already-downloaded repository
+
+[16:25:38.0161] <arai>
+that corresponds to the "remaining of the bootstrap process"
+
+[16:25:52.0478] <arai>
+so, if you already have the source tree, what you need is `./mach bootstrap`
+
+[16:26:40.0486] <arai>
+but I think, lately `./mach bootstrap` expects mercurial/git checkout of the source (to determine the versions of tools, iiuc)
+
+[16:26:46.0907] <devscripter>
+> <@arai:mozilla.org> so, if you already have the source tree, what you need is `./mach bootstrap`
+
+ohh ok, that explains it
+
+[16:26:47.0198] <arai>
+so, `./mach bootstrap` might not work
+
+[16:26:53.0512] <devscripter>
+crap
+
+[16:27:41.0756] <devscripter>
+cuz it says this atm checking for rustc... not found
+checking for cargo... not found
+ERROR: Rust compiler not found.
+To compile rust language sources, you must have 'rustc' in your path.
+See https://www.rust-lang.org/ for more information.
+
+You can install rust by running './mach bootstrap'
+
+[16:27:45.0737] <arai>
+so, if you downloaded a snapshot of source tree, you'll need to setup necessary tools by yourself
+
+[16:27:59.0763] <devscripter>
+thas wot it sayz
+
+[16:28:55.0546] <devscripter>
+also how do you go back a directory in the start-shell.bat?
+
+[16:29:36.0011] <Redfire>
+windows just needs rust, llvm and mozilla-build afaik
+
+[16:30:17.0525] <devscripter>
+> <@redfire75369:mozilla.org> windows just needs rust, llvm and mozilla-build afaik
+
+llvm is for the c compiler right?
+
+[16:30:25.0830] <Redfire>
+> <@devscripter:mozilla.org> also how do you go back a directory in the start-shell.bat?
+
+`cd ..`
+
+[16:30:45.0012] <Redfire>
+actually not sure if llvm is needed, that might just be for the rust wrapper of mozjs
+
+[16:30:52.0057] <iain>
+Redfire: Does [this](https://searchfox.org/mozilla-central/source/js/src/vm/ArrayBufferViewObject.cpp#261-274) work?
+
+[16:31:12.0725] <devscripter>
+> <@redfire75369:mozilla.org> actually not sure if llvm is needed, that might just be for the rust wrapper of mozjs
+
+i dont need llvm  since it is already detecting the one installed with MSVC 
+
+[16:31:57.0049] <Redfire>
+iain: I haven't tried yet, but I could try doing only `ArrayBufferView` instead of 10 different typed arrays
+
+[16:32:25.0849] <devscripter>
+why is this happening: 
+
+[16:32:26.0539] <devscripter>
+~/downloads/firefox-91.0esr.source/firefox-91.0/js
+$ ./mach bootstrap
+bash: ./mach: No such file or directory
+
+[16:32:37.0885] <Redfire>
+cd up two levels
+
+[16:32:51.0051] <Redfire>
+mach is in the root of the source code
+
+[16:33:05.0038] <devscripter>
+yes but doesnt ./ meaning one directory back?
+
+[16:33:06.0040] <Redfire>
+or err, just one
+
+[16:33:13.0405] <Redfire>
+../ means one dir back
+
+[16:33:20.0248] <Redfire>
+. is the current dir
+
+[16:33:22.0241] <devscripter>
+and with the single dot?
+
+[16:33:23.0562] <devscripter>
+oh
+
+[16:33:26.0348] <devscripter>
+thanks a lot
+
+[16:33:58.0806] <devscripter>
+this now:
+
+[16:33:59.0689] <devscripter>
+Please choose the version of Firefox you want to build:
+  1. Firefox for Desktop Artifact Mode [default]
+  2. Firefox for Desktop
+  3. GeckoView/Firefox for Android Artifact Mode
+  4. GeckoView/Firefox for Android
+  5. SpiderMonkey JavaScript engine
+Your choice:
+
+[16:34:05.0044] <devscripter>
+i should select 5 right?
+
+[16:34:15.0756] <Redfire>
+yes
+
+[16:34:22.0493] <devscripter>
+cuz thats what i want to build, only the js engine for embedding in c++
+
+[16:34:24.0807] <devscripter>
+ok
+
+[16:35:51.0028] <devscripter>
+ach.util.UserError: Need permission to create global state directory at C:\Users\
+
+[16:36:03.0037] <devscripter>
+how do i fix this, how do i give it permission?
+
+[16:44:55.0905] <devscripter>
+any help?
+
+[16:52:21.0228] <arai>
+can you pastebin the whole input and output to https://paste.mozilla.org/ ?
+
+[16:52:38.0625] <arai>
+in which step does the error happen?  have you entered anything until then?
+
+[16:53:52.0082] <devscripter>
+Please choose the version of Firefox you want to build:
+  1. Firefox for Desktop Artifact Mode [default]
+  2. Firefox for Desktop
+  3. GeckoView/Firefox for Android Artifact Mode
+  4. GeckoView/Firefox for Android
+  5. SpiderMonkey JavaScript engine
+Your choice:5
+Your version of Python 3 (3.9.10) is new enough.
+WARNING: Your version of Python 2 (None) is not new enough. You must have Python >= 2.7.3 to build Firefox. Python 2 is not required to build, so we will proceed. However, Python 2 is required for other development tasks, like running tests; you may like to have Python 2 installed for that reason.
+Python is provided by MozillaBuild; ensure your MozillaBuild installation is up to date.
+
+The Firefox build system and related tools store shared, persistent state
+in a common directory on the filesystem. On this machine, that directory
+is:
+
+  C:\Users\<>/.mozbuild
+
+If you would like to use a different directory, hit CTRL+c and set the
+MOZBUILD_STATE_PATH environment variable to the directory you'd like to
+use and re-run the bootstrapper.
+
+[16:53:53.0487] <devscripter>
+Would you like to create this directory? (Yn):
+
+[16:54:06.0472] <devscripter>
+it doesnt matter if i hit y or n it still complains about permission
+
+[16:54:41.0966] <arai>
+are you running it in mozilla build's shell?
+
+[16:55:29.0698] <devscripter>
+exactly
+
+[16:55:53.0838] <arai>
+what does `echo $HOME` command say?
+
+[16:56:18.0571] <devscripter>
+its definitely not a problem with mach i just need to figure out how to let my computer allow this shell to make directories
+
+[16:56:42.0319] <devscripter>
+> <@arai:mozilla.org> what does `echo $HOME` command say?
+
+where do i type it? its asking me yes or no
+
+[16:56:57.0314] <arai>
+hit Ctrl+C
+
+[16:57:00.0120] <arai>
+and then type it there
+
+[16:57:04.0139] <devscripter>
+ok
+
+[16:57:11.0501] <arai>
+the system fails to figure out the correct home directory of your account
+
+[16:57:22.0848] <devscripter>
+it says "mach interrupted by signal or user action. Stopping." when i hit control c
+
+[16:57:32.0255] <devscripter>
+is that bad?
+
+[16:57:52.0851] <arai>
+you can ignore that
+
+[16:58:30.0342] <devscripter>
+when i do echo home it says: /c/Users/myname
+
+[16:58:35.0713] <Redfire>
+> <@redfire75369:mozilla.org> iain: I haven't tried yet, but I could try doing only `ArrayBufferView` instead of 10 different typed arrays
+
+Update: Seems to work with the TypedArrays, DataView works too
+
+[16:59:13.0726] <arai>
+is `C:\Users<>/.mozbuild` part in the above paste exact output? or have you modified that part?
+
+[16:59:29.0166] <arai>
+the output sounds strange
+
+[16:59:51.0350] <devscripter>
+um it says C:\Users\myname/.mozbuild
+
+[16:59:54.0767] <devscripter>
+in the above part
+
+
+2022-09-12
+[17:00:06.0712] <arai>
+oh
+
+[17:00:12.0206] <arai>
+then, that part is okay
+
+[17:00:16.0267] <devscripter>
+ok phew
+
+[17:00:39.0406] <arai>
+what was the original problem then?
+
+[17:01:08.0623] <arai>
+can you pastebin the input/output for the actual error, to https://paste.mozilla.org/ ?
+
+[17:01:09.0729] <devscripter>
+ok here it is, firstly should i hit y or n?
+
+[17:01:30.0251] <devscripter>
+okay but first let me recreate the error lol
+
+[17:01:52.0009] <devscripter>
+i first hit n because i didnt want to create any new directory just whichever one mach had default
+
+[17:03:53.0665] <devscripter>
+> <@arai:mozilla.org> can you pastebin the input/output for the actual error, to https://paste.mozilla.org/ ?
+
+https://paste.mozilla.org/13TEvLBO here is the output when i press n (no)
+
+[17:05:35.0991] <arai>
+okay, now I see what's going on
+
+[17:06:01.0599] <arai>
+you just need to allow it to create the directory
+
+[17:06:18.0730] <arai>
+the directory is used to store necessary tools
+
+[17:07:27.0899] <devscripter>
+yes but how?
+
+[17:08:02.0263] <devscripter>
+> <@arai:mozilla.org> you just need to allow it to create the directory
+
+that is definitely the problem seeing is there is nothing wrong with mach, only my administrative permissions
+
+[17:09:29.0198] <arai>
+I mean, hit "Y" in the question
+
+[17:09:49.0082] <arai>
+the "n" option is there for specifying different directory after aborting the bootstrap
+
+[17:11:58.0991] <devscripter>
+ok
+
+[17:14:44.0245] <devscripter>
+> <@arai:mozilla.org> I mean, hit "Y" in the question
+
+it then gives this: https://paste.mozilla.org/v0LsJsfY
+
+[17:15:38.0134] <arai>
+yes, that's the problem I mentioned above with hg/git checkout
+
+[17:15:52.0438] <devscripter>
+oh god
+
+[17:16:02.0179] <devscripter>
+which means m gon have to download the 40 gigs?
+
+[17:16:39.0957] <arai>
+or setup the necessary tools manually, without bootstrap command
+
+[17:16:49.0355] <devscripter>
+how will that work?
+
+[17:17:37.0913] <arai>
+skip the bootstrap process, and go to `./mach build` step
+
+[17:17:48.0204] <arai>
+possibly after creating mozconfig file for your setup
+
+[17:18:09.0961] <arai>
+then `./mach build` will complain missing tools
+
+[17:18:28.0631] <arai>
+so, prepare those tools one by one
+
+[17:19:14.0389] <devscripter>
+how do you create mozconfig file?
+
+[17:19:21.0803] <devscripter>
+like what's the extenssion?
+
+[17:19:47.0028] <arai>
+https://firefox-source-docs.mozilla.org/js/build.html
+
+[17:21:01.0215] <arai>
+so, skip the first paragraph about bootstrap, and start from "Developer (debug) build" section
+
+[17:22:38.0961] <devscripter>
+$ ./mach build
+This mach command requires /c/Users/hassa/.mozbuild/_virtualenvs/mach/Scripts/python, which wasn't found on the system!
+Consider running 'mach bootstrap' or 'mach create-mach-environment' to create the mach virtualenvs, or set MACH_USE_SYSTEM_PYTHON to use the system Python installation over a virtualenv.
+
+[17:23:08.0664] <arai>
+then `./mach create-mach-environment'`
+
+[17:23:11.0712] <arai>
+ * then `./mach create-mach-environment`
+
+[17:24:51.0885] <devscripter>
+ok
+
+[17:24:57.0727] <devscripter>
+its installing some stuff
+
+[17:27:31.0120] <devscripter>
+ok it downloaded some stuff and i ran mach build again
+
+[17:27:34.0671] <devscripter>
+still got rust errors
+
+[17:28:59.0665] <devscripter>
+how do i install mozmake?
+
+[17:29:18.0783] <Redfire>
+mozmake is part of mozilla-build
+
+[17:29:32.0611] <arai>
+recently it's not part of mozilla build
+
+[17:29:40.0756] <Redfire>
+oh what
+
+[17:29:48.0476] <Redfire>
+mozilla-build 3.x is what you want iirc
+
+[17:29:59.0108] <arai>
+it's part of tools downloaded by bootstrap iiuc
+
+[17:30:19.0321] <devscripter>
+so what you just mach build and it works?
+
+[17:30:27.0976] <arai>
+so, you need other make tool
+
+[17:30:32.0920] <Redfire>
+https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-3.4.exe
+if its not in bootstrap, there's this
+
+[17:30:57.0792] <devscripter>
+> <@redfire75369:mozilla.org> https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-3.4.exe
+> if its not in bootstrap, there's this
+
+what is this?
+
+[17:31:01.0900] <devscripter>
+does this have mozmake
+
+[17:31:21.0008] <Redfire>
+from what I use on CI and locally, yes
+
+[17:31:40.0121] <devscripter>
+ok
+
+[17:32:02.0842] <Redfire>
+4.0 onwards broke my CI due to mozmake, and I haven't bothered fixing that yet
+
+[17:33:58.0541] <devscripter>
+ 0:05.70 checking for rust target triplet... x86_64-pc-windows-msvc
+ 0:05.70 checking for rustdoc... C:/Users/hassa/.cargo/bin/rustdoc.exe
+ 0:05.78 checking for cbindgen... no
+ 0:05.78 ERROR: Cannot find cbindgen. Please run `mach bootstrap`
+
+[17:34:09.0193] <devscripter>
+wtf is cbindgen
+
+[17:35:17.0479] <Redfire>
+this, https://github.com/eqrion/cbindgen
+try running `./mach bootstrap` again like it suggests
+
+[17:37:04.0965] <devscripter>
+> <@redfire75369:mozilla.org> this, https://github.com/eqrion/cbindgen
+> try running `./mach bootstrap` again like it suggests
+
+ok
+
+[17:37:29.0993] <devscripter>
+same error
+
+[17:37:46.0522] <devscripter>
+https://paste.mozilla.org/v0LsJsfY
+
+[17:39:02.0659] <devscripter>
+> <@redfire75369:mozilla.org> this, https://github.com/eqrion/cbindgen
+> try running `./mach bootstrap` again like it suggests
+
+does mozillabuild3.4 use old version of python? like python 2?
+
+[17:39:51.0256] <Redfire>
+definitely python3
+
+[17:40:18.0408] <Redfire>
+I know it compiles with mozjs 97 at the least, so that's almost certainly not the issue
+
+[17:40:26.0619] <Redfire>
+* I know it compiles with mozjs 92-97 at the least, so that's almost certainly not the issue
+
+[17:40:44.0042] <devscripter>
+ok good m trying now with mozbuild3.4
+
+[17:41:27.0218] <devscripter>
+sure as hell takes up a lot of space
+
+[17:47:22.0866] <devscripter>
+how do we set environment variables in this start-shell? for pths
+
+[17:47:37.0912] <devscripter>
+like do we use quotes and what types of slashes?
+
+[17:50:24.0334] <arai>
+what kind of environment variable?
+
+[17:51:44.0383] <devscripter>
+MOZBUILD_STATE_PATH
+
+[17:53:02.0745] <devscripter>
+m still having trouble :( now that m using mozbuild 3.4 its not even recognizing my c compiler 
+
+[17:53:34.0079] <arai>
+basically you don't have to set the var, but if you want, then I think you need `export MOZBUILD_STATE_PATH="/c/Users/USERNAME/somewhere"` or something
+
+[17:54:32.0986] <devscripter>
+we dont use "set"?
+
+[17:56:02.0523] <arai>
+I think, the mozila build shell uses bash
+
+[17:56:14.0047] <arai>
+and the way to set environment variable is `export`
+
+[17:57:01.0186] <arai>
+to my understanding
+
+[17:57:48.0084] <devscripter>
+ok
+
+[17:58:27.0248] <devscripter>
+so to be clear, there is no way to use ./mach bootstrap with something like esr-91 or esr-102
+
+[17:59:06.0304] <arai>
+at least, no simple way
+
+[17:59:17.0948] <arai>
+you could modify the bootstrap script itself, but not sure
+
+[17:59:45.0413] <arai>
+also, to be clear, it doesn't mean that bootstrap is not compatible with ESR.  it's not compatible with source tarball
+
+[18:00:04.0249] <arai>
+if you clone hg/git repository and checkout esr branch, it will work there
+
+[18:01:58.0562] <devscripter>
+> <@arai:mozilla.org> if you clone hg/git repository and checkout esr branch, it will work there
+
+how do i  clone it?
+
+[18:02:48.0937] <arai>
+that's the repository the `bootstrap.py` script clones.  it's `mozilla-unified`, it's an unified repository of mozilla-central (nightly), beta, release, and ESRs
+
+[18:03:39.0012] <devscripter>
+> <@arai:mozilla.org> that's the repository the `bootstrap.py` script clones.  it's `mozilla-unified`, it's an unified repository of mozilla-central (nightly), beta, release, and ESRs
+
+is that like on github?
+
+[18:04:05.0668] <arai>
+it's https://hg.mozilla.org/mozilla-unified/
+
+[18:05:00.0701] <devscripter>
+oh 
+
+[18:05:52.0637] <devscripter>
+how would i clone the esr102 branch from here?
+
+[18:05:59.0110] <devscripter>
+also isnt this the same? https://github.com/mozilla/gecko-dev/tree/esr102
+
+[18:06:59.0634] <arai>
+just to make sure, the repository is what `bootstrap.py` script cloned in https://firefox-source-docs.mozilla.org/setup/windows_build.html#bootstrap-a-copy-of-the-firefox-source-code step
+
+[18:07:44.0016] <arai>
+the gecko-dev in github is read-only mirror of mozilla-central and some extra things
+
+[18:08:03.0224] <devscripter>
+yes but that says to clone all of the code not just esr
+
+[18:08:07.0573] <devscripter>
+102
+
+[18:08:25.0893] <devscripter>
+also how do you get mercurial?
+
+[18:08:34.0331] <devscripter>
+does it come with mozilla-build?
+
+[18:09:07.0171] <arai>
+if you want non-unified repository of ESR, then it's https://hg.mozilla.org/releases/mozilla-esr102/
+
+[18:09:15.0129] <arai>
+mercurial is part of mozilla-build I think
+
+[18:09:44.0261] <devscripter>
+oh thanks for that, what dos non-unified mean?
+
+[18:10:36.0443] <arai>
+"normal" I mean
+
+[18:10:51.0330] <arai>
+instead of cloning the history as part of `mozilla-unified`
+
+[18:11:15.0985] <devscripter>
+ok
+
+[18:11:41.0619] <devscripter>
+so i just need to find the bootstrap.py file in his esr102 branch and clone it right?
+
+[18:12:06.0259] <arai>
+no
+
+[18:12:26.0510] <devscripter>
+no?
+
+[18:12:30.0810] <arai>
+I guess there's misunderstanding
+
+[18:12:40.0690] <devscripter>
+oh yea there's tons of that happening
+
+[18:13:01.0267] <devscripter>
+sorry, but the site clones thru the bootrstrap.py file
+
+[18:13:47.0288] <arai>
+`bootstrap.py` is a script to clone `mozilla-unified` and run `./mach bootstrap` in it
+
+[18:13:58.0378] <devscripter>
+right
+
+[18:14:06.0835] <arai>
+so, even if you grab the file from esr repository, it clones mozilla-unified
+
+[18:14:09.0838] <devscripter>
+but esr is non-unified u said
+
+[18:14:18.0727] <devscripter>
+ok
+
+[18:14:29.0428] <devscripter>
+so how do i clone it thru mercurial?
+
+[18:16:03.0951] <arai>
+if you want to clone esr102, `hg clone https://hg.mozilla.org/releases/mozilla-esr102/` in `c:/mozilla-source` directory or somewhere you want
+
+[18:16:32.0167] <arai>
+then, just to make sure, the size of the repository is almost same as mozilla-unified
+
+[18:16:40.0729] <devscripter>
+it is?
+
+[18:17:00.0974] <devscripter>
+like 40 gigs
+
+[18:17:50.0485] <arai>
+it's not 40G
+
+[18:18:00.0178] <arai>
+mozilla-unified is also not 40G
+
+[18:18:15.0292] <devscripter>
+really?
+
+[18:18:21.0717] <arai>
+the bundle size is 4G
+
+[18:18:36.0552] <devscripter>
+ok sorry in the site it said you need 40 gb of free space
+
+[18:18:53.0209] <devscripter>
+should i clone esr102 using hg and then run ./mach  boostrap
+
+[18:19:03.0369] <arai>
+that includes spaces you need to other tools and build intermediate files
+
+[18:19:14.0581] <arai>
+including VisualStudio
+
+[18:19:24.0536] <devscripter>
+but i already have it
+
+[18:19:54.0447] <arai>
+have what?
+
+[18:20:00.0942] <devscripter>
+visual studio
+
+[18:20:23.0424] <arai>
+if you have 2022, then you don't need extra space
+
+[18:20:33.0248] <devscripter>
+yea i have 2022
+
+[18:20:41.0076] <devscripter>
+so should i clone esr102 into c:/mozilla-source and then can i run ./mach boostrap?
+
+[18:20:47.0514] <arai>
+the required free space is (40 - the size of VisualStudio)
+
+[18:21:03.0319] <devscripter>
+> <@arai:mozilla.org> the required free space is (40 - the size of VisualStudio)
+
+oh k that makes sense
+
+[18:21:19.0593] <devscripter>
+i thought 40 gb was the size of the firefox browser source code
+
+[18:21:22.0157] <arai>
+if you're fine with 4GB of download, then I'd suggest just cloning mozilla-unified with `bootstrap.py` script, as explained in https://firefox-source-docs.mozilla.org/setup/windows_build.html
+
+[18:21:40.0034] <arai>
+and then, inside mozilla-unified repository, `hg update esr102` to checkout esr102 branch
+
+[18:22:26.0651] <devscripter>
+cant i do like you said before `hg clone https://hg.mozilla.org/releases/mozilla-esr102/`
+
+[18:22:44.0995] <arai>
+yes, it will also work
+
+[18:23:17.0828] <arai>
+I mean, just following the document is easier
+
+[18:23:21.0182] <devscripter>
+ok and then can i run ./mach bootstrap on it like i was trying to do before? but it should work now since i used mercurial, correct?
+
+[18:23:36.0720] <arai>
+yes
+
+[18:23:44.0896] <devscripter>
+ok i shall try that
+
+[18:24:26.0164] <devscripter>
+i am downloading the mozillabuildlatestsetup, thats fine right?
+
+[18:24:34.0523] <devscripter>
+i deleted it before to start fresh
+
+[19:34:22.0487] <devscripter>
+i tried `hg clone https://hg.mozilla.org/releases/mozilla-esr102/` and after downloading a ton of files it just said 'transaction aborted!` :(
+
+[19:50:23.0674] <arai>
+if you're using wireless network and you can switch to wired network, that would help
+
+[19:50:38.0375] <arai>
+it's not much robust against network issue
+
+[19:50:43.0460] <arai>
+also, you could try downloading the bundle file manually with browser or some other downloader https://firefox-source-docs.mozilla.org/contributing/vcs/mercurial_bundles.html , that can be more robust against network issue
+
+[19:52:54.0642] <devscripter>
+> <@arai:mozilla.org> if you're using wireless network and you can switch to wired network, that would help
+
+i cant do it wirelessly?
+
+[19:53:25.0642] <arai>
+I don't mean you can't, but wireless network is usually unstable than wired network
+
+[19:53:44.0420] <devscripter>
+ok can i download the zip from https://hg.mozilla.org/releases/mozilla-esr102?
+
+[19:53:59.0959] <devscripter>
+would that be the same?
+
+[19:54:10.0764] <arai>
+no
+
+[19:54:16.0152] <arai>
+zip is the snapshot
+
+[19:54:23.0022] <devscripter>
+wots that mean
+
+[19:54:46.0628] <arai>
+it contains the files, but not history
+
+[19:54:55.0921] <arai>
+so, it's not mercurial clone
+
+[19:55:11.0629] <devscripter>
+dude m in Canada, and probably have the fastest wifi, it should work. However while it was cloning my laptop went to sleep could that be why it was aborted?
+
+[19:55:12.0641] <arai>
+so you'll have the same issue with bootstrap that it complains hg/git checkout is not found
+
+[19:55:36.0810] <arai>
+yes, sleep should break the download
+
+[19:55:49.0261] <devscripter>
+> <@arai:mozilla.org> yes, sleep should break the download
+
+god almighty
+
+[19:56:01.0778] <devscripter>
+ok i will try to download again
+
+[19:56:15.0662] <arai>
+also, the speed of the network is unrelated to the stability
+
+[19:56:58.0322] <devscripter>
+i want to ask, when i do hg clone ...esr102, does it download the necessary stuff like rust llvm clibgen mozmake etc? 
+
+[19:57:13.0107] <devscripter>
+or does bootstrap does that?
+
+[19:57:23.0371] <arai>
+clone just downloads the source
+
+[19:57:27.0570] <arai>
+bootstrap downloads tools
+
+[19:57:50.0540] <devscripter>
+gotcha
+
+[19:58:02.0183] <devscripter>
+the branch is around 4 gigs right?
+
+[19:58:43.0903] <arai>
+raw stream size is 4,336,467,614 bytes , according to https://hg.cdn.mozilla.net/
+
+[19:59:04.0328] <arai>
+if compression is enabled during clone, it can be 2,470,159,339 bytes
+
+[19:59:15.0934] <arai>
+(depends on mercurial version I thin
+
+[19:59:18.0293] <arai>
+ * depends on mercurial version I think
+
+[19:59:31.0001] <devscripter>
+if i compress will something bad happen during bootstrap like it complained before?\
+
+[19:59:46.0895] <arai>
+no, it's not related
+
+[19:59:52.0748] <devscripter>
+alright
+
+[20:00:22.0677] <devscripter>
+also is this the exact thing i should put in the terminal when cloning`hg clone https://hg.mozilla.org/releases/mozilla-esr102/`?
+
+[20:00:29.0623] <devscripter>
+or should i add something to it
+
+[20:01:04.0258] <arai>
+I think that's all.  note that, it will create mozilla-esr102 in the current directory, so, make sure you're in the directory you want to clone the tree into
+
+[20:01:42.0189] <devscripter>
+yea m in mozilla-source/
+
+[20:01:54.0267] <devscripter>
+and how do i clone it using compressed?
+
+[20:02:00.0184] <devscripter>
+like is there a flag or option?
+
+[20:02:24.0428] <arai>
+I don't know the details.  I guess the hg command internally do that?
+
+[20:03:20.0351] <devscripter>
+it does? cuz i read here https://bugzilla.mozilla.org/show_bug.cgi?id=1618096 some guy using `--uncompressed` flag when cloning
+
+[20:03:52.0064] <devscripter>
+i thought there may be a `--compressed` option then but i guess it does it by default
+
+[20:06:43.0445] <arai>
+people in #vcs:mozilla.org would know better
+
+[20:07:07.0483] <devscripter>
+k
+
+[03:37:32.0987] <Redfire>
+https://developer.mozilla.org.cach3.com/en-US/docs/Introduction_to_the_JavaScript_shell
+👀What have I found here, old docs for the jsshell?
+
+[03:38:27.0046] <Redfire>
+On another note, how would I make a repl with top level await? (ie its a module and not a script)
+
+[03:47:42.0295] <Redfire>
+I tried to find it in jsshell but... the file is a bit... large to find anything
+
+[04:17:33.0405] <arai>
+js shell REPL does not support top-level await
+
+[04:18:20.0930] <arai>
+iiuc, Firefox's DeveloperTools' console converts code with top-level await into async function and calls it
+
+[04:23:10.0425] <arai>
+I'm not sure combining module and REPL is easy, given module uses its own scope, and introducing dynamic things like variables from previous input will need special trick
+
+[04:37:08.0387] <nchevobbe>
+> <@arai:mozilla.org> iiuc, Firefox's DeveloperTools' console converts code with top-level await into async function and calls it
+
+exactly, if you're curious about the transformation https://searchfox.org/mozilla-central/rev/9ddf68cc9e603276fc4c5253328cb3aeed6f0a55/devtools/client/debugger/src/workers/parser/mapAwaitExpression.js#180-199 
+
+[05:31:12.0130] <jakechampion>
+I'm wanting to convert a JSString into ideally a cpp std::string and noticed that [JS_EncodeStringToUTF8](https://searchfox.org/mozilla-central/source/js/public/CharacterEncoding.h#383) is deprecated -- is there an alternative non-deprecated function I should use? I am thinking maybe [DeflateStringToUTF8Buffer](https://searchfox.org/mozilla-central/source/js/public/CharacterEncoding.h#297) is the answer but I'd like to know if another (maybe better) alternative exists 🤞
+
+[05:33:10.0210] <Ms2ger 💉💉>
+What do you want to happen to unpaired surrogates?
+
+[05:37:49.0493] <jakechampion>
+> <@ms2ger:igalia.com> What do you want to happen to unpaired surrogates?
+
+good question -- If unpaired surrogates are found, I'd like to be able to turn that into an JS exception
+
+[05:39:52.0953] <jakechampion>
+perhaps a separate function could return a wtf-8 encoded version for the times where unpaired surrogates are wanted?
+
+[05:41:28.0745] <Ms2ger 💉💉>
+In any case, the answer is that I don't know and maybe anba could help :)
+
+[05:49:25.0071] <jandem>
+jakechampion: these two functions are pretty similar, both use a utf8 replacement character if chars can't be represented as utf8 I think?
+
+[05:50:01.0499] <l11d>
+would it make sense to set `forceMegamorphicICs=true` during fuzzing? or are megamorphic ICs anyways generated rather often?
+
+[05:52:08.0060] <jandem>
+l11d: it makes sense to set it sometimes but not always. We can create megamorphic ICs without this option too, but it'd be a bit more work for the fuzzer
+
+[05:53:27.0642] <l11d>
+thanks, then I'll set it in like 10% of the instances
+
+[05:57:19.0393] <jakechampion>
+> <@jandem:mozilla.org> jakechampion: these two functions are pretty similar, both use a utf8 replacement character if chars can't be represented as utf8 I think?
+
+I think you are right yes - I have another part of my application where I'd want to convert to wtf-8 to keep the unpaired surrogates and I found that there used to be public functions for encoding into WTF-8, these look to no longer exist but I can't find a ticket for their removal -- https://bugzilla.mozilla.org/show_bug.cgi?id=1501155
+
+[06:01:01.0861] <jandem>
+jakechampion: bug 1696666 maybe?
+
+[06:01:03.0252] <botzilla>
+https://bugzil.la/1696666 — RESOLVED (anba) — Remove WTF8Chars
+
+[07:52:00.0667] <devscripter>
+> <@arai:mozilla.org> people in #vcs:mozilla.org would know better
+
+hey i got mach bootstrap to run and everything went good, i setup a mozconfig file and ran ./mach build however now its complaining about gmake not being found
+
+[07:53:53.0667] <devscripter>
+0:09.32 checking for tm_zone and tm_gmtoff in struct tm... no
+ 0:09.82 checking for _getc_nolock... yes
+ 0:09.91 checking for localeconv... yes
+ 0:09.93 checking for awk... C:/mozilla-build/msys2/usr/bin/gawk.exe
+ 0:09.93 checking for perl... C:/mozilla-build/msys2/usr/bin/perl.exe
+ 0:10.02 checking for minimum required perl version >= 5.006... 5.032001
+ 0:10.08 checking for full perl installation... yes
+ 0:10.11 checking for gmake... not found
+ 0:10.11 DEBUG: gmake: Looking for mozmake
+ 0:10.11 DEBUG: gmake: Looking for mingw32-make
+ 0:10.13 DEBUG: gmake: Looking for make
+ 0:10.13 DEBUG: gmake: Looking for gmake
+ 0:10.13 ERROR: Cannot find gmake
+*** Fix above errors and then restart with "./mach build"
+
+[07:59:05.0483] <arai>
+try adding `ac_add_options --enable-bootstrap` and run both bootstrap and build again
+
+[07:59:28.0213] <devscripter>
+wait
+
+[07:59:39.0650] <arai>
+I mean, to MOZCONFIG file
+
+[07:59:45.0150] <devscripter>
+i should run bootstrap again? but wouldnt it do the same thing again? like it took a long while
+
+[08:00:16.0907] <arai>
+`./mach bootstrap`
+
+[08:00:28.0913] <devscripter>
+yes that, like i did that
+
+[08:00:37.0435] <arai>
+and `./mach build`
+
+[08:00:48.0682] <devscripter>
+yes i will do ./mach build
+
+[08:00:52.0016] <arai>
+it won't take long
+
+[08:01:17.0760] <devscripter>
+but what's the point of doing ./mach bootstrap again, like it already downloaded the necessary tools?
+
+[08:02:04.0410] <arai>
+I don't remember which command downloads mozmake
+
+[08:02:09.0624] <devscripter>
+like i think if i do ./mach bootstrap again, it will overwrite the current mozconfig file 
+
+[08:02:17.0495] <arai>
+so suggested both
+
+[08:02:22.0918] <arai>
+no
+
+[08:02:30.0294] <devscripter>
+no?
+
+[08:02:47.0761] <devscripter>
+it will not redownload the tools right? and i agree, its not downloading mozmake for some reason
+
+[08:03:07.0773] <devscripter>
+i cant find mozmake and neither can the build sysem 
+
+[08:04:16.0304] <arai>
+iiuc, some bootstrapping is disabled by default outside of central
+
+[08:04:42.0898] <arai>
+and the config above is for enabling it
+
+[08:04:59.0778] <devscripter>
+> <@arai:mozilla.org> and the config above is for enabling it
+
+right
+
+[08:05:08.0084] <arai>
+and I guess mozmake is part of it
+
+[08:05:11.0807] <devscripter>
+how do i enable it tho?
+
+[08:05:27.0175] <devscripter>
+like ./mach bootstrap does not use mozconfig does it, it creates it
+
+[08:05:41.0378] <arai>
+put the line to mozconfig file
+
+[08:05:45.0206] <devscripter>
+did
+
+[08:05:50.0495] <arai>
+bootstrap uses
+
+[08:05:53.0601] <devscripter>
+should i ./mach buil it?
+
+[08:07:12.0343] <devscripter>
+ok m trying ./mach build again this time with --enable-bootstrap
+
+[08:07:35.0767] <devscripter>
+i think its working
+
+[08:09:02.0401] <devscripter>
+ok its taking a while, thats good, at least no complain about mozmake and gmake
+
+[08:09:33.0825] <devscripter>
+can we --disable-nspr-build? or is that by default?
+
+[08:16:35.0180] <devscripter>
+build was sucessful!
+
+[08:16:37.0581] <devscripter>
+thanks guys
+
+[08:23:29.0449] <devscripter>
+however i cant locate the lib file it says its here:
+
+[08:23:30.0163] <devscripter>
+6:12.93 js/src/build/js_static.lib
+
+[08:23:43.0851] <devscripter>
+but its not in my mozilla-source/js/src
+
+[08:24:13.0439] <Redfire>
+> <@nchevobbe:mozilla.org> exactly, if you're curious about the transformation https://searchfox.org/mozilla-central/rev/9ddf68cc9e603276fc4c5253328cb3aeed6f0a55/devtools/client/debugger/src/workers/parser/mapAwaitExpression.js#180-199
+
+Oh wow, that really isn't that bad
+That should be easy enough to implement.
+
+[08:26:21.0825] <devscripter>
+where is this directory??
+
+[08:26:22.0162] <devscripter>
+6:12.93 js/src/build/js_static.lib
+
+[08:31:00.0271] <devscripter>
+nvm
+
+[08:35:36.0898] <devscripter>
+how can i get the header files tho?
+
+[08:37:57.0923] <Bryan Thrall [:bthrall]>
+nbp: If I understand you correctly, you are saying this failing test should not be run under code coverage, so something like `/ |jit-test| skip-if: isLcovEnabled()` would be appropriate
+
+[08:38:05.0560] <Bryan Thrall [:bthrall]>
+ * nbp: If I understand you correctly, you are saying this failing test should not be run under code coverage, so something like `// |jit-test| skip-if: isLcovEnabled()` would be appropriate
+
+[09:01:44.0582] <devscripter>
+ok i got the headers but now visual studio is complaining about js_static.lib being invalid or corrupt when linkin arai what did i do wrong now
+
+[09:02:11.0235] <arai>
+what did you do?
+
+[09:02:33.0139] <devscripter>
+nothing, the build passed and i got the generated js_static.lib fle
+
+[09:03:12.0878] <devscripter>
+but when linking it gives me the error about it being corrupted or invalid
+
+[09:04:56.0268] <devscripter>
+i added the include files from the dist folder and the .lib files into the project's additional include and additional library directories
+
+[09:05:14.0238] <devscripter>
+is there a particular preprocessor I have to define or something?
+
+[09:06:48.0905] <arai>
+what's the exact path of those files?
+
+[09:08:43.0072] <devscripter>
+wdym?
+
+[09:08:56.0569] <devscripter>
+like where i got them from in the mozilla-source folder?
+
+[09:09:04.0345] <arai>
+yes
+
+[09:09:56.0411] <devscripter>
+i got the include files from here: C:\mozilla-source\mozilla-esr102\obj-debug-x86_64-pc-mingw32\dist\include
+
+[09:10:41.0963] <devscripter>
+and i got the lib file from: C:\mozilla-source\mozilla-esr102\obj-debug-x86_64-pc-mingw32\js\src\build
+
+[09:11:14.0784] <arai>
+files outside of dist are intermediate file
+
+[09:12:06.0107] <devscripter>
+what do you mean
+
+[09:12:14.0620] <devscripter>
+i got the wrong js_static file?
+
+[09:12:34.0780] <arai>
+yes
+
+[09:12:56.0295] <devscripter>
+so where do i get the right one?
+
+[09:13:03.0620] <devscripter>
+is it in the dist folder or something?
+
+[09:15:50.0897] <arai>
+with previous workflow with configure and make, you need to 1. pass `--prefix=/PATH/TO/SOMEWHERE` to configure, 2. build with `make`, 3. install headers and libs by `make install`, as explained in https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/Building%20SpiderMonkey.md
+
+[09:16:19.0880] <devscripter>
+yes but i cant, cuz m on windows, make is on linux
+
+[09:16:39.0475] <arai>
+with `./mach` workflow, I think 1 corresponds to `add_ac_config --prefix=/PATH/TO/SOMEWHERE` in mozconfig file, 2 corresponds to `./mach build`, and 3 corresponds to `./mach build install`
+
+[09:17:09.0210] <arai>
+make is not linux-specific, but the workflow with make is getting replaced with `./mach` workflow
+
+[09:17:19.0013] <devscripter>
+what does ./mach build install do?
+
+[09:17:55.0052] <arai>
+copy headers and libraries into directory and sub-directories specified by --prefix
+
+[09:18:01.0413] <arai>
+there you'll get all necessary files
+
+[09:18:19.0616] <arai>
+the same files may be in obj-*/dist, but I'm not sure about windows-env
+
+[09:19:20.0536] <devscripter>
+yea i can only see header files in the dist directory
+
+[09:19:58.0089] <devscripter>
+but just curious what did ./mach build do. did it just create a useless js_static.lib?
+
+[09:20:15.0496] <arai>
+it's intermediate file
+
+[09:20:40.0550] <arai>
+the final result depends on your mozconfig
+
+[09:20:45.0481] <arai>
+what's your mozconfig file content?
+
+[09:21:43.0906] <devscripter>
+this:
+
+[09:21:44.0774] <devscripter>
+# Build only the SpiderMonkey JS test shell
+ac_add_options --enable-application=js
+
+ac_add_options --disable-shared-js
+ac_add_options --disable-export-js
+
+ac_add_options --disable-debug
+ac_add_options --enable-optimize
+ac_add_options --enable-bootstrap
+
+ac_add_options --disable-jemalloc
+ac_add_options --with-intl-api
+
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-debug-@CONFIG_GUESS@
+
+[09:22:46.0941] <devscripter>
+did i miss an option?
+
+[09:23:01.0070] <arai>
+then, the final result built by `./mach build` is SpiderMonkey JS shell.  `dist/bin/js.exe`, or somewhere
+
+[09:23:23.0665] <devscripter>
+yes but i need the .lib file
+
+[09:23:37.0485] <arai>
+and `./mach build install` will copy headers and libraries into specified prefix
+
+[09:23:39.0715] <devscripter>
+yes in dist/bin there was a js.exe file
+
+[09:23:57.0696] <devscripter>
+how do you specify a prefix?
+
+[09:25:02.0419] <arai>
+ * with `./mach` workflow, I think 1 corresponds to `ac_add_options --prefix=/PATH/TO/SOMEWHERE` in mozconfig file, 2 corresponds to `./mach build`, and 3 corresponds to `./mach build install`
+
+[09:25:23.0930] <arai>
+`ac_add_options --prefix=...` in mozconfig file
+
+[09:26:00.0606] <arai>
+I guess
+
+[09:26:34.0167] <devscripter>
+ok but then i will have to run ./mach build again correct?
+
+[09:26:40.0315] <arai>
+yes
+
+[09:26:42.0959] <devscripter>
+i cant just get away with ./mach build install
+
+[09:27:05.0484] <devscripter>
+okay will it automatically overwrite the previous files generated by ./mach build?
+
+[09:27:19.0664] <arai>
+basically, yes
+
+[09:27:48.0356] <arai>
+in case you modify config hardly, you might need to run `./mach clobber` to remove obj directory to do clean build
+
+[09:28:00.0352] <devscripter>
+ok should i use quotes like "/c/users.." or just --prefix=/c/users?
+
+[09:28:36.0501] <arai>
+if the path does not contain space etc, quotes are not necessary
+
+[09:28:53.0704] <devscripter>
+alright
+
+[09:29:12.0622] <devscripter>
+i ran ./mach clobber
+
+[09:29:18.0967] <devscripter>
+it cleans the directories, right?
+
+[09:29:24.0129] <arai>
+yes
+
+[09:29:52.0434] <devscripter>
+ok ./mach build is running now
+
+[09:37:03.0928] <devscripter>
+done now doing ./mach build install
+
+[10:24:00.0273] <devscripter>
+its giving me this:
+
+[10:24:01.0103] <devscripter>
+$ ./mach build install
+ 0:01.26 Clobber not needed.
+  Parallelism determined by memory: using 8 jobs for 8 cores based on 15.7 GiB RAM and estimated job size of 1.0 GiB
+ 0:01.33 C:/Users/hassa/.mozbuild/mozmake/mozmake.exe -j8 -s install
+ 0:01.39 mozmake[2]: Circular js.pc <- js.pc dependency dropped.
+ 0:01.98 Elapsed: 0.07s; From /c/mozilla-bin/include/mozjs-102: Kept 0 existing; Added/updated 549; Removed 0 files and 0 directories.
+ 0:02.25 mv: cannot stat '/c/mozilla-bin/lib/js_static.lib': No such file or directory
+ 0:02.28 mozmake[2]: *** [Makefile:86: install] Error 1
+ 0:02.28 mozmake[1]: *** [Makefile:116: install] Error 2
+ 0:02.28 mozmake: *** [Makefile:223: install] Error 2
+ 0:02.31 13 compiler warnings present.
+Hey! Builds initiated with `mach build $A_SPECIFIC_TARGET` may not always work, even if the code being built is correct. Consider doing a bare `mach build` instead.
+
+[10:24:05.0818] <devscripter>
+arai: 
+
+[10:24:32.0853] <arai>
+what's mozconfig now?
+
+[10:24:42.0247] <devscripter>
+# Build only the SpiderMonkey JS test shell
+ac_add_options --enable-application=js
+
+ac_add_options --disable-shared-js
+ac_add_options --disable-export-js
+
+ac_add_options --disable-debug
+ac_add_options --enable-optimize
+ac_add_options --enable-bootstrap
+
+ac_add_options --disable-jemalloc
+ac_add_options --prefix=/c/mozilla-bin
+ac_add_options --with-intl-api
+
+mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-debug-@CONFIG_GUESS@
+
+[10:26:12.0247] <devscripter>
+isnt it correct
+
+[10:31:02.0411] <arai>
+does /c/mozilla-bin exist?
+
+[10:31:08.0019] <devscripter>
+yes
+
+[10:31:45.0314] <devscripter>
+first time i tried i forgot creating it but then i tried again this time making sure it exists, but its givin the same error
+
+[10:32:06.0322] <devscripter>
+should i be using mk_add_options?
+
+[10:35:44.0088] <arai>
+do you see any file in that directory?
+
+[10:42:32.0911] <devscripter>
+its empty
+
+[10:43:36.0291] <devscripter>
+> <@arai:mozilla.org> do you see any file in that directory?
+
+m i perhaps missing an option in mozconfig?
+
+[10:45:21.0842] <arai>
+what happens if you run `./mach build install -vvv`, or maybe `./mach build install -- -vvv` ?
+
+[10:46:14.0859] <devscripter>
+let me try
+
+[10:47:39.0369] <devscripter>
+hm the mozilla-bin directory is still empty and its giving the same errors
+
+[10:48:05.0209] <arai>
+does it show some more info?
+
+[10:48:13.0058] <devscripter>
+a bit more yes
+
+[10:48:26.0256] <arai>
+can you pastebin it to https://paste.mozilla.org/ ?
+
+[10:48:42.0029] <devscripter>
+https://paste.mozilla.org/X5DTtKf5
+
+[10:51:28.0531] <arai>
+maybe something is going wrong with `nsinstall.py` script
+
+[10:52:26.0353] <arai>
+Just to make sure, can you try replacing `/c/` part of your prefix with `c:/` and re-run `./mach build` and `./mach build install` ?
+
+[10:52:45.0587] <arai>
+maybe it expects specific type of path
+
+[10:54:03.0077] <devscripter>
+sure
+
+[10:56:28.0295] <devscripter>
+> <@arai:mozilla.org> Just to make sure, can you try replacing `/c/` part of your prefix with `c:/` and re-run `./mach build` and `./mach build install` ?
+
+should i do ./mach build install with --vvv?
+
+[10:57:07.0196] <arai>
+`-v` is an option to show verbose message, and adding it more can increase the verbosity
+
+[10:57:18.0364] <arai>
+so, it's optional, and it doesn't affect the actual behavior of installation
+
+[10:57:24.0096] <arai>
+just shows more info to see what's going on
+
+[10:57:45.0127] <devscripter>
+oh ok
+
+[11:03:10.0495] <devscripter>
+> <@arai:mozilla.org> just shows more info to see what's going on
+
+now this: https://paste.mozilla.org/bP6eVoNN
+
+[11:03:16.0049] <devscripter>
+are these errors?
+
+[11:04:18.0265] <arai>
+so, now different error. can you add -vvv to see the details?
+
+[11:04:34.0268] <devscripter>
+it created files in the mozilla-bin folder but instead of a .lib file there is a .libjs file
+
+[11:05:17.0365] <devscripter>
+https://paste.mozilla.org/gQjK4ZTR
+
+[11:08:34.0298] <arai>
+does `C:/mozilla-source/mozilla-esr102/obj-x86_64-pc-mingw32/js/src/shell` exist?
+
+[11:09:53.0430] <devscripter>
+uh no
+
+[11:10:16.0917] <arai>
+does `C:/mozilla-source/mozilla-esr102/obj-x86_64-pc-mingw32/dist/bin/js.exe` exist?
+
+[11:11:01.0256] <devscripter>
+no...
+
+[11:11:21.0980] <arai>
+can you run `./mach build` again?
+
+[11:11:37.0840] <arai>
+and then can you pastebin the last 100 lines of the output?
+
+[11:11:41.0776] <devscripter>
+i actually added -disable-js-shell to mozconfig that maybe the reason?
+
+[11:11:51.0058] <arai>
+yes, that's the reason
+
+[11:11:59.0222] <devscripter>
+i also added --disable-test-js
+
+[11:12:09.0883] <devscripter>
+should i remove --disable-js-shell?
+
+[11:12:28.0462] <devscripter>
+because i dont want the exe shell i just wan the lib file and headers
+
+[11:13:40.0815] <arai>
+sorry, I have to leave.  try with those configs removed
+
+[11:14:00.0742] <devscripter>
+ok
+
+[11:14:18.0228] <devscripter>
+when can you help me again tho, youve been a real pain saver
+
+[12:10:34.0780] <devscripter>
+> <@arai:mozilla.org> sorry, I have to leave.  try with those configs removed
+
+okay now it says it was sucessful but i am still getting .libjs file not .lib
+
+[12:11:16.0916] <arai>
+the extension seems to be a bug, please rename it
+
+[12:11:39.0296] <devscripter>
+ok
+
+[12:12:47.0566] <devscripter>
+hm now m using this file in my vs2022 project but it still says:
+
+[12:12:48.0477] <devscripter>
+js_static.lib : fatal error LNK1136: invalid or corrupt file
+
+[12:15:13.0384] <arai>
+what's the size of the file?
+
+[12:50:48.0302] <devscripter>
+> <@arai:mozilla.org> what's the size of the file?
+
+the size of the lib file is exactly 6042 kilobytes
+
+[12:51:01.0013] <devscripter>
+is that too less?
+
+[12:51:10.0838] <arai>
+that sounds reasonable size
+
+[12:51:46.0972] <arai>
+then, I'd suggest checking the actual file type, architecture, etc, and the way you're using it in your project
+
+[12:52:20.0274] <devscripter>
+how do i check that? is there like a lib file viewer or editor i can download?\
+
+[12:54:24.0872] <devscripter>
+architecture is 64 bit for my project and its in release mode, and also in my mozconfig i disabled debug, so i dunno why its not working
+
+[14:24:05.0656] <devscripter>
+any help?
+
+
+2022-09-13
+[08:26:10.0149] <tcampbell>
+jonco: I found the telemetry bug, but I'm now wondering which definition (if either) actually is most useful. Do the current metrics tell us what fraction of slices are overbudget?
+
+[08:28:15.0168] <jonco>
+The idea is that it's the fraction of slices that are long enough to worry about (and not just slightly over the budget)
+
+[08:28:52.0530] <tcampbell>
+do we have many workbudget slices? even the old definition did not include in the denominator
+
+[08:29:28.0320] <tcampbell>
+ * do we have many workbudget slices? even the old definition of gc_slice_was_long did not include in the denominator
+
+[08:30:57.0735] <jonco>
+no workbudget slices are mainly used for GC zeal and in tests
+
+[08:31:08.0380] <tcampbell>
+ah, got it
+
+[08:33:44.0349] <tcampbell>
+I guess UnlimitedBudget is also ignored from denom
+
+[08:35:56.0085] <jonco>
+yeah this only applies to time budgets
+
+[08:41:47.0232] <tcampbell>
+hmm.. we have 6x the samples for GC_SLICE_MS (all slices) vs GC_BUDGET_MS_2 (all time-budget slices). Is that expected?
+
+[08:44:38.0549] <tcampbell>
+That _seems_ like a lot of unlimited-budge slices
+
+[08:45:45.0311] <tcampbell>
+I guess that is a lot of CC and shutdown related slices
+
+[08:49:41.0813] <jonco>
+what are you looking at? I'm not seeing that
+
+[08:51:06.0476] <jonco>
+oh, in glam... they are the same if you look at TMO
+
+[08:55:49.0864] <tcampbell>
+hmmmmm
+
+[08:57:54.0498] <tcampbell>
+ah, the defaults for 'content' and 'parent' seemed to be differnt
+
+[08:58:05.0217] <tcampbell>
+once I correct, I get the same values 
+
+[09:01:12.0010] <jonco>
+great, that would explain it
+
+[09:02:57.0286] <tcampbell>
+I'm tempted to change the slice_was_long denominator to be over all slices which is slightly different than old definition, but matches the description of the metric and will have the same data since unlimited slices seem to be < 1/1000
+
+[09:09:57.0547] <l11d>
+if a call to `JS_ExecuteScript(cx, script1)` returns and I execute another `JS_ExecuteScript(cx, script2)` with the same cx param; is it possible that during execution of script2 "something" related to script1 gets executed?
+
+[09:10:34.0405] <jonco>
+tcampbell: I think we should leave this as it is.  The description implies time budgets because it mentions 5ms (but we could make this clearer).
+
+[12:28:48.0053] <Bryan Thrall [:bthrall]>
+(no need to reply, I'm working this out with others)
+
+[13:57:34.0795] <jyanga>
+hello all
+
+[14:31:34.0978] <yury>
+I'm looking at the `Value` (inside some of the wasm API function) and it is isProxyObject(). The api call came from a web extension and, I assume, had some module lazy getter thing. The inspected object was created as `{test: { func: clearTimeout } }`. Question: is clearTimeout expected to be a function even if it is some lazy getter?
+
+[14:39:10.0381] <arai>
+what's the details around the "module lazy getter thing" ?
+
+[14:40:12.0268] <arai>
+is it `XPCOMUtils.defineLazyModuleGetters` + `resource://gre/modules/Timer.jsm` ?
+
+[14:40:50.0790] <arai>
+how is the lazy getter defined and where (in what context/environment) is the code?
+
+[14:41:08.0496] <yury>
+not sure, I'm new to the code, trying to figure out just that
+
+[14:41:42.0229] <arai>
+are you working on an existing bug?
+
+[14:41:59.0105] <arai>
+or existing code?
+
+[14:42:59.0321] <yury>
+bug 1787770: code in question is just `WebAssembly.instantiate(..., {test: { func: clearTimeout }})`
+
+[14:43:00.0810] <botzilla>
+https://bugzil.la/1787770 — UNCONFIRMED (nobody) — Webassembly can't import some global functions in content script
+
+[14:43:48.0271] <arai>
+thanks. I'll look into the code
+
+[14:44:16.0235] <yury>
+it affects only `contentscript.js` executed code
+
+[14:48:14.0338] <arai>
+I wonder if the `clearTimeout` in the content script is CCW
+
+[14:49:55.0036] <yury>
+is there a standard way we unwrap these? it appears that `{test: { func: this.clearTimeout }}` gives function
+
+[14:53:26.0782] <yury>
+ * it affects only <del>`contentscript.js`</del>`background.js` executed code
+
+[14:54:27.0749] <yury>
+ * it affects only `contentscript.js` executed code
+
+[14:56:47.0429] <arai>
+if it's CCW, I think things to need are:  1. when checking the type, use `UncheckedUnwrap` to get the original object and test the type, 2. store the wrapper as is,  3. when calling it, unwrap the object again, enter the unwrapped function's realm with [js::AutoRealm](https://searchfox.org/mozilla-central/rev/7b36c8b83337c4b4cdfd4ccc2168f3491a86811b/js/src/vm/Realm.h#804), wrap arguments etc, and call the function
+
+[14:57:12.0408] <arai>
+or maybe `CheckedUnwrap`
+
+[14:57:59.0301] <yury>
+dump of the said object
+```
+object 1f6ec1be6ac0
+  global 1f6ec1ba3088 [Sandbox]
+  class 169a1b4b0 Proxy
+    handler 16960c878
+    private <function clearTimeout at 12e25aac1868>
+  shape 25b8628f3a0
+  flags: maybe_has_interesting_symbol not_native
+  proto <dynamic>
+```
+
+[14:58:47.0960] <arai>
+try checking [js::IsCrossCompartmentWrapper](https://searchfox.org/mozilla-central/rev/7b36c8b83337c4b4cdfd4ccc2168f3491a86811b/js/public/Wrapper.h#396)
+
+[14:59:43.0453] <yury>
+(lldb) p IsCrossCompartmentWrapper(&v.get().toObject())
+(bool) $0 = false
+
+[15:00:19.0931] <arai>
+what about `IsWrapper` ?
+
+[15:00:45.0446] <arai>
+ * what about [js::IsWrapper](https://searchfox.org/mozilla-central/rev/7b36c8b83337c4b4cdfd4ccc2168f3491a86811b/js/public/Wrapper.h#392) ?
+
+[15:00:45.0540] <yury>
+the latter is `true`
+
+[15:01:13.0570] <arai>
+what does `GetProxyHandler(&v.get().toObject())->family()` say?
+
+[15:01:42.0536] <arai>
+err, no
+
+[15:02:00.0682] <arai>
+just `*GetProxyHandler(&v.get().toObject())`
+
+[15:02:28.0185] <yury>
+```
+(lldb) p GetProxyHandler(&v.get().toObject())->family()
+(const void *) $2 = 0x000000015f687568
+(lldb) p *GetProxyHandler(&v.get().toObject())->family()
+(lldb
+```
+
+[15:03:25.0259] <arai>
+does `GetProxyHandler(&v.get().toObject())->flags()` work?
+
+[15:05:24.0990] <yury>
+nope, the handler is `SandboxCallableProxyHandler`
+
+[15:07:21.0916] <arai>
+oh, maybe I was wrong.  I guess you can just call the value, without unwrapping
+
+[15:07:56.0982] <arai>
+is `JS::IsCallable(&v.get().toObject())` true?
+
+[15:09:06.0430] <arai>
+what's the restriction inside WASM around the `func` property? is it necessary to be function, or is it necessary to be callable?
+
+[15:09:31.0556] <yury>
+yes, it is. In wasm API, we check IsFunctionObject()
+
+[15:11:53.0537] <arai>
+so, for example, `new Proxy(function() {}, {})` isn't supposed to be allowed?
+
+[15:12:13.0567] <yury>
+that's a really good question
+
+[15:12:36.0858] <yury>
+Ryan Hunt: ^ 
+
+[15:13:40.0985] <arai>
+if the expected behavior is to allow any callable value, storing the object as is, and calling the object would work
+
+[15:13:58.0993] <yury>
+I'll try to minimize the test for the bug to continue conversation there
+
+[15:14:33.0098] <yury>
+ * I'll try to minimize the test for the bug (for the jsshell) to continue conversation there
+
+[15:16:16.0048] <arai>
+also `new Proxy(function() {}, { apply() {} })`
+
+[15:21:09.0858] <Ryan Hunt>
+I have to head out soon, but here's what I know
+
+[15:22:03.0353] <Ryan Hunt>
+I believe this is governed by the JS-API spec for wasm. Specifically, we're importing a function with a JS value, which when it's not already a wasm function gets run through this algorithm: https://webassembly.github.io/spec/js-api/index.html#create-a-host-function
+
+[15:22:48.0070] <Ryan Hunt>
+That creates a 'host func' in wasm terms. When that host func is called by wasm, this happens: https://webassembly.github.io/spec/js-api/index.html#run-a-host-function
+
+[15:23:19.0440] <Ryan Hunt>
+The `Call` and `IsCallable` references appear to be from the JS spec, so whatever they imply wrt proxies is probably what we need to do
+
+[15:25:43.0394] <arai>
+so, sounds like using `JS::IsCallable` for checking type, and storing the value/object as is, and calling the value/object would be the way to go
+
+[15:26:17.0520] <arai>
+without converting to `JSFunction`
+
+[15:27:46.0584] <yury>
+awesome, thanks
+
+
+2022-09-14
+[05:44:06.0733] <l11d>
+> <@l11d:mozilla.org> if a call to `JS_ExecuteScript(cx, script1)` returns and I execute another `JS_ExecuteScript(cx, script2)` with the same cx param; is it possible that during execution of script2 "something" related to script1 gets executed?
+
+any hint would here would be much appreciated. during differential fuzzing of SM, maybe once in 1000 CPU hours a flaky/spurious differential execution appears. it seems to be some kind of lingering artifact caused by previously invocations of `JS_ExecuteScript` but the rarity of the situation makes it difficult to investigate
+
+[06:04:50.0486] <Ms2ger 💉💉>
+Did someone mention the wasm jsapi spec?
+
+[08:53:40.0470] <liam_g>
+I am still quite confused about how to implement modules. Suppose I have a script A which contains `export var foo = function() {}`, and script B which contains `import foo from myFile.js; foo();`. Am I able to run script B using `JS::Compile()` and `JS_ExecuteScript()`? Or am I obliged to use `JS::CompileModule()` and `JS::ModuleEvaluate()` instead?
+
+[09:00:57.0881] <Ms2ger 💉💉>
+I suspect `JS::Compile()` will treat `import` as a syntax error
+
+[09:09:43.0668] <liam_g>
+So in that case, is it possible to compile / execute module scripts ( ie scripts using "import") with an envChain?
+
+[09:11:13.0454] <liam_g>
+Because I can only see the envChain option inside the regular compile / execute functions. I don't see them in the modules header file.
+
+[09:28:43.0973] <liam_g>
+Here's the situation. I want the user to be able to run something like `nativelyDefinedFunction(); userDefinedFunction();`. `userDefinedFunction()` is a function that the user has defined in some text file, and put in a directory where the program knows how to find it. I thought that using modules would be the best way of accomplishing this. But my use of the envChain parameter in `JS_ExecuteScript()` is pretty fundamental in my code, so I can't affort to compromise it.
+
+[09:29:49.0870] <liam_g>
+ * Here's the situation. I want the user to be able to run something like `nativelyDefinedFunction(); userDefinedFunction();`. In this case,`userDefinedFunction()` is a function that the user has defined in some text file, and put in a directory where the program knows how to find it. I thought that using modules would be the best way of accomplishing this. But my use of the envChain parameter in `JS_ExecuteScript()` is pretty fundamental in my code, so I can't affort to compromise it.
+
+[11:10:20.0812] <tcampbell>
+> <@l11d:mozilla.org> any hint would here would be much appreciated. during differential fuzzing of SM, maybe once in 1000 CPU hours a flaky/spurious differential execution appears. it seems to be some kind of lingering artifact caused by previously invocations of `JS_ExecuteScript` but the rarity of the situation makes it difficult to investigate
+
+If you haven't created a new GlobalObject and used something like `JSAutoRealm`, then the same global/document/window will be used for script2 (similar to multiple script tags in html) so any mutation of global variables (including things like Array) will leak into the next invocation.
+
+[11:17:29.0542] <l11d>
+tcampbell:  many thanks; based on your description I'll try to produce a reproducer and then proceed to fix the issue
+
+[11:20:41.0454] <tcampbell>
+liam_g: unfortunately we don't have envChain support for modules. The envChain stuff is required for certain corners of HTML Forms, and then some grab bag of non-standard tricks. ES Modules don't have a standard need for envChain anywhere, and ES modules also have special features like top-level-await so they need the special `ModuleEvaluate` entry point. As a result there has never been a need for envChain with modules and there are probably weird edges around environments that would come up if you tried to hack it.
+
+[11:22:10.0038] <tcampbell>
+What type of objects are you passing as `envChain`?
+
+[12:13:48.0881] <davidj361>
+What kind of numerical types is it possible to translate into SM?
+I assume float and int are a given, but what about unsigned? What about [range](https://en.cppreference.com/w/cpp/ranges/range)?
+
+How do these correlate to actual [JavaScript data types](https://www.programiz.com/javascript/data-types)?
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/edfe74b65fba34408ef22fef53aeec243bb26537/examples/cookbook.cpp#L98-L107
+
+[12:25:27.0620] <iain>
+davidj361: Numbers in javascript are semantically doubles. Where possible, the engine uses a 32-bit integer representation internally, but only in cases where the behaviour is the same. For example, if integer addition overflows, then the result will be a double.
+
+[12:26:01.0134] <iain>
+There's also BigInt, which can be used for integers too large to be represented precisely as a double.
+
+[12:27:08.0760] <iain>
+(For example, wasm maps i64 to BigInt)
+
+[12:30:46.0151] <davidj361>
+I'm confused on whether it's double or integer as you said. Isn't double really bad since the mantisa is not accurate and not representing the actual number?
+
+[12:31:52.0506] <davidj361>
+ * I'm confused on whether it's double or integer as you said. Isn't double really bad since the mantissa of the double is not accurate and not representing the actual number?
+
+[12:33:07.0210] <davidj361>
+like how: 0.1 + 0.2         ->  0.30000000000000004
+
+[12:33:28.0361] <davidj361>
+ * like how for floats: 0.1 + 0.2         ->  0.30000000000000004
+
+[12:33:49.0622] <iain>
+Neither 0.1 nor 0.2 is an integer. Doubles can precisely represent integers up to 2^53.
+
+[12:35:58.0635] <davidj361>
+I didn't understand the 2 statements:
+> Numbers in javascript are semantically doubles. Where possible, the engine uses a 32-bit integer representation internally
+
+[12:36:06.0752] <davidj361>
+is it a double or int then?
+
+[12:36:37.0251] <iain>
+"Semantically" means "the specification of JS means that numbers behave like doubles"
+
+[12:37:13.0007] <iain>
+But adding two integers together (or indexing an array using an integer) is faster than doing so using doubles
+
+[12:37:38.0912] <iain>
+So in cases where the value of a number can be accurately represented as an integer, the engine will do so
+
+[12:38:04.0922] <iain>
+So long as we can preserve the *behaviour* of a double from the user's perspective
+
+[12:41:51.0920] <davidj361>
+Thank you for the info
+
+[16:06:00.0859] <tcampbell>
+I wonder if `js/xpconnect` should be moved to just `xpconnect` like `xpcom`...
+
+[16:06:51.0690] <tcampbell>
+We have the 'js/loader' directory now which is gecko (non-libmozjs) code, so I guess it isn't too unreasonable
+
+[16:06:57.0003] <tcampbell>
+ * We have the 'js/loader' directory now which is gecko (non-libmozjs) code, so I guess it isn't too unreasonable where it i
+
+[16:06:58.0352] <tcampbell>
+ * We have the 'js/loader' directory now which is gecko (non-libmozjs) code, so I guess it isn't too unreasonable where it is
+
+
+2022-09-15
+[17:29:10.0447] <tcampbell>
+I wonder where `js/examples/jorendb.js` should go? Maybe to the `js/src/devtools` directory
+
+[17:29:32.0740] <tcampbell>
+Also wondering if `js/src/devtools` needs a new name... maybe just `js/tools`
+
+[17:31:10.0349] <tcampbell>
+(astute readers may notice I'm trying to stake more direct claim of `js/` to the spidermonkey team instead of just the module being `js/src`...)
+
+[18:41:47.0790] <Redfire>
+It seems that after enabling `topLevelAwait`, `ModuleEvaluate` doesn't return false for an exception
+What should I do to get that exception
+
+[21:57:28.0637] <tcampbell>
+I _think_ in that case the `ModuleEvaluate` has a `result` outparam which is a `PromiseObject`that you can then catch the async exception from
+
+[00:10:44.0227] <Redfire>
+Do I just run the event loop as normal, then check the promise state and result?
+
+[02:57:01.0358] <Redfire>
+Assuming that is the case, do I run the event loop to completion on every module resolution? That seems wasteful.
+
+[03:30:34.0108] <Redfire>
+* Assuming that is the case, do I run the event loop to completion on every module resolution? That seems a bit wasteful, async-wise.
+
+[03:43:44.0188] <liam_g>
+> <@tcampbell:mozilla.org> What type of objects are you passing as `envChain`?
+
+I'm passing a Proxy object into the `envChain`. The point is to have an implicit "this" capture, so that the user can just write `foo()` instead of `this.foo()` in their code.
+
+[03:46:39.0212] <liam_g>
+> <@tcampbell:mozilla.org> What type of objects are you passing as `envChain`?
+
+ * I'm passing a Proxy object into the `envChain`. The point is to have an implicit "this" capture, so that the user can just write `foo()` instead of `this.foo()` in their code (or `myObject.foo()`).
+
+[03:51:37.0541] <liam_g>
+I can think of some ways around this problem, but I want to make sure that I understand it properly first. If I want to compile or execute a script which has the `import` keyword, then my only option is to use `JS::CompileModule()` and `JS::ModuleEvaluate()`. Is this right?
+
+[07:21:21.0668] <tcampbell>
+liam_g, in a module the "this" will be "undefined" at top-level anyways. Typically you'd inject your sort of custom methods on the global object or its' prototype chain,  but there might be some nuance to what you are doing here.
+
+[07:24:26.0369] <tcampbell>
+(this top level environment stuff is _hard_, we've been going through Firefox recently to remove some very clever approaches in favour of using modules and an appropriate global object. javascript is a weird language and there is a lot of subtly about where global variables get written since `foo = 3;`, `var foo = 3;`, `this.foo = 3;` all mean different things depending on how precisely the environments are constructed)
+
+[08:57:52.0487] <liam_g>
+Ok, I'll see if I can inject special user defined functions into the global.
+
+[08:58:27.0111] <liam_g>
+I'm glad I'm not the only one who finds javascript weird!
+
+[09:08:56.0145] <tcampbell>
+Redfire, when you are using `ModuleEvaluate` with top-level-await, you probably want to model things closer to using dynamic-import on the web. That code may take arbitrary time, so you'd chain the promise with `then` or `catch` functions that run when the error is known. Things like syntax errors should still be known when `CompileModule` happens.
+
+[10:05:01.0491] <davidj361>
+anyone know of any JavaScript libraries that emulate C++ numerical data types?
+
+[10:54:58.0497] <davidj361>
+How do you set rooted value to BigInt? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr68/examples/cookbook.cpp#L85-L94
+
+[10:55:05.0136] <davidj361>
+ * How do you set rooted value to `BigInt`? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr68/examples/cookbook.cpp#L85-L94
+
+[11:00:07.0092] <davidj361>
+What is the under the hood datatype of `BigInt` in SpiderMonkey?
+
+[11:02:42.0068] <iain>
+davidj361: [BigIntValue](https://searchfox.org/mozilla-central/source/js/public/Value.h#1030)
+
+[11:03:15.0757] <davidj361>
+I saw that, so you basically can't pass some int64 or uint64?
+
+[11:03:23.0431] <davidj361>
+ * I saw that, so you basically can't pass some C++ int64 or uint64?
+
+[11:03:54.0189] <iain>
+davidj361: See here: https://searchfox.org/mozilla-central/source/js/src/vm/BigIntType.h#114-122
+
+[11:10:35.0210] <davidj361>
+so you're supposed to use something like JS::BigIntValue(JS::BigInt::CreateFromDouble(5))? I'm still confused. There isn't a BigInt example in the cookbook is there?
+
+[11:10:41.0786] <davidj361>
+ * so you're supposed to use something like `JS::BigIntValue(JS::BigInt::CreateFromDouble(5))`? I'm still confused. There isn't a BigInt example in the cookbook is there?
+
+[11:12:32.0064] <davidj361>
+ * so you're supposed to use something like `JS::BigIntValue(JS::BigInt::CreateFromDouble(cx, 5))`? I'm still confused. There isn't a BigInt example in the cookbook is there?
+
+[11:34:43.0664] <liam_g>
+In JSFunctionSpec, how much does the "nargs" field matter? Is it ok if the function receives a number of arguments different than the one I specify?
+
+[11:47:17.0722] <iain>
+liam_g: Functions in JS regularly get too many or too few arguments. Missing arguments are padded out with `undefined`.
+
+[11:48:19.0279] <ptomato>
+I think `nargs` is only used to populate the `.length` property of a function, or no?
+
+[11:50:25.0814] <iain>
+ptomato: I think we also use it when calling the function to decide how many extra `undefined` values to pass, but yeah, more or less
+
+[11:51:29.0834] <iain>
+Basically the callee is guaranteed to have at least `nargs` actual values in the arguments array, but it could have more
+
+[11:53:38.0734] <iain>
+davidj361: Yeah, something like that..
+
+[11:53:41.0678] <iain>
+ * davidj361: Yeah, something like that.
+
+[11:53:54.0781] <iain>
+ * davidj361: Yeah, something like that. Depending on the code around it, you probably want to root the result.
+
+[11:54:16.0787] <evilpie>
+> <@iain:mozilla.org> Basically the callee is guaranteed to have at least `nargs` actual values in the arguments array, but it could have more
+
+this only applies for scripted functions. I think we are talking about native functions here
+
+[11:55:55.0948] <iain>
+Oh, you're right. I even went and looked at BaselineCacheIRCompiler, but for some reason I was looking at the scripted case, not the native case.
+
+[11:56:53.0228] <iain>
+Given that: yeah, I think ptomato's statement (`nargs` is only used for populating `.length`) is accurate for native functions.
+
+[12:20:25.0161] <kfjvj>
+Hi.  I have a question about some of the functions defined in jsapi.h.  I notice that many of them return bool to indicate success or failure.
+
+In the case of failure, is it possible to get more detailed information about the nature of those failures?
+
+[12:23:35.0798] <ptomato>
+kfjvj: yes, in the case of failure there will be an exception pending on the JSContext
+
+[12:24:00.0202] <ptomato>
+you can examine it with `JS_GetPendingException` and similar functions
+
+[12:24:44.0139] <kfjvj>
+> <@pchimento:igalia.com> you can examine it with `JS_GetPendingException` and similar functions
+
+I see.  I thought the exceptions were only set in the case of JS code execution errors.  Thanks.
+
+[12:29:46.0898] <ptomato>
+a lot of JS code execution errors originate this way
+
+[12:30:00.0351] <ptomato>
+in certain cases like out-of-memory where a JS code execution error is not applicable, there will be an "uncatchable" exception set, that cannot be caught by JS code
+
+[13:14:46.0811] <kfjvj>
+Does anyone know what JSAutoRealm does?  From the code examples, it seems important, but I don't know why.
+
+[13:17:52.0331] <mccr8>
+kfjvj: It is basically a way to tell the JS engine, "Hey, I'm about to run JS code in this realm!"
+
+[13:18:07.0531] <kfjvj>
+oh... what is a "realm" in this context?
+
+[13:18:19.0345] <ptomato>
+it's like an environment with an associated global object
+
+[13:18:32.0158] <kfjvj>
+should I keep any reference to it after I create it?
+
+[13:19:15.0246] <mccr8>
+The "realm" terminology originates from specs. Maybe the HTML spec, I'm not sure. https://html.spec.whatwg.org/multipage/webappapis.html#realms-and-their-counterparts
+
+[13:19:45.0004] <ptomato>
+> <@kfjvj:mozilla.org> should I keep any reference to it after I create it?
+
+no, it's a stack-only object I believe, the intention is that it exits the realm when it goes out of scope and is destructed
+
+[13:20:02.0450] <mccr8>
+Yeah I think you basically create it when you start running code in a certain JS realm, then destroy it when you are done.
+
+[13:21:23.0531] <kfjvj>
+I'm creating a wrapper class around JSContext.  Should the lifetime of the autorealm be the same as the context, or should I only initialize it when I'm ready to execute code?
+
+[13:22:17.0907] <mccr8>
+kfjvj: Well, in Firefox we do the latter. There's basically just one JSContext, but we create and destroy auto realm things all of the time.
+
+[13:22:37.0578] <mccr8>
+If your entire program somehow only has one realm ever it probably doesn't matter.
+
+[13:23:01.0509] <davidj361>
+What ECMAScript does SM esr68 support?
+
+[13:23:22.0512] <ptomato>
+kfjvj: although if you want the lifetime of being in the realm to be longer than one individual scope, I'd use `JS::EnterRealm()` and `JS::LeaveRealm()` instead of `JSAutoRealm`
+
+[13:23:22.0819] <davidj361>
+Is it only fully ecmascript 5?
+
+[13:24:45.0135] <kfjvj>
+> <@pchimento:igalia.com> kfjvj: although if you want the lifetime of being in the realm to be longer than one individual scope, I'd use `JS::EnterRealm()` and `JS::LeaveRealm()` instead of `JSAutoRealm`
+
+So JSAutoRealm is really just an RAII wrapper of EnterRealm and LeaveRealm, is that correct?
+
+[13:25:33.0918] <mccr8>
+kfjvj: looks like it also maintains a stack of realms
+
+[13:25:57.0265] <mccr8>
+so it saves your old realm, loads the new one, then restores the old one when you exit.
+
+[13:35:23.0720] <tcampbell>
+> <@davidj361:matrix.org> Is it only fully ecmascript 5?
+
+esr68 would have had most of EcmaScript 2018 support. (Naming scheme was changed to years at some point https://en.wikipedia.org/wiki/ECMAScript )
+
+[13:36:52.0899] <davidj361>
+tcampbell is there a source on esr68 support EcmaScript 2018?
+
+[13:36:58.0674] <davidj361>
+ * tcampbell is there a source on esr68 supporting EcmaScript 2018?
+
+[13:37:53.0513] <tcampbell>
+mostly checking the main features in ES6, 2016, 2017 on MDN and seeing the compatability tables
+
+[13:38:52.0204] <davidj361>
+i tried finding compatibility tables like this but didn't see 68 listed and not many ECMAScript editions
+https://kangax.github.io/compat-table/es2016plus/
+
+[13:40:07.0393] <davidj361>
+ * i tried finding compatibility tables like this but didn't see 68 listed and there aren't many ECMAScript editions
+https://kangax.github.io/compat-table/es2016plus/
+
+[13:40:38.0987] <tcampbell>
+If you click the little MDN icons on a row, the MDN page usually has the compat data with the version a feature was enabled
+
+[13:41:33.0094] <tcampbell>
+That data is in https://github.com/mdn/browser-compat-data
+
+[13:43:24.0736] <tcampbell>
+This might be an easier form for your questions: https://caniuse.com/?search=ES6
+
+[13:44:29.0181] <davidj361>
+nothing for es9? https://caniuse.com/?search=ES9
+
+[13:48:01.0358] <tcampbell>
+if you click the "feature support list" you should see more details
+
+[13:48:54.0899] <tcampbell>
+The regexp changes of ES9 didn't make the cut for ESR68, but I think most of the other features did
+
+[15:06:38.0537] <Redfire>
+> <@tcampbell:mozilla.org> Redfire, when you are using `ModuleEvaluate` with top-level-await, you probably want to model things closer to using dynamic-import on the web. That code may take arbitrary time, so you'd chain the promise with `then` or `catch` functions that run when the error is known. Things like syntax errors should still be known when `CompileModule` happens.
+
+Can I still use ModuleResolveHook or...?
+
+[15:07:51.0448] <tcampbell>
+I believe the ModuleResolveHook stuff all fires before "evaluation" starts
+
+[15:08:05.0780] <tcampbell>
+ * I believe the ModuleResolveHook stuff all fires before "evaluation" starts, so yes should be fine.
+
+[16:07:57.0524] <Redfire>
+GJS seems to just use AddPromiseReactions (`then`/`catch` basically)
+
+Is it not possible for me to get the result of the promise after running the event loop through completion though? (using `GetPromiseState` to check and `GetPromiseResult` to get the exception/rejection)
+
+[16:09:01.0851] <Redfire>
+* GJS seems to just use AddPromiseReactions (`then`/`catch` basically)
+https://gitlab.gnome.org/GNOME/gjs/-/blob/master/gjs/context.cpp#L1444-L1447
+
+Is it not possible for me to get the result of the promise after running the event loop through completion though? (using `GetPromiseState` to check and `GetPromiseResult` to get the exception/rejection)
+
+[16:12:12.0167] <tcampbell|ooo-thru-sept-24>
+in your usecase that might be possible. In general, the module could be sleeping on a timeout, network event, etc which would not necesarilly be complete just because event loop is clear
+
+[16:13:10.0126] <tcampbell|ooo-thru-sept-24>
+`GetPromiseState` might work as you said
+
+[16:15:54.0635] <Redfire>
+Either way, don't I have to ensure that the promise is run to completion before I exit the runtime and shutdown
+
+Also, how can it be sleeping if the event loop is clear? By event loop, I mean all the various queues (microtask, macrotask, etc.), including in my case the rust async queue with all my networking and stuffs
+
+[16:20:44.0186] <Redfire>
+* Either way, don't I have to ensure that the promise is run to completion before I exit the runtime and shutdown? 
+
+Also, how can it be sleeping if the event loop is clear? By event loop, I mean all the various queues (microtask, macrotask, etc.), including in my case the rust async queue with all my networking and stuffs
+
+[16:37:58.0559] <tcampbell|ooo-thru-sept-24>
+`var pp = new Promise((r,j) => {})` makes a promise that stays pending forever as an example
+
+[16:38:44.0579] <tcampbell|ooo-thru-sept-24>
+so if your module awaited it, the module top-level evaluate would never complete, but you could still shutdown process cleanly
+
+
+2022-09-16
+[18:04:49.0012] <Redfire>
+I see, I guess that's why it should just be a reaction
+
+[18:06:39.0483] <Redfire>
+It seems that the promise object returned is `true` for `IsPromiseObject`, returns `PromiseResult::Rejected` for `GetPromiseState` but somehow it fails the `is<PromiseObject>` (in as<T>) assertion in `GetPromiseResult`
+I'm very confused
+
+[18:07:21.0758] <Redfire>
+* It seems that the promise object returned is weird.
+It returns `true` for `IsPromiseObject`.
+It returns `PromiseResult::Rejected` for `GetPromiseState`.
+Somehow it fails the `is<PromiseObject>` (in as<T>) assertion in `GetPromiseResult` though.
+I'm very confused
+
+[18:07:33.0869] <Redfire>
+* It seems that the promise object returned is weird.
+It returns `true` for `IsPromiseObject`.
+It returns `PromiseState::Rejected` for `GetPromiseState`.
+Somehow it fails the `is<PromiseObject>` (in as<T>) assertion in `GetPromiseResult` though.
+I'm very confused
+
+[18:07:38.0545] <arai>
+can you pastebin the code around those calls?
+
+[18:09:55.0626] <arai>
+do you call them in the same block, or do you call them in different places?
+
+[18:11:16.0305] <Redfire>
+https://paste.gg/p/redfire/4e0a31932be24a16851371d85e731510
+The `IsPromiseObject` is a separate block, but the other two are the same one
+
+[18:12:45.0107] <arai>
+do you have multiple globals?
+
+[18:12:59.0754] <Redfire>
+Nope, just 1
+
+[18:13:20.0605] <Redfire>
+ * It seems that the promise object returned is weird.
+It returns `true` for `IsPromiseObject`.
+It returns `PromiseState::Rejected` for `GetPromiseState`.
+Somehow it fails the `is<PromiseObject>` (in `as<T>`) assertion in `GetPromiseResult` though.
+I'm very confused
+
+[18:13:34.0615] <arai>
+`GetPromiseState` unwraps wrapper, so if the promise in `Promise::result` is wrapped, the assertion could fail
+
+[18:14:17.0597] <arai>
+https://searchfox.org/mozilla-central/rev/0948667bc62415d48abff27e1405fb4ab4d65d75/js/src/jsapi.cpp#2605-2606
+```cpp
+JS_PUBLIC_API JS::PromiseState JS::GetPromiseState(JS::HandleObject promise) {
+  PromiseObject* promiseObj = promise->maybeUnwrapIf<PromiseObject>();
+```
+
+[18:14:40.0602] <Redfire>
+The `IsPromiseObject` at the start works though
+
+[18:15:00.0121] <Redfire>
+which is just a `is<PromiseObject>` check
+
+[18:15:04.0368] <arai>
+can you check `IsPromiseObject` in `result` method?
+
+[18:18:47.0091] <arai>
+also, can you check the actual implementation of those 3 APIs in your copy of SpiderMonkey ?
+
+[18:25:18.0916] <Redfire>
+Actual implementation of those 3 is exactly the same
+
+[18:25:44.0315] <Redfire>
+i'll check `IsPromiseObject` in a sec
+
+[18:26:10.0962] <arai>
+same?
+
+[18:26:47.0916] <arai>
+do you mean it's same as esr102 ?
+
+[18:27:37.0217] <Redfire>
+same as esr102 yes
+
+[18:27:47.0625] <Redfire>
+anyway, output
+```
+[cli\src\evaluate.rs:92] Promise::from(rt.cx(), promise.get()) = Some(
+    Promise {
+        obj: 0x000032c608602690,
+    },
+)
+[ion\src\objects\promise.rs:156] IsPromiseObject(robj.handle().into()) = true
+[ion\src\objects\promise.rs:160] GetPromiseState(robj.handle().into()) = Rejected
+```
+
+[18:28:36.0862] <arai>
+what's the backtrace of the assertion failure?
+
+[18:29:25.0093] <Redfire>
+That's weird, didn't happen
+
+[18:29:47.0000] <Redfire>
+but also I messed up an `Err` so I need to recompile to check if it outputted the correct value
+
+[18:31:06.0761] <Redfire>
+Oh wait, the last time I had an assertion failure was with rooting twice and me running `promise.state(cx)` and `promise.result(cx)` separately
+
+[18:31:21.0596] <Redfire>
+(Rooted outside still though)
+
+[18:31:37.0522] <Redfire>
+ * (rooted outside still though)
+
+[18:31:53.0018] <arai>
+it looks like `Promise.obj` is not traced
+
+[18:31:59.0727] <arai>
+it might be the issue
+
+[18:32:02.0877] <Redfire>
+uhh, its silentlly crashing
+
+[18:32:31.0563] <Redfire>
+I'm right on time rn so I'll do that debug in like an hour
+
+[18:32:35.0119] <Redfire>
+short on time*
+
+[18:33:04.0144] <arai>
+`Rooted` and `Handle` has 2 purposes.  one is to root the pointed object, to avoid getting GCed
+
+[18:33:20.0763] <arai>
+other is to keep the pointer up-to-date when the pointed object is moved by GC
+
+[18:33:59.0867] <arai>
+so, if you have raw pointer around and GC moves the object while the raw pointer is alive, the raw pointer becomes dangling pointer
+
+[18:34:40.0740] <iain>
+Is it known/intended behaviour that `await` doesn't work inside `evalInWorker`? Unless I'm missing something, we never drain the job queue, so even something trivial like `await 3` never resolves.
+
+[18:36:26.0904] <arai>
+at least I'm not aware of any code that handles promise inside shell worker
+
+[18:38:57.0130] <arai>
+hm, it has job queue https://searchfox.org/mozilla-central/rev/0948667bc62415d48abff27e1405fb4ab4d65d75/js/src/shell/js.cpp#4082
+```cpp
+js::UseInternalJobQueues(cx);
+```
+
+[18:40:47.0990] <arai>
+this works evalInWorker(`
+Promise.resolve(4).then(x => console.log(x));
+drainJobQueue();
+`);
+
+
+[18:40:54.0099] <iain>
+```
+evalInWorker(`
+  (async () => {
+    print(2);
+    print(await 3);
+   })()
+`);
+```
+This prints "2", but adding `drainJobQueues` after the IIFE prints both 2 and 3.
+
+[18:41:10.0424] <arai>
+ * ```
+evalInWorker(`
+Promise.resolve(4).then(x => console.log(x));
+drainJobQueue();
+`);
+```
+
+[18:41:36.0222] <arai>
+yeah, explicit `drainJobQueue` inside the worker will be necessary
+
+[18:42:02.0215] <iain>
+The problem is that I'm trying to get test262 testcases for waitAsync to pass
+
+[18:42:59.0237] <arai>
+so, I think, the problem is that the shell does not implicitly drain jobs in worker context when exitting
+
+[18:43:37.0001] <arai>
+or maybe when the worker thread exits
+
+[18:44:45.0947] <iain>
+I think it has to be when the worker thread exits, yeah
+
+[18:45:08.0610] <iain>
+Is there a reason that we don't already drain the job queue?
+
+[18:45:32.0313] <iain>
+(As in, if I start draining the job queue implicitly, will things break?)
+
+[18:46:37.0590] <iain>
+I guess I can just try it out and see
+
+[18:47:08.0356] <arai>
+I assume simply because there was no consumer
+
+[19:48:00.0300] <Redfire>
+> <@redfire75369:mozilla.org> uhh, its silentlly crashing
+
+Seems to just be repeatedly stuck on the `as<PromiseObject>` line, lldb step-in just stays there?
+
+[19:50:00.0228] <Redfire>
+* Seems to just be repeatedly stuck on the `as<PromiseObject>` line, lldb step just stays there?
+
+[20:03:33.0976] <Redfire>
+```
+Exception: Exception 0xc0000005 encountered at address 0x7ff6f3b4fac3: Access violation reading location 0x00000000
+```
+No idea
+
+[23:02:21.0994] <l11d>
+I added a custom MIR instruction which calls into C++. in C++, I'm trying to serialize an object (via structured clone). the serialization might fail but I don't want to bubble the JS exception into the user script, so I'm calling `JS_ClearPendingException`. is this something that "should work" or am I missing something?
+
+[23:02:44.0405] <l11d>
+ * I added a custom MIR instruction which calls into C++. in C++, I'm trying to serialize the MIR instructions parameter (via structured clone). the serialization might fail but I don't want to bubble the JS exception into the user script, so I'm calling `JS_ClearPendingException`. is this something that "should work" or am I missing something?
+
+[23:18:38.0781] <iain>
+l11d: I would expect it to work. Is it failing?
+
+[23:25:17.0728] <l11d>
+iain: it works almost always. actually, it produced a weird result just once while fuzzing with this MIR instruction for 1.000.000> CPU hours. the issue seems to be somehow related to the structured clone failing, which in turn creates an ErrorObject. this (somehow?) modifies the global object, causing a subsequent loaddynamicslot to return an incorrect result. if I use a vanilla version of the engine this is not an issue though, as the failing structured clone causes a bailout (which I suppressed via `JS_ClearPendingException`)
+
+[01:24:34.0150] <Ms2ger 💉💉>
+You sure it's not just bad ram?
+
+[02:04:25.0953] <liam_g>
+If I use `JS_DeletePropertyById()`, I get a linker error. Other functions in the same header work fine. Do other people have the same problem?
+
+[02:11:40.0737] <evilpie>
+yeah the header is wrong, https://searchfox.org/mozilla-central/source/js/public/PropertyAndElement.h#408
+
+[02:11:46.0529] <evilpie>
+jsid should be Handle<jsid>
+
+[02:16:41.0284] <arai>
+Redfire: can you check backtrace?
+
+[06:52:36.0909] <Redfire>
+stacktrace and lldb bt are here
+https://paste.gg/p/redfire/4e0a31932be24a16851371d85e731510
+
+[07:32:13.0476] <dheitbrink>
+I am having some issues with dead-locks in GC, In a child process after doing a fork. This is using ESR78 version. Basically I have a "fork" function, that can be called from JS, which does a fork. Typically my child process runs through its code and as the process is cleaning during exit, GC gets called, and it stalls in pthread_cond_signal. After some further testing.....basically it looks like anytime the GC gets called in the child process, it stalls in the same place. 
+
+[07:33:08.0779] <dheitbrink>
+Is spider monkey "fork-safe" is this just something I need to avoid doing altogether?
+
+[08:23:16.0261] <chaircrusher>
+I work with dheitbrink We do something that works with JS1.8.5 and is hanging up in JS78 (our current version):
+
+We have a JS Native function that calls fork, to fork the whole process running the SM script.   It acts like Unix fork, it returns a different value to the parent and child scripts, so they can behave appropriately.
+
+[08:27:16.0092] <jyanga>
+hi all....i was able to compile `spidermonkey`.  how do i know what version was compiled? how do i specify what version to compile?
+
+[09:23:01.0935] <kfjvj>
+Is there documentation somewhere about what exactly the rooting API does?  I'm not totally clear on it.
+
+[09:28:41.0554] <chaircrusher>
+u mean the rooting guide?
+
+[09:28:43.0625] <chaircrusher>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/GC%20Rooting%20Guide.md
+
+[09:29:00.0618] <chaircrusher>
+Is there something that doesn't explain?
+
+[09:29:26.0933] <kfjvj>
+I just wasn't aware of the guide.
+
+[09:42:00.0560] <iain>
+kfjvj: There's also [this](https://searchfox.org/mozilla-central/source/js/public/RootingAPI.h#34)
+
+[11:44:42.0441] <kfjvj>
+Is there any information on how to access the data of an ArrayBuffer object from spidermonkey?
+
+[11:55:48.0740] <kfjvj>
+> <@kfjvj:mozilla.org> Is there any information on how to access the data of an ArrayBuffer object from spidermonkey?
+
+I see that there's an ArrayBuffer.h with lots of info about how to use it.
+
+[12:02:07.0838] <kfjvj>
+> <@kfjvj:mozilla.org> Is there any information on how to access the data of an ArrayBuffer object from spidermonkey?
+
+ * I see that there's an ArrayBuffer.h with lots of info about how to use it.  I'll just look into that.
+
+[13:54:30.0095] <tcampbell|ooo-thru-sept-24>
+chaircrusher dheitbrink My understanding of `fork` is that it doesn't duplicate threads in the new process. The GC uses helper-threads that are allocated on startup. I suspect we didn't have these GC helper threads in 1.8.5, but do use them in 78.
+
+[13:55:17.0223] <tcampbell|ooo-thru-sept-24>
+https://pubs.opengroup.org/onlinepubs/009604499/functions/pthread_atfork.html
+
+[13:59:49.0570] <dheitbrink>
+yes, threads do not get replicated on fork. Is there anyway we can interact with the GC/ and or helper threads to deal with this? 
+
+[14:01:47.0367] <tcampbell|ooo-thru-sept-24>
+GlobalHelperThreadState centralizes a bunch of this, so you might be able to patch that using pthreads_atfork. The threads are work-queues, so you should be able to use the pre-fork hook to wait for them to go idle, and then post-fork might be able to create the new threads.
+
+[14:04:03.0257] <tcampbell|ooo-thru-sept-24>
+Might also have to play with `TlsContext` which binds a JSContext to the thread. https://searchfox.org/mozilla-esr78/source/js/src/vm/JSContext.h#130
+
+[14:05:12.0818] <tcampbell|ooo-thru-sept-24>
+Overall seems possible to acheive, but you'd be the first. The uses of `fork` that spidermonkey has supported to-date are very early in startup and are focused on sharing memory for .so file relocations.
+
+[14:07:33.0941] <dheitbrink>
+OK thanks. This will give me something to ponder over the weekend.
+
+[14:08:51.0756] <tcampbell|ooo-thru-sept-24>
+The one complexity I can see is if you used Workers in your app it would be somewhat painful to figure this out, but if that is not the case it might not be that horrific.
+
+[14:10:31.0376] <chaircrusher>
+Our app is single threaded and we don't do anything with multiprocessing. The threading is all an issue of the SpiderMonkey interpreter-created threads.
+
+[14:11:36.0383] <chaircrusher>
+We're trying to return from a JSNative function int he child process back to the currently running script context.  
+
+[14:12:04.0169] <chaircrusher>
+In other words we want a fork SpiderMonkey function so that the parent can start a long process and then terminate
+
+[14:16:35.0372] <dheitbrink>
+I don't think we typically have much in the way of JS that is run after said long native call typically.
+
+[14:50:36.0548] <tcampbell|ooo-thru-sept-24>
+might just be able to build spidermonkey as no-threads then
+
+[14:51:38.0013] <tcampbell|ooo-thru-sept-24>
+There is a `js::DisableExtraThreads` API which might be what you need
+
+[14:54:58.0846] <tcampbell|ooo-thru-sept-24>
+dheitbrink: ^ might be an easy fix
+
+
+2022-09-17
+[09:23:19.0731] <Redfire>
+Is there any way to bubble an Exception all the way up the stack from within a promise reject reaction (basically `.catch`)?
+`JS_SetPendingException` within it doesn't bubble
+
+[09:23:40.0882] <Redfire>
+This is the module resolution promise so that's why I want to
+
+[09:23:54.0395] <Redfire>
+* This is the module evaluation promise so that's why I want to
+
+[16:25:56.0111] <arai>
+can you provide an example code and the "bubble" and "not bubble" behavior?
+
+[16:25:59.0890] <arai>
+Redfire: ^
+
+
+2022-09-18
+[18:42:40.0363] <liam_g>
+Is there an easy way to delete all properties on an object?
+
+[18:44:26.0623] <liam_g>
+In this case I'm working with the global, so I don't want to just reset it using `JS_NewPlainObject()` or `JS_NewGlobalObject()`. I'd rather delete all properties on the existing object.
+
+[18:45:12.0569] <liam_g>
+Do I have to run `JS_Enumerate()` and then cycle through all the properties, or is there a simpler option?
+
+[16:06:27.0964] <Redfire>
+arai:
+```js
+const value = await new Promise((r, j) => j("Error"));
+```
+So with `ModuleEvaluate`, you get a promise which rejects with `"Error"`
+After adding a promise reaction for rejections that has a `SetPendingException`, from the outer scope (where you ran the function from can't get that exception with `GetPendingException`
+
+Here's some very pseudocody code
+```rs
+fn main() {
+  let rt = initialise_rt(); //initializes event loop, module loader, etc.
+  let (module, promise) = rt.evaluate_module(...);
+  promise.add_reactions(None, Some(on_rejected));
+  let exception = get_pending_exception(); // Fails because there's no exception
+  assert(exception == "foo") // in my case, it's an assert, so I need it to bubble properly so the test succeeds or fails properly
+}
+
+fn on_rejected(val: JSVal) {
+  set_pending_exception(val);
+}
+``` 
+
+[16:08:32.0174] <Redfire>
+* arai:
+```js
+const value = await new Promise((r, j) => j("Error"));
+```
+So with `ModuleEvaluate`, you get a promise which rejects with `"Error"`
+After adding a promise reaction for rejections that has a `SetPendingException`, from the outer scope (where you ran the function from can't get that exception with `GetPendingException`
+
+Here's some very pseudocody code
+```rs
+fn main() {
+  let rt = initialise_rt(); //initializes event loop, module loader, etc.
+  let (module, promise) = rt.evaluate_module(...);
+  rt.run_event_loop();
+  promise.add_reactions(None, Some(on_rejected));
+  let exception = get_pending_exception(); // Fails because there's no exception
+  assert(exception == "foo") // in my case, it's an assert, so I need it to bubble properly so the test succeeds or fails properly
+}
+
+fn on_rejected(val: JSVal) {
+  set_pending_exception(val);
+}
+``` 
+
+[16:09:39.0921] <arai>
+have you verified the `on_rejected` is called?
+
+[16:10:03.0461] <arai>
+if you add reaction, you'll need to run newly created reaction job for it
+
+[16:10:34.0994] <arai>
+so, if `run_event_loop` is supposed to run promise reaction jobs, I guess you need to call it after `add_reactions`
+
+[16:12:48.0505] <Redfire>
+I have checked and it is called, yes
+my bad, put the run event loop in the wrong place, it's after the promise reactions in my actual code
+
+[16:13:05.0154] <Redfire>
+* I have checked and it is called, yes
+my bad, put the run event loop in the wrong place, it's after adding the promise reactions in my actual code
+
+[16:13:57.0969] <arai>
+just to make sure, what does `set_pending_exception` do?
+
+[16:14:18.0124] <arai>
+it calls `JS::SetPendingException` ?
+
+[16:14:33.0840] <Redfire>
+that's just `JS_SetPendingException`
+
+[16:14:43.0015] <arai>
+you cannot use the pending exception as a temporary storage for regular execution
+
+[16:15:14.0749] <arai>
+err, maybe I'm wrong
+
+[16:15:26.0452] <arai>
+just noticed, it's rust code?
+
+[16:16:10.0754] <arai>
+(I was thinking it's simplified JS code :P
+
+[16:16:20.0211] <Redfire>
+it's pseudo rust
+
+[16:16:50.0874] <arai>
+okay, then, if you call `SetPendingException` inside the reaction handler, it means you throw exception inside it
+
+[16:16:57.0118] <Redfire>
+I was thinking it was issue where the promise basically eats the pending exception to just say "reject the promise again"
+
+[16:17:06.0195] <arai>
+yes
+
+[16:17:40.0403] <arai>
+so, the pending exception is tied to the current job
+
+[16:17:53.0957] <Redfire>
+so is there any way to get the promise to that "top level" 
+
+[16:18:03.0565] <Redfire>
+* so is there any way to get the exception to that "top level" 
+
+[16:19:21.0162] <arai>
+save the exception into temporary place inside the handler, and restore inside `run_event_loop` I think?
+
+[16:19:59.0655] <arai>
+I think you first need to define the semantics around the exception vs reaction jobs
+
+[16:20:28.0566] <arai>
+like, when there are 2 jobs and one of them throws but other doesn't
+
+[16:20:34.0406] <arai>
+or when 2 of them throws
+
+[16:21:28.0384] <Redfire>
+I could store the exception into a static thread_local, but that seamed like a bad idea overall
+
+[16:21:38.0567] <arai>
+why?
+
+[16:22:44.0629] <Redfire>
+technically scopes mean that that's not really memory safe
+
+[16:23:12.0283] <arai>
+what kind of scopes is it about?
+
+[16:23:42.0534] <Redfire>
+relies on the runtime not having shut down technically
+
+[16:24:00.0670] <Redfire>
+I know it's fine how I'm using it, but just a bit weary
+
+[16:24:34.0663] <arai>
+can't you store it into the runtime ?
+
+[16:24:54.0343] <arai>
+like, add `JS::PersistentRooted<JS::Value>` field to the runtime structure
+
+[16:25:13.0900] <arai>
+that guarantees that the runtime is aware of the exception
+
+[16:25:24.0810] <Redfire>
+I don't actually store the runtime as a static anywhere 😅
+
+[16:25:45.0639] <arai>
+so, inside the handler, you don't have the reference to the runtime?
+
+[16:26:58.0127] <Redfire>
+No reference to the runtime itself
+
+[16:27:12.0796] <Redfire>
+Maybe I could set a property on the global?
+
+[16:27:27.0384] <arai>
+yeah, that also works
+
+[16:27:53.0304] <arai>
+anyway, given that directly propagating the "pending exception" is not supposed to happen, you need some kind of temporary space to save it
+
+
+2022-09-19
+[22:59:59.0225] <Redfire>
+Update: Setting a property seems to work
+
+[23:00:59.0850] <Redfire>
+* Update: Setting a property on the global seems to work
+
+[07:51:28.0441] <davidj361>
+How are BigInts stored in SpiderMonkey under the hood? Is it something simple like being stored as an i64?
+
+[07:54:34.0456] <jandem>
+davidj361: it's stored internally as an array of words, see [here](https://searchfox.org/mozilla-central/rev/d8d75a05deaba7e89a6f1d4c1f197d01e2361d43/js/src/vm/BigIntType.h#39-59)
+
+[07:54:55.0927] <davidj361>
+thank you
+
+[09:26:36.0854] <mccr8>
+sfink: do you know why we can't iterate over compartments when the heap state is CycleCollecting?
+
+[09:27:30.0216] <mccr8>
+I'm trying to figure out a way to iterate over all WrappedJS. Unfortunately I just removed a linked list of them that we had...
+
+[11:57:49.0312] <mccr8>
+Never mind, I found another solution to my problem.
+
+[12:30:06.0789] <davidj361>
+What's the largest data that BigInt can handle? I assume it safely handles very large positive/negative integers as well as floating point? Like what about a long double? (80 bits)
+
+[12:46:51.0896] <ptomato>
+BigInt is an integer, so no floating point
+
+[13:25:23.0545] <davidj361>
+right...Big**Int**
+
+[13:38:19.0713] <kfjvj>
+I'm a little unclear about the documentation for this array buffer function: https://searchfox.org/mozilla-central/source/js/public/ArrayBuffer.h#120
+
+[13:39:20.0173] <kfjvj>
+NewArrayBufferWithUserOwnedContents.  The documentation says I should DetatchArrayBuffer before I free the memory.  But when should I call that?  Right after NewArrayBufferWithUserOwnedContents, or later on?
+
+[13:43:44.0254] <kfjvj>
+I wanted to call Detach in a finalizer function, but finalizers don't have contexts passed in.
+
+[13:53:52.0362] <kfjvj>
+Maybe I can provide some more detail.  I have a situation similar to the following:
+
+I have a C++ struct which has its own byte buffer.
+
+struct Foo {
+    vector<uint8_t> buffer;
+}
+
+I want to create a JS class to represent this.
+
+The JS class should have a property, "buffer", that returns an ArrayBuffer object that refers directly to Foo::buffer.data().
+
+Currently, I'm using a single private slot to store a pointer to a Foo, and I'm using a  reserved slot to store a JSObject that points to an array buffer, whose contents point to the buffer.data() member of the private slot.
+
+I'm uncertain how to make sure that there are no more references to the buffer after it has been deleted.
+
+
+[16:43:12.0205] <Redfire>
+> <@davidj361:matrix.org> What's the largest data that BigInt can handle? I assume it safely handles very large positive/negative integers as well as floating point? Like what about a long double? (80 bits)
+
+BigInt can store up to `2^(1024*1024-1)-1` I believe (Limit set within spidermonkey)
+
+
+2022-09-20
+[06:16:57.0829] <davidj361>
+> <@redfire75369:mozilla.org> BigInt can store up to `2^(1024*1024-1)-1` I believe (Limit set within spidermonkey)
+
+I assume it's from the negative of that and to the positive of that?
+
+[06:17:42.0258] <Redfire>
+It's 1024*1024 bits, I'm not sure if that includes the sign bit or not though
+
+[07:51:41.0272] <jandem>
+no, the sign bit is stored separately in the flags word
+
+[09:39:33.0218] <smaug>
+sfink: if JS_ReadStructuredClone fails, it is likely OOM ? 
+
+[09:39:58.0185] <smaug>
+or what else could it be if the data passed to it is reasonable
+
+[10:06:50.0407] <evilpie>
+smaug:  I think for correct data OOM would be likely. Otherwise some version mismatch? some data can only be cloned in certain context like sharedarraybuffer?
+
+[12:12:49.0753] <sfink>
+smaug: I agree with evilpie. Yes, if the data is reasonable, then really only OOM could make it fail. That's assuming the funky Gecko-implemented deserializers don't have weird failure modes (too many fds or whatever), but I don't think they do.
+
+[12:13:05.0015] <sfink>
+There are quite a lot of ways for data to be unreasonable, though.
+
+[12:13:29.0230] <smaug>
+sfink: this was some crash report when parent was sending messages to child
+
+[12:13:44.0070] <smaug>
+I assume child just OOMs
+
+[12:14:14.0947] <smaug>
+https://hg.mozilla.org/mozilla-central/file/b7a5205832b471367bad42b69cdf69a4da1eb15c/dom/ipc/jsactor/JSActorManager.cpp#l190
+
+[12:15:22.0591] <sfink>
+kfjvj: That description was written from the assumption that you don't have a finalizer. *In the absence of a finalizer*, there's no safe way to assume that the data won't be touched by the JS engine unless you detach the ArrayBuffer. For your scenario, there's no need to detach. Once the finalizer runs, the JS engine won't look at the data.
+
+[12:17:01.0128] <kfjvj>
+> <@sfink:mozilla.org> kfjvj: That description was written from the assumption that you don't have a finalizer. *In the absence of a finalizer*, there's no safe way to assume that the data won't be touched by the JS engine unless you detach the ArrayBuffer. For your scenario, there's no need to detach. Once the finalizer runs, the JS engine won't look at the data.
+
+What if someone holds a reference to the array buffer in the private slot?  Will that stop the finalizer from running?
+
+[12:18:19.0799] <sfink>
+For a complete answer, I'd probably need to know more about the lifetime of your JS wrappers. But if something live has a reference to the array buffer (in its private slot or wherever), then it had better be marking that reference.
+
+[12:18:51.0751] <sfink>
+a compacting GC could move it, for example, and marking will update the address if needed
+
+[12:20:08.0396] <kfjvj>
+Here's a more specific question:
+
+[12:20:18.0416] <sfink>
+regular slots are automatically marked. private slots aren't, and can run into problems as a result. (We've since removed private slots.)
+
+[12:21:03.0299] <kfjvj>
+So, if I have an object with a private slot and a reserved slot, will the finalizer only be called when all the objects in the reserved slot are inaccessible?
+
+[12:21:25.0905] <sfink>
+the finalizer will be called when the object itself is no longer reachable
+
+[12:22:38.0785] <kfjvj>
+OK, so it's possible that some of the objects stored in the private slot could still be reachable if there are other references to them
+
+[12:22:48.0628] <sfink>
+yes
+
+[12:22:54.0389] <kfjvj>
+OK.  Thanks.
+
+[12:23:43.0730] <sfink>
+(and given that it sounds like you're adding an accessor to the ArrayBuffer in the private slot, that seems very possible)
+
+[12:25:15.0538] <sfink>
+but if your object traces its private slot, then there shouldn't be a problem with it
+
+[12:25:37.0322] <kfjvj>
+> <@sfink:mozilla.org> but if your object traces its private slot, then there shouldn't be a problem with it
+
+How is that done?
+
+[12:26:06.0975] <sfink>
+similar to a finalizer, there's a JSClass field for a custom trace function, which should then call... er, what version are you using?
+
+[12:26:17.0636] <kfjvj>
+> <@sfink:mozilla.org> similar to a finalizer, there's a JSClass field for a custom trace function, which should then call... er, what version are you using?
+
+68
+
+[12:28:59.0334] <sfink>
+looks like [JS::TraceEdge](https://searchfox.org/mozilla-esr68/source/js/public/TracingAPI.h#373-389)
+
+[12:31:47.0008] <kfjvj>
+> <@sfink:mozilla.org> (and given that it sounds like you're adding an accessor to the ArrayBuffer in the private slot, that seems very possible)
+
+What about if I just add a property to the ArrayBuffer that points to the containing object?  Won't that guarantee that they get GC'd together?
+
+[13:00:59.0776] <davidj361>
+I don't seem to have access to [createFromDouble](https://searchfox.org/mozilla-esr68/rev/4b79eedfe95ef427490a16e7c96f3a0930ab0c32/js/src/vm/BigIntType.h#96).
+`JS::BigInt::createFromDouble` and `JS::createFromDouble` don't seem to work
+
+[13:03:58.0316] <ptomato>
+as an embedder you can only use functions in the public headers, so look in js/public/BigInt.h
+
+[13:04:17.0747] <ptomato>
+e.g. use `JS::NumberToBigInt()`
+
+[13:19:08.0038] <davidj361>
+i don't see that in `js/public` https://searchfox.org/mozilla-esr68/search?q=&path=BigInt.h&case=false&regexp=false
+
+[13:24:20.0381] <davidj361>
+and I do not see "BigInt" as any filename in my `/usr/include`
+
+[13:25:49.0044] <davidj361>
+nor can i find a `class BigInt` in my grep of my `/usr/include`
+
+[13:27:39.0968] <iain>
+Looks like BigInt landed in 68, and the public API wasn't added until [later](https://bugzilla.mozilla.org/show_bug.cgi?id=1606568)
+
+[13:28:30.0624] <iain>
+It was uplifted into 78, but 68 was already unsupported by that point
+
+[13:28:54.0228] <davidj361>
+so even `68.9` won't have it?
+
+[13:31:20.0649] <iain>
+Correct. You could try applying the patch to your own local copy of 68. It looks relatively self-contained.
+
+[14:18:46.0670] <sfink>
+kfjvj: yes, an ordinary property would get traced. So would a reserved slot (which is basically a property value with no name by which it can be looked up.) Given that you want it to be accessible via a `.buffer` property, it seems like it would make sense to use a plain property.
+
+[14:20:39.0997] <kfjvj>
+> <@sfink:mozilla.org> kfjvj: yes, an ordinary property would get traced. So would a reserved slot (which is basically a property value with no name by which it can be looked up.) Given that you want it to be accessible via a `.buffer` property, it seems like it would make sense to use a plain property.
+
+So, basically, the object in the .buffer property would have a property like ._owner, which refers to the original object
+
+[14:22:37.0754] <sfink>
+oh! You're right, you need an edge from the buffer to the object, to ensure that it outlives it. Yes, I think you're right. A reserved slot might be safer, to make sure nobody overwrites the property.
+
+[14:23:11.0382] <sfink>
+note, though, that because you're exposing the buffer, it could end up being passed to something that detaches it. So when you're retrieving the data from it, you should check whether it has data. (I believe it'll return nullptr once it's been detached.)
+
+[14:23:27.0907] <kfjvj>
+> <@sfink:mozilla.org> note, though, that because you're exposing the buffer, it could end up being passed to something that detaches it. So when you're retrieving the data from it, you should check whether it has data. (I believe it'll return nullptr once it's been detached.)
+
+You got it.  THanks.
+
+[15:11:26.0969] <Redfire>
+Usually with exceptions, there's an `ExceptionStack` you can get with `GetPendingExceptionStack`. This allows you to get both the stack and the exception.
+
+However, if you're dealing with a top-level await in module, you can't get the stack from the exception, but only the exception value as the first argument to the rejection handler (AddPromiseReactions)
+
+How else can you get the stack from the rejection handler?
+
+[15:11:41.0202] <Redfire>
+* Usually with exceptions, there's an `ExceptionStack` you can get with `GetPendingExceptionStack`. This allows you to get both the stack and the exception.
+
+However, if you're dealing with a top-level await in module, you can't get the stack from the exception, but only the exception value as the first argument to the rejection handler (AddPromiseReactions)
+
+How else can you get the stack of the exception from the rejection handler?
+
+[16:09:21.0923] <arai>
+Redfire: if you have the exception value, you can pass it to [JS::ExceptionStackOrNull](https://searchfox.org/mozilla-central/rev/b1e5f2c7c96be36974262551978d54f457db2cae/js/public/Exception.h#186)
+
+[16:10:58.0920] <Redfire>
+oh, how did I miss that 😅
+I'll try that one out, hopefully it works
+
+[16:11:36.0839] <Redfire>
+For some reason, I read that documentation as "returns the unwrapped exception" and my brain never corrected it 
+
+[16:26:46.0302] <Redfire>
+Hmm, that seems to only work for `Error` and `WasmException` objects, but any exception can have a stack.
+https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#1156
+
+[16:28:35.0865] <arai>
+for non-Error object, I'm not aware of any way to associate the stack with value passed to rejection handler
+
+
+2022-09-21
+[01:50:51.0945] <Redfire>
+How do I check if an object is an `Error`? (or extends `Error`)
+
+[03:27:47.0959] <Redfire>
+* How do I check if an object is an `Error`? (or extends `Error`)
+
+I saw `GetRealmErrorPrototype` but that expects an object with a prototype, not the prototype itself 
+
+[03:28:02.0133] <Redfire>
+* How do I check if an object is an `Error`? (or extends `Error`)
+
+I saw `GetRealmErrorPrototype` but `JS_HasInstance` expects an object with a prototype, not the prototype itself 
+
+[04:05:53.0796] <arai>
+Redfire: [JS::GetBuiltinClass](https://searchfox.org/mozilla-central/rev/b1e5f2c7c96be36974262551978d54f457db2cae/js/public/Object.h#31-43) returns `ESClass::Error` if it's ErrorObject or subclass
+
+[04:08:01.0191] <evilpie>
+Or JS::ExceptionStackOrNull
+
+[04:08:41.0136] <evilpie>
+Oh I see
+
+[04:12:50.0790] <Redfire>
+arai: does that work even with subclasses (user-defined errors that extend `Error`?
+
+[04:14:42.0002] <arai>
+the actual condition is here https://searchfox.org/mozilla-central/rev/b1e5f2c7c96be36974262551978d54f457db2cae/js/src/vm/ErrorObject.h#68-70
+```cpp
+static bool isErrorClass(const JSClass* clasp) {
+  return &classes[0] <= clasp && clasp < &classes[0] + std::size(classes);
+}
+```
+
+[04:15:11.0324] <arai>
+so, if the corresponding C++ clasp is built-in one, the condition is true
+
+[04:28:17.0964] <Redfire>
+* arai: does that work even with subclasses (user-defined errors that extend `Error`)?
+
+[06:42:31.0365] <Redfire>
+Seems to work with user-defined errors too, thanks!
+
+```ts
+C:\Users\Redfire\spiderfire>target\debug\cli.exe run index.ts
+Uncaught TypeError at custom.js:5:4 - Throwing
+    CustomError@other.ts:5:3
+    thrower@other.ts:12:8
+    @index.ts:2:1
+```
+```ts
+class CustomError extends TypeError {
+	constructor(...args) {
+		super(...args);
+		this.fileName = "custom.js";
+		this.columnNumber = 4;
+	}
+}
+```
+
+[07:10:59.0772] <Mohamed Atef>
+can I submit specific commit using moz-phab?
+
+[07:14:20.0787] <arai>
+in `moz-phab submit --help`, there's `start_rev` and `end_rev` options, they're for specifying the range that you want to submit
+
+[07:29:25.0422] <Mohamed Atef>
+https://phabricator.services.mozilla.com/D157842
+
+[07:50:36.0788] <arai>
+thanks! I'll review it tomorrow morning
+
+[07:51:17.0051] <Mohamed Atef>
+Thanks. 
+
+[08:47:30.0252] <@allstarschh>
+sfink: meeting ?
+
+[10:51:23.0754] <davidj361>
+> <@iain:mozilla.org> Correct. You could try applying the patch to your own local copy of 68. It looks relatively self-contained.
+
+Is there a publicly available patch for esr 68 out there already?
+
+[10:52:04.0123] <iain>
+davidj361: No, but you could try porting the patch that was uplifted to 78: https://bugzilla.mozilla.org/show_bug.cgi?id=1606568
+
+[10:52:57.0203] <davidj361>
+i wonder if that would even work as I imagine 78 has much different API from 68, possibly different file locations and general structuring
+
+[10:53:02.0322] <davidj361>
+ * i wonder if that would even work as I imagine 78 has much different API from 68, possibly different file locations
+
+[11:00:48.0101] <davidj361>
+is there a proper way to add patches to building SpiderMonkey? like a directory that holds .patch files? Or do I just manually edit the files directly?
+
+[11:02:14.0973] <iain>
+Just edit the files.
+
+[11:02:40.0252] <iain>
+There are three patches attached to that bug. It looks like they only touch a few files.
+
+[11:19:45.0154] <ptomato>
+> <@davidj361:matrix.org> i wonder if that would even work as I imagine 78 has much different API from 68, possibly different file locations
+
+often it does work, if there hasn't been a lot of refactoring on the particular area of code that it touches
+
+
+2022-09-22
+[06:37:14.0755] <davidj361>
+Yeah there's a lot of refactoring for the test so far, C++17 to C++14 std features as well as api being different for exceptions, still working on it
+
+[06:37:18.0897] <davidj361>
+ * Yeah there are a lot of refactoring for the test so far, C++17 to C++14 std features as well as api being different for exceptions, still working on it
+
+[06:37:22.0947] <davidj361>
+ * Yeah there's a lot of refactoring for the test so far, C++17 to C++14 std features as well as api being different for exceptions, still working on it
+
+[06:37:31.0637] <davidj361>
+ * Yeah there's a lot of refactoring for the BigInt test so far, C++17 to C++14 std features as well as api being different for exceptions, still working on it
+
+[06:44:38.0854] <davidj361>
+> <@sfink:mozilla.org> you'll want to develop against a debug library, but for production use non-debug (it'll be much faster; the debug version does lots of internal checks)
+
+Are the internal checks unit tests from `jsapi-tests`?
+
+[07:21:53.0873] <l11d>
+davidj361: I think the "internal checks" refer to assertions which are removed if you compile for production, hence the code is slower in debug mode
+
+[09:15:51.0515] <sfink>
+davidj361: l11d has it right. Some of the assertions are localized and just slow things down a bit, but some run substantial amounts of code (eg scanning the whole heap to make sure everything is in an allowed state).
+
+[10:03:02.0208] <davidj361>
+Does anyone know why I need to do
+```bash
+LD_LIBRARY_PATH=/usr/local/lib
+export LD_LIBRARY_PATH 
+```
+when using my own `sudo make install` of a SpiderMonkey esr68 build? This is when compiling the embedded examples via `meson` and `ninja`.
+I didn't need to define `LD_LIBRARY_PATH` when I was using SpiderMonkey esr68 from ubuntu's package manager.
+
+[10:03:15.0429] <davidj361>
+ * Does anyone know why I need to do
+
+```bash
+LD_LIBRARY_PATH=/usr/local/lib
+export LD_LIBRARY_PATH 
+```
+
+when using my own `sudo make install` of my SpiderMonkey esr68 build? This is when compiling the embedded examples via `meson` and `ninja`.
+I didn't need to define `LD_LIBRARY_PATH` when I was using SpiderMonkey esr68 from ubuntu's package manager.
+
+[11:33:30.0778] <davidj361>
+Ok I've added these last 3 commits as patches from this [bug report](https://bugzilla.mozilla.org/show_bug.cgi?id=1606568) to esr68, but inside the JS engine itself, doing a var test = BigInt("0") says there's no such thing as a BigInt.
+
+[11:34:37.0368] <davidj361>
+ * Ok I've added these last 3 commits as patches from this [bug report](https://bugzilla.mozilla.org/show_bug.cgi?id=1606568) to esr68, but inside the JS engine itself, doing a `var test = BigInt("0")` says there's no such thing as a BigInt.
+
+[11:35:35.0997] <ptomato>
+> <@davidj361:matrix.org> Does anyone know why I need to do
+> 
+> ```bash
+> LD_LIBRARY_PATH=/usr/local/lib
+> export LD_LIBRARY_PATH 
+> ```
+> 
+> when using my own `sudo make install` of my SpiderMonkey esr68 build? This is when compiling the embedded examples via `meson` and `ninja`.
+> I didn't need to define `LD_LIBRARY_PATH` when I was using SpiderMonkey esr68 from ubuntu's package manager.
+
+Ubuntu's package manager installs it into `/usr/lib`, which is automatically in the library path. `/usr/local/lib` is not. You could alternatively install it into `/usr/lib` and overwrite the one from the package manager, but you would risk making your system unusable
+
+[11:37:08.0385] <ptomato>
+> <@davidj361:matrix.org> Ok I've added these last 3 commits as patches from this [bug report](https://bugzilla.mozilla.org/show_bug.cgi?id=1606568) to esr68, but inside the JS engine itself, doing a `var test = BigInt("0")` says there's no such thing as a BigInt.
+
+in ESR68 BigInt is not enabled by default. you need to turn it on at the time you create the realm in your embedding
+
+[11:37:13.0996] <ptomato>
+https://searchfox.org/mozilla-esr68/source/js/public/RealmOptions.h#138
+
+[11:37:50.0974] <davidj361>
+Thank you for the help
+
+
+2022-09-25
+[07:51:10.0357] <Redfire>
+What exactly is different if I pass `nullptr` as `report` in `CreateError`?
+I see a bunch of other code seems to do so too
+
+[10:06:04.0411] <tcampbell>
+If you pass `nullptr` then one will be created by default in `getOrCreateErrorReport`.
+
+[10:17:06.0555] <tcampbell>
+(The `JSErrorReport` is generally consumed by your embedding for richer errors and smuggling through additional error details from other parts of your system. So if you don't have extra error info you are trying to move through system, then nullptr should be good enough)
+
+[15:53:38.0066] <Redfire>
+So it should be fine, I can't figure out how to construct one from rust anyway so 😅
+
+
+2022-09-26
+[02:37:42.0840] <Mohamed Atef>
+> <@mohamed_atef:matrix.org> https://phabricator.services.mozilla.com/D157842
+
+Ping
+
+[02:50:13.0543] <arai>
+thank you for ping
+
+[07:45:10.0707] <edoput>
+Hello all. I'm facing a simple issue with rooting where I'm sure I'm taking the long way around. I'm currently rooting on the stack a temporary variable which I initialize with a HandleValue; say `JS::RootedObject o(ctx, &someHandleValue.toObject())`. This conversion is necessary because later on I use another JSAPI which takes a HandleObject. Is there an easy way out of this? Are conversions from HandleValue implemented somewhere I'm not looking at?
+
+[07:46:14.0546] <Ms2ger 💉💉>
+No, this is the way to go
+
+[07:49:39.0502] <edoput>
+Thanks, just felt silly to go through this.
+
+[08:41:39.0973] <davidj361>
+Is it normal that when you try to use `toInt32()` on a return rval from JS_CallFunctionName that some assertion fails?
+
+[08:42:14.0816] <davidj361>
+ * Is it normal that when you try to use `toInt32()` on a return rval from `JS_CallFunctionName` that some assertion fails?
+
+[08:44:21.0504] <ptomato>
+if you didn't check `isInt32()` first, maybe?
+
+[08:44:57.0042] <edoput>
+Another less silly question.  My app only has one thread and I would like to decouple a simple UDP listener from the main thread. I can spawn a thread from C and create a new context to do some JS interactions on the new thread. Another options would be to spawn a thread from a JSNATIVE and start the UDP listener there. I'm not sure which approach to take and it would be nice to hear if one of the two is (already) doomed to fail.
+
+[08:46:02.0117] <Ms2ger 💉💉>
+If your first approach implies touching the same js objects from different threads, that's doomed :)
+
+[08:49:01.0760] <edoput>
+I understand that two different contexts and different (separated) realms cannot share JS objects but I also saw the "transplant" part of the API. I'm not going to share JS objects between the two until I  **really** need to.
+
+[08:50:27.0490] <edoput>
+Ideally I would use a very simple `network.js` script to read the incoming packets, do some book-keeping on the senders and transplant an array buffer to the `main.js`
+
+[08:50:56.0778] <mccr8>
+Transplanting is extremely complex so you really do not want to use it. Also transplanting only involves objects on the same thread and in the same JS runtime.
+
+[08:51:24.0446] <edoput>
+excellent XD
+
+[08:51:37.0696] <mccr8>
+In Firefox, "moving" objects between threads like that would involve structured clone.
+
+[08:52:04.0267] <mccr8>
+You structured clone an object from one thread into a buffer, transfer the buffer, then deserialize it out. I don't know if it supports whatever types you need, though. Also it is fairly complex.
+
+[08:52:43.0440] <Ms2ger 💉💉>
+> <@mccr8:mozilla.org> Transplanting is extremely complex so you really do not want to use it. Also transplanting only involves objects on the same thread and in the same JS runtime.
+
+    This place is not a place of honor…no highly esteemed deed is commemorated here…nothing valued is here.
+
+[08:58:05.0406] <davidj361>
+How do you know when to use HandleValue vs RootedValue? Like would I use RootedValue for obtaining return values from JS and for passing C++ values to JS?
+
+[08:58:43.0072] <Ms2ger 💉💉>
+Rooted for variables, Handle for arguments
+
+[08:59:05.0824] <ptomato>
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr91/docs/GC%20Rooting%20Guide.md
+
+[08:59:33.0817] <davidj361>
+I've read it
+
+[09:00:24.0038] <davidj361>
+> <@ms2ger:igalia.com> Rooted for variables, Handle for arguments
+
+in what context? handle for passing arguments to calling a JS function in C++?
+
+[09:01:24.0715] <edoput>
+> <@mccr8:mozilla.org> You structured clone an object from one thread into a buffer, transfer the buffer, then deserialize it out. I don't know if it supports whatever types you need, though. Also it is fairly complex.
+
+For more context. I receive some UDP packets, join them together when I see all I needed, expose them as an ArrayBuffer to a `network.js` script which may decide to drop it all-together or forward it to `main.js` which is executed on a different thread because I don't want the network to block. Structured clone sounds good enough for me and would allow me to keep allocation and deallocation in the same thread (network) which should be a plus. Thanks a lot for the input.
+
+[09:05:47.0881] <edoput>
+Maybe my initial question would be best rephrased as how bad am I going to suffer to spawn a thread from inside a JSNATIVE? 
+
+[09:07:37.0092] <edoput>
+I guess this is the approach a Workers like API would take but I'm unsure if I'm actually better with just two C threads spawned at the beginning of time
+
+[09:31:45.0957] <davidj361>
+how do you properly check if converting a `BigInt` into a `uint64_t` will cause an overflow or not?
+
+[09:32:54.0632] <davidj361>
+`JS::BigIntlessThan`?
+
+[09:33:00.0509] <davidj361>
+ * `JS::BigInt::lessThan`?
+
+[09:33:09.0798] <davidj361>
+ * using the static functions `JS::BigInt::lessThan`?
+
+[09:37:20.0271] <ptomato>
+use `JS::BigIntFits(JS::BigInt*, uint64_t*)`: https://searchfox.org/mozilla-central/source/js/public/BigInt.h#208
+
+[09:53:34.0097] <davidj361>
+> <@pchimento:igalia.com> use `JS::BigIntFits(JS::BigInt*, uint64_t*)`: https://searchfox.org/mozilla-central/source/js/public/BigInt.h#208
+
+ah thank you, was looking in src/vm/BigIntType.h as that's where I found ToBigInt and all the other API I needed.
+
+[09:59:57.0408] <davidj361>
+oh...I don't have it from the patches at the bottom...
+https://bugzilla.mozilla.org/show_bug.cgi?id=1606568
+
+[10:03:50.0485] <davidj361>
+i.e. it doesn't exist in esr78
+
+[10:13:38.0174] <davidj361>
+also as a SM embedded, am I supposed to not have access to JS::BigInt:SomeStaticFunction?
+
+[10:13:42.0945] <davidj361>
+ * also as a SM embedder, am I supposed to not have access to JS::BigInt:SomeStaticFunction?
+
+[10:27:51.0643] <ptomato>
+if it's in `src/vm/`, then those are not exposed in the headers and shared library
+
+[10:31:28.0309] <davidj361>
+ * also as a SM embedder, am I supposed to not have access to JS::BigInt::SomeStaticFunction?
+
+[10:33:31.0165] <ptomato>
+I forgot I added more public BigInt APIs in a different bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1706866
+
+[10:53:15.0374] <davidj361>
+thank you for the link
+
+
+2022-09-27
+[19:22:03.0525] <sfink>
+edoput: HandleValue -> RootedObject is a pain, but `Value` and `JSObject*` are two different things and have a different bitwise representation that you need to convert between. Handle<T> is really just a T* that you happen to know will be visited by the GC, usually because it's the T* stored within a Rooted and thus part of a linked list of Rooteds that the GC knows to visit. Each linked list handles a single type so we can scan over it quickly without inspecting anything to figure out what type it is and therefore what its bits mean.
+
+[22:41:52.0070] <Redfire>
+I just had a possibly really dumb idea, since rust enums are also tagged unions, I could try to unify my local types and it should work
+```rs
+enum Local<'l, T> {
+  Rooted(RootedGuard<'l, T>),
+  Handle(Handle<'l, T>),
+  MutableHandle(MutableHandle<'l, T>),
+}
+```
+If a user asks for a mutable handle when they only have a handle, I'll just return an error or smth (TBD)
+
+This allows me to fix the issue that my API heavily recommends not rooting things (which can lead to UB) and rooting excessively so I think it's probably a not terrible idea.
+
+Does anyone here think its a particularly bad idea or anything 
+
+[12:30:09.0249] <kfjvj>
+I'm encountering a strange issue where JS_GetPrivate returns a null pointer in the finalizer callback.  However, the private slot works fine in all the member functions I've defined.  Could this have something to do with a failure to properly trace the private slot or something?
+
+[13:12:32.0945] <dheitbrink>
+When are destructors for custom objects actually called? Lets say I have a custom class that in the constructor adds a object to a resource pool (in the c++ end), and in the destructor that removes it. Would it be possible for me while int the constructor for an object, and allocating resources for it to trigger a GC, which in turn calls a destructor, for another object? 
+
+[13:13:04.0226] <kfjvj>
+> <@dheitbrink:mozilla.org> When are destructors for custom objects actually called? Lets say I have a custom class that in the constructor adds a object to a resource pool (in the c++ end), and in the destructor that removes it. Would it be possible for me while int the constructor for an object, and allocating resources for it to trigger a GC, which in turn calls a destructor, for another object?
+
+Maybe you're thinking of finalizers.
+
+[13:18:30.0230] <dheitbrink>
+yeah sorry, I meant finalizes, instead of destructors. 
+
+[13:22:39.0125] <kfjvj>
+I'm no expert, but I don't think that triggering a GC call in a constructor is good practice.  A finalizer is only called on an object that is unreachable from any JS code.  Is it absolutely necessary that this finalizer gets called before the other object is constructed?
+
+[13:34:03.0632] <dheitbrink>
+No. Really in this case the two actual JS objects are unrelated, just of the same type. I am just concerned about protecting the object pool, basically do I need to add some type of concurrency control around adding and subtracting to the object pool? In this case I am not trying to trigger a GC, but I am concerned about an edge case where I push the amount of memory used in the constructor over a threshold and it triggers a GC.    
+
+[13:39:20.0774] <kfjvj>
+> <@kfjvj:mozilla.org> I'm encountering a strange issue where JS_GetPrivate returns a null pointer in the finalizer callback.  However, the private slot works fine in all the member functions I've defined.  Could this have something to do with a failure to properly trace the private slot or something?
+
+I figured out the issue I was having.  Since the finalizer gets called on the prototype as well as instances, it was the prototype that had a null private slot.
+
+
+2022-09-28
+[22:22:57.0891] <arjun>
+hi, i have a general question:
+
+how does spidermonkey relate to V8 in terms of design and performance?
+
+also will jsparagus eventually replace SpiderMonkey's frontend?
+
+[22:34:27.0798] <arjun>
+* hi, i have a general question: how does spidermonkey relate to V8 in terms of design, performance, and security? also will jsparagus eventually replace SpiderMonkey's frontend?
+
+[23:16:45.0900] <Redfire>
+re: jsparagus, this is from the boa/jsparagus discord 
+
+[00:50:10.0499] <edoput>
+> <@sfink:mozilla.org> edoput: HandleValue -> RootedObject is a pain, but `Value` and `JSObject*` are two different things and have a different bitwise representation that you need to convert between. Handle<T> is really just a T* that you happen to know will be visited by the GC, usually because it's the T* stored within a Rooted and thus part of a linked list of Rooteds that the GC knows to visit. Each linked list handles a single type so we can scan over it quickly without inspecting anything to figure out what type it is and therefore what its bits mean.
+
+Thanks! This explains a lot.
+
+[06:45:22.0783] <caleb.distributive>
+Hi everyone, I'm developing a C++ project that embeds Spidermonkey (which successfully compiles on UNIXy environments), but am struggling to get it to compile on Windows (using CMake if thats relevant). I have already properly set up the include folder, but the MSVC compiler fails with the following error: https://paste.mozilla.org/zftLnAmP
+
+Looking at the relevant file (jspubtd.h), looks like the macro defining the JSProtoKey enum is somehow resulting in a syntax error. Which is super weird because I've already built it completely fine using MozillaBuild on Windows, as well as configure on Linux.
+
+Does anyone know how to solve this problem?
+
+[06:46:16.0209] <Ms2ger 💉💉>
+Is building with msvc still supported?
+
+[06:46:43.0917] <arai>
+there's existing bug. let me search
+
+[06:47:06.0220] <arai>
+bug 1768634
+
+[06:47:07.0761] <botzilla>
+https://bugzil.la/1768634 — UNCONFIRMED (nobody) — JSProtoKey macro won't compile on MSVC due to __VA_ARGS__ incompatibility
+
+[06:48:45.0829] <caleb.distributive>
+Is there a potential fix for this, or is MSVC just completely non-viable? Im making an open-source project and would like my Windows developers to jump through as few hoops as possible
+
+[06:49:26.0565] <arai>
+some possible workaround is in comment 4 there
+
+[06:49:34.0792] <arai>
+not yet patched tho
+
+[06:51:25.0321] <arai>
+I think, basically, building with MSVC is no longer supported, but patches are welcome as long as it's not too complex
+
+[06:58:34.0164] <caleb.distributive>
+Cool, thank-you for the help
+
+[09:26:55.0684] <ptomato>
+we have build instructions for embedders for MSVC in GNOME https://gitlab.gnome.org/GNOME/gjs/-/blob/master/README.MSVC.md
+
+[10:24:40.0274] <kfjvj>
+I have a question about JS_SetNativeStackQuota.  Does this function only set limits on stacks, or does it pre-allocate blocks of memory to be used as stacks for each context?
+
+[11:51:40.0832] <jandem>
+kfjvj: it just sets the limit. It doesn't do any allocation
+
+
+2022-09-29
+[04:44:16.0077] <Redfire>
+When using an external underlying source for a `ReadableStream`, is it possible to return a `Promise` or something like that?
+I'm trying to do a `fetch-like` API currently
+
+[04:45:17.0967] <Redfire>
+ * When using an external underlying source for a `ReadableStream`, is it possible to return a `Promise` or something like that? so that the data gets loaded asynchronously
+I'm trying to do a `fetch`-like API currently
+
+[06:44:44.0868] <mgaudet>
+> <@redfire75369:mozilla.org> When using an external underlying source for a `ReadableStream`, is it possible to return a `Promise` or something like that? so that the data gets loaded asynchronously
+> I'm trying to do a `fetch`-like API currently
+
+So it's been a while since I've looked at that code, if I recall correctly, it should be async by default (in the sense that requestData doesn't itself provide the data, and then you've got ReadableStreamUpdateDataAvailableFromSource which can trigger the write in the buffer) 
+
+Having said that, I have to caution you a bit: The SpiderMonkey implementation of ReadableStreams is not long for this world. For firefox we actually have totally replaced the Streams API with an implementation built in the DOM code, and we're planning on removing the JS Streams implementation in the next few releases.
+
+[06:45:47.0592] <mgaudet>
+I know at least one other embedder is going to be investigating if they can consume the DOM streams implementation over the next half year or so, but it's not clear when that will be done or how consumable that will be for other embedders.
+
+[06:50:19.0002] <mgaudet>
+Another option worth investigating for streams support, IMO, would be Deno's implementation, currently located [here](https://github.com/denoland/deno/blob/15ea624790f2f96ba9d852f34d114d6c8329245a/ext/web/06_streams.js#L474) 
+
+[06:50:24.0246] <mgaudet>
+ * Another option worth investigating for streams support, IMO, would be Deno's implementation, currently located [here](https://github.com/denoland/deno/blob/15ea624790f2f96ba9d852f34d114d6c8329245a/ext/web/06_streams.js)
+
+[07:09:10.0300] <Redfire>
+> For firefox we actually have totally replaced the Streams API with an implementation built in the DOM code, and we're planning on removing the JS Streams implementation in the next few releases.
+Oh, I had no idea. Well... I really don't want to implement streams on my own, but I guess I'll need to, *sigh*
+
+[07:09:16.0507] <Redfire>
+ * > For firefox we actually have totally replaced the Streams API with an implementation built in the DOM code, and we're planning on removing the JS Streams implementation in the next few releases.
+Oh, I had no idea. Well... I really don't want to implement streams on my own, but I guess I'll need to, _sigh_
+
+[07:10:33.0401] <Redfire>
+* > For firefox we actually have totally replaced the Streams API with an implementation built in the DOM code, and we're planning on removing the JS Streams implementation in the next few releases.
+
+Oh, I had no idea. Well... I really don't want to implement streams on my own, but I guess I'll need to, _sigh_
+
+[08:47:06.0091] <mgaudet>
+> <@redfire75369:mozilla.org> > For firefox we actually have totally replaced the Streams API with an implementation built in the DOM code, and we're planning on removing the JS Streams implementation in the next few releases.
+> 
+> Oh, I had no idea. Well... I really don't want to implement streams on my own, but I guess I'll need to, _sigh_
+
+Yeah, it's unfortunate. The JS Streams implementation was too brittle and had diverged from the official spec
+
+[08:48:16.0619] <mgaudet>
+I'd really suggest that instead of implementing yourself you figure out a JS polyfill -- https://github.com/MattiasBuelens/web-streams-polyfill comes from one the spec authors, and should be adaptable to your needs with hopefully not too much effort.
+
+[08:49:21.0003] <Redfire>
+While a JS polyfill can work, that's far from ideal to work with when using native code
+
+[08:50:21.0862] <mgaudet>
+Yeah :( 
+
+[08:51:50.0780] <mgaudet>
+So having done this myself, I'd argue that if you've got good primitives, implementing just the ReadableStreams portion of the Streams spec isn't awful. However, pain will vary depending on primitives. e.g. when I did the DOM streams implementation I was able to lean on WebIDL bindings generation to take care of much of the awkward conversion and type-checking code that would be a pain to build through jsapi 
+
+[08:52:11.0600] <mgaudet>
+It's nevertheless, a good chunk of work. 
+
+[08:52:45.0614] <Redfire>
+I can't use WebIDL directly, but I do have a bunch of convenience things for creating native functions, with conversions and type-checking dealt with
+
+[08:54:14.0541] <mgaudet>
+On the plus side: The spec is relatively clearly written (in particular ReadableStreams; the hairiest bit is implementing `ReadableStream.prototype.tee`) 
+
+[08:55:21.0402] <mgaudet>
+Redfire: (having said that... if you don't care for web-compat, I personally have a suspicion that you could build a simpler streaming data-processing model than Streams, which is... heavily engineered) 
+
+[08:57:08.0549] <Redfire>
+I don't necessarily care about web-compat, but I'd prefer if I had it
+
+[08:58:04.0459] <mgaudet>
+Redfire: Sorry. I wish we had a better answer here. We're hoping in the medium term (2-3 years) we will, but that's of no use to you today. 
+
+[08:58:56.0079] <Redfire>
+At my current pace, it'll be a couple years before I need to deal with streams, so maybe there'll be something better 😆
+
+[08:59:25.0487] <mgaudet>
+🤞
+
+[09:05:28.0250] <Redfire>
+At least I can still implement the rest of `Response`, which is what most people actually use
+
+[09:05:43.0601] <Redfire>
+only thing I can't is `Response.body`
+
+[15:46:30.0454] <shu>
+iain: hey there, are you able to share a timeline estimate of the Atomics.waitAsync implementation? emscripten would like to use it for something and is wondering about general availability
+
+
+2022-09-30
+[17:55:00.0890] <iain>
+shu: I have a mostly complete implementation and I'm just getting it in shape for review. If everything goes smoothly, I expect it to land in Firefox 107; unless something goes badly wrong, it should land no later than Firefox 108.
+
+[01:24:05.0161] <Standard8>
+Would it provide much benefit to us to remove `Components.[utils|results|classes|interfaces]`? Having been largely replaced by `Cu|Cr|Cc|Ci`.
+
+As far as I can tell, they are mainly not used now - if my searchfox searches are right, there's < 150 instances of each, some of those are in docs and most are in test code.
+
+It would probably mean that ESLint has a little less to do, though it probably wouldn't visually affect run times.
+
+[04:18:13.0209] <arai>
+fwiw, there are some consumers of `Components.*` in privileged extensions
+
+[10:30:29.0399] <shu>
+iain: wonderful, thank you for the info
+
+[13:05:27.0922] <pslack>
+Hello spiderMonkey folks.   I have a pet project for an aging spiderMonkey 1.8.5 that runs in MaxMsp.  My use case is to do advanced debugging that is beyond what is provided by Cycling '74 MaxMSP development environment.  I have a hello world already constructed with the help of developers at Cycling '74:  I am able to build and compile a native package (c++) that attaches to the engine at runtime and grabs the main JS handle.  The package is compiled against the original release of 1.8.5 api headers (generated on an older version of OSX from the original source) and linked to Cycling's implementation dynamic library.  I'm looking for advice and tips of what steps to take next, for example, is it possible to remotely attach a more sophisticated debugger / ide toolset.  Should I look at Xulrunner for example to attach a remote debugger?  Is it even possible to get the source code for that and would it help?  Do I have to build a debugger from scratch?  Is there a different group for geriatric SpiderMonkeys? :-)Thanks for your consideration.
+

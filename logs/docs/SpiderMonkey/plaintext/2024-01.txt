@@ -1,0 +1,2418 @@
+2024-01-03
+[02:44:15.0834] <l11d>
+is there a hidden bug for `Assertion failure: !ins->isGuardShape(), at jit/ScalarReplacement.cpp:304`
+
+[02:45:50.0454] <l11d>
+ * is there a hidden bug for `Assertion failure: !ins->isGuardShape(), at jit/ScalarReplacement.cpp:304` ?
+
+[03:21:48.0216] <jandem>
+l11d: no, please file one :)
+
+[03:50:44.0110] <l11d>
+done. I also started to see `Self-hosted JavaScript assertion info: [Latin 1]"./../js/src/builtin/intl/CommonFunctions.js:890: lazy data must exist already"` but I'm still waiting for a reliable reproducer
+
+
+2024-01-04
+[05:08:52.0259] <liam_g>
+I finally got the `JS::StructuredClone` stuff working as I want it to, to help me serialize custom types. It's quite satisfying, as I've been struggling with this problem for months. I wonder though if I can use `StructuredClone` to filter our certain properties based on their key? I'm looking to do the equivalent of this:
+
+`````
+JSON.stringify(obj, (key, value) => {
+  if (key === "rejected")
+   return undefined
+  else return value
+}
+`````
+
+[05:11:01.0267] <liam_g>
+It's very easy with JSON, but I can't find a way of doing this with the StructuredClone API, since the `WriteStructuredCloneOp` only seems to get called when it encounters an object that it doesn't recognize (whereas in my case, it's just plain objects that I want to filter).
+
+[06:43:02.0833] <liam_g>
+I suppose I could use a Proxy on the way in...
+
+
+2024-01-05
+[22:31:18.0179] <arai>
+do we send intent-to-unship when dropping non-standard JS behavior?  it's for bug 1872793
+
+[22:31:20.0820] <botzilla>
+https://bugzil.la/1872793 — ASSIGNED (vinny.diehl) — Drop support for day of week late in the format for Date.parse
+
+[23:59:50.0597] <jandem>
+this is a fairly minor change to the date parser so I think either way is fine
+
+[00:02:24.0734] <jandem>
+it could be interesting to generate a large number of random date/time-like strings and see how many match chrome/safari now compared to older versions
+
+[00:05:20.0892] <arai>
+okay, thanks
+
+[03:09:41.0771] <Redfire>
+Could I suggest all `JS_PUBLIC_API` functions that take in `mozilla::Range` take them by reference instead of value? So, `JS::StringToBigInt`, `JS_CopyStringChars`, `JS::LossyTwoByteCharsToNewLatin1CharsZ`
+They're not actually "used up", so references should be fine. This is also me being selfish for FFI, but that's not so important.
+
+[03:17:04.0215] <nbp>
+jandem: I made a tiny patch for testing Android, with some atexit fflush calls: https://treeherder.mozilla.org/jobs?repo=try&collapsedPushes=1234692%2C1235392%2C1235350&revision=58bb1b7692886e21625c2a1c47a8f3f0ded382d9
+I would have expected them to be called by default by the system, but so far this does not seems to reproduce the issue. We do see some failures which are being reported as linker issues, but these are actual assertion errors without a truncated output.
+
+[03:19:54.0519] <jandem>
+nbp: it reproduces on try without these changes?
+
+[03:34:12.0718] <arai>
+Redfire: sounds okay to me.  feel free to open a bug and post a patch
+
+[03:34:42.0028] <arai>
+we already receive `TranscodeRange` with reference
+
+[03:36:20.0141] <bnjbvr>
+ohey from the other side 👋 how's everyone doing?
+
+[03:37:09.0088] <bnjbvr>
+I was curious, do you still find botzilla rendering bug links useful? the matrix bot is running on a docker instance on my machine, and I was considering to shut it down at some point
+
+[03:50:20.0273] <arai>
+yeah, it's still useful, thank you for your time and effort!   but we could post bug number with markdown link if necessary (there's a button on bugzilla to copy markdown linked bug number).  so please don't feel obliged to keep it running
+
+[04:40:14.0314] <nbp>
+jandem: There are some failures, but not the one where the messages seems to be truncated so far.
+
+[04:43:39.0016] <nbp>
+bnjbvr: Hey salut 👋
+Apparently it is still replying infrequently, and this is useful to have the bug title as a context. Maybe this could be run on someone else computer if you want to shut it down.
+
+[04:46:33.0936] <Yu-Wei Wu>
+Hey guys, I'm trying to make an existing static library that can share to others to static link it:
+https://github.com/servo/mozjs/issues/439
+But on Windows, it seem symbols are not included in `js_static.lib` and will result in link error like: `ote: lld-link: error: path\to\mozjs\target\debug\build\mozjs_sys-399411bfb8ac2825\out\build\js_static.lib: could not get the buffer for a child of the archive: '../jsmath.obj': no such file or directory`.
+I've tried to pass `--whole-archive` to CFLAGS and LDFLAGS, but the result is still the same:
+https://github.com/wusyong/mozjs/pull/2/files#diff-0b7f147d4f3b2c3d20356de12d6fab208b2ad75c07b2e9a9984ba83915a213e9R43
+Is there any config that could resolve this?
+
+
+2024-01-06
+[06:55:02.0678] <evilpie>
+Redfire: thanks for submitting  a patch
+
+[07:28:38.0721] <Redfire>
+Clearly my brain wasn't working
+
+[07:28:45.0047] <Redfire>
+Still not that used to C++
+
+
+2024-01-08
+[08:08:51.0116] <mgaudet|sick-but-also-pto-until-january-8>
+> <@aolo2:matrix.org> Hello everyone and merry christmas! Ben Visness pointed me here for more indepth js engine questions. I'm working on a thing that has to run in the browser and do so really quickly. I'm comfortable with native profiling tools, and was wondering what are my options for doing "serious profiling" for code running in the browser, beyond what firefox profiler (which is really good!) gives me. For example, I would like to know if my routine is memory or compute bound. Do such things exist? Maybe there are some flags or experimental features I can enable? Or would it be more straightforward to just use native tools and compile to WASM? Thanks a lot!
+
+Depends a bit on your workload -- if you can get it to run in the shell, then you can use tools like perf; then to determine the compute / mem bound you'd want to look at questions like "is the IPC of your workload as high as it could be". For regular code in the browser... I'm less sure about the good story here
+
+[08:54:23.0519] <jimb>
+Say, general question, just for background:
+
+[08:55:12.0009] <jimb>
+Why does SpiderMonkey try so hard to report out-of-memory conditions? Why doesn't it just crash?
+
+[08:55:26.0702] <jimb>
+The rest of Firefox just crashes on OOM, right?
+
+[08:56:27.0351] <mccr8>
+Yes, the rest of Firefox crashes on OOM by default. You can use fallible allocation but you have to opt into it.
+
+[08:57:24.0342] <jimb>
+Right. The "Why" question is what I'm interested in.
+
+[08:57:35.0781] <jimb>
+Because, SpiderMonkey definitely works hard on it.
+
+[09:00:04.0126] <iain>
+jimb: A very good question. I've been arguing for years that we should just give up on OOM handling.
+
+[09:00:51.0729] <iain>
+At one point it was a thing that distinguished us from V8. IIUC, mongodb switched from v8 to sm for their embedded JS engine because they wanted OOM handling.
+
+[09:02:05.0493] <iain>
+In some contexts, like Ion compilation, there's an argument that it is wrong and bad for a webpage to crash just because we tried to make it go faster.
+
+[09:04:45.0095] <iain>
+Based on telemetry, it does seem to avoid some crashes in the wild (as measured by the number of crash reports where we OOM, but recover well enough to run a full GC.)
+
+[09:05:07.0405] <nbp>
+jimb: To make sure the blame goes to the rest of Firefox, for not taking care of properly handling Out Of Memory conditions ;)
+
+[09:07:24.0222] <nbp>
+My take is that every optimization should not cause a failure. IonMonkey is an optimization, and failing to optimize the code should not cause the failure to execute the code.
+
+[09:12:49.0759] <nbp>
+mccr8: This is not completely true, the rest of Firefox crashes on small OOMs, but should still handle failures of large allocations.
+
+[09:13:41.0648] <iain>
+Isn't that what mccr8 said? "You can use fallible allocation but you have to opt into it."
+
+[09:14:47.0002] <iain>
+I don't think we would add OOM handling to the engine today if it didn't already exist, but given that it does, the argument for keeping it is that the cost of adding OOM handling in new code is smaller than the value of avoiding crashes.
+
+[09:15:57.0524] <nbp>
+In the case of JS, a small and large allocation mostly depend on the user input: `new Array(1)` and `new Array(200000000)` 
+
+[09:18:26.0569] <iain>
+To the best of my knowledge, no other JS engine handles OOM like we do.
+
+[09:18:42.0858] <nbp>
+I agree, if the code base did not had OOM handling, we would not be adding it.
+
+[09:19:54.0271] <nbp>
+Stack overflow have to be handled for Web compatibility reasons. I do not know if there is some similar corner case for OOMs.
+
+[09:54:05.0067] <jimb>
+These are exactly the sorts of considerations and choices I wanted to hear about. Thanks very much!
+
+[10:03:45.0211] <jimb>
+But there was a point in the past where we implemented the OOM sweep tests, that try to fail each allocation in turn and make sure they're all covered. That must have been a lot of work to stand that up initially. Do you remember why it was undertaken?
+
+[10:04:15.0991] <jimb>
+Was it just someone getting a bee in their bonnet and nobody stopped them? Or was the investment discussed more as a team?
+
+[10:04:26.0917] <mccr8>
+IIRC there was a pwn2own exploit that hit an OOM code path.
+
+[10:04:50.0967] <jimb>
+I had a vague recollection that it had something to do with security.
+
+[10:04:54.0299] <jimb>
+ * I had a vague recollection that it had something to do with security, yeah.
+
+[10:07:22.0437] <jimb>
+I guess since it's essential to handle OOMs on allocation whose size is controlled by content, you can't have a blanket policy of crashing on OOM.
+
+[10:07:40.0025] <jimb>
+And if you can't eliminate the OOM paths altogether, the exploits show that you'd better be testing them.
+
+[10:09:25.0145] <nbp>
+jimb: Yes, this was at the London work week, Jon added the OOMTest function, first based on the OOMAtAllocation, to make it more stable across engine changes.
+
+[10:10:12.0919] <nbp>
+I do not recall this being that painful overall.
+
+[10:12:44.0036] <nbp>
+The problem with OOMAtAllocation is that it would be hard to reduce by fuzzers, also you would keep test cases which are no longer failing the way the test case was designed for.
+
+[10:13:24.0184] <nbp>
+So OOMTest is kind of a way to embrace our OOM reporting by making "proper" tools to check for them.
+
+[10:14:28.0985] <nbp>
+We all did your part in making OOMTest happen.
+
+[10:18:04.0120] <mgaudet>
+I would say that this is an area we're certainly curious about; whether or not our OOM handling actually is worth the development effort to maintain it. I don't think we have a firm grasp on the tradeoffs here. (e.g, I hypothesize that it would make some JSAPI functions infallible, but I also think I could be proven wrong). 
+
+[10:20:37.0269] <mgaudet>
+I know in the interaction layer between DOM and JSAPI I have OOM concerns; the existence of OOM exceptions means some web-standards have the possibility of getting into an inconstent state, where an operation is specified as infallible, but is fallible in practice -- though, this is not exclusively the domain of OOM; stack overflow is another potential issue here. 
+
+[10:22:16.0759] <mgaudet>
+Having said that, crash on OOM is a big hammer, and each crash on OOM is a real user impacted -- I think there's an organizational push towards reliability happening, which makes that big hammer less appealing, unless we can show that our OOM handling is truly not that helpful (e.g., a very high fraction of 'recovered' ooms crash when re-entering gecko land anynow) 
+
+[10:23:21.0172] <nbp>
+jimb: One big reason for having OOM checks is that we had tabs, but only a single process.
+
+[10:28:18.0768] <iain>
+One thing I'll add is that security-wise it is better to crash than try to recover, because recovering leaves you in a potentially unexpected, untested state where it's much easier for bugs to lurk. Note that oomTest as it is currently implemented still only gives us patchy coverage: it calls a function N times failing on the Nth allocation, but it doesn't reset the VM / warmup counters in between, so allocations that only happen occasionally (eg during a compilation / bailout) don't get full coverage. Rerunning a test from a clean slate for every single allocation would be prohibitively slow. We rely on fuzzing instead.
+
+[10:33:07.0127] <iain>
+Digging into bugzilla, here are some of the milestones of testing OOM: [a shell option](https://bugzilla.mozilla.org/show_bug.cgi?id=642327), [a testing function](https://bugzilla.mozilla.org/show_bug.cgi?id=872823), [oomTest as a library](https://bugzilla.mozilla.org/show_bug.cgi?id=1155618), [oomTest as a testing function](https://bugzilla.mozilla.org/show_bug.cgi?id=1212469). Notably, even the first of those is talking about preventing regressions in OOM handling, so the decision not to crash on OOM was made at least 13 years ago.
+
+[10:36:14.0352] <nbp>
+iain: This most likely predate that.
+
+[10:37:14.0534] <iain>
+Here's a 17-year-old bug: https://bugzilla.mozilla.org/show_bug.cgi?id=383932
+
+[10:54:12.0289] <iain>
+Oh, here's another way of illustrating how long ago we made this decision: JS_ReportOutOfMemory goes all the way back to [Free the lizard](https://searchfox.org/mozilla-central/rev/3b56a9af51519d2e77e05efa672a13e6be2e9ebc/js/src/jsapi.c#1785-1789).
+
+[12:15:41.0009] <l11d>
+iain: during fuzzing, I set the `--disable-oom-functions` flag. from what I understand it could be interesting to remove this flag and search for edge-cases in OOM handling?
+
+[12:20:37.0246] <iain>
+l11d: Somewhat interesting, yes. 
+
+
+2024-01-10
+[23:26:24.0511] <hsivonen>
+What's the reason for TC39 specs not having a WebIDL-like abstraction for describing the built-ins and instead having step-by-step rules for crossing from the calling script into the built-in code? My guess is that the number of built-ins in the core spec is so small and so special-casey that an IDL didn't make sense and then `Intl` continued in the same way despite having different nature, and then Temporal also just continuing in the same way. Is my guess correct, or is there more to it?
+
+[23:32:14.0249] <hsivonen>
+Has there been an analysis of whether the boundary crossing rules in `Intl` are regular enough that there could be an abstraction instead of case-by-case rules at the boundary?
+
+[23:49:37.0571] <arai>
+there seem to be some attempt for IDL in ECMAScript: https://github.com/w3ctag/jsidl and https://github.com/tc39/proposal-idl
+
+[23:55:23.0964] <hsivonen>
+Thanks. 11 years ago and 6 years ago, it seems.
+
+[05:30:12.0003] <hsivonen>
+AFAICT, `js::ClassSpec` makes the mapping of method name to C++ function data-driven, but the C++ function itself is always responsible for manually marshaling the arguments and the return value. Is there a reason other than inlining for execution speed why there isn't a data-driven spec for argument and return value marshaling?
+
+[05:36:00.0187] <Ms2ger (back in 2024 W2)>
+As far as I'm aware, historical reasons and it being quite hard to mapt
+
+[05:36:12.0537] <Ms2ger (back in 2024 W2)>
+ *the spec requirements into that model
+
+[05:49:34.0330] <arai>
+for SpiderMonkey internal, I'm planning to introduce IDL, generated from the spec, and auto-generated bindings.  the current prototype uses "any" for all types, and each native remains same, but maybe we could extend it to use other types and generate more binding code
+
+[05:49:54.0029] <arai>
+* for SpiderMonkey internal, I'm planning to introduce IDL, generated from the spec, and auto-generate binding code. the current prototype uses "any" for all types, and each native remains same, but maybe we could extend it to use other types and generate more binding code
+
+[05:51:43.0430] <hsivonen>
+Is there a work-in-progress patch or a design doc that I can read?
+
+[05:55:09.0734] <arai>
+the patch stack is in [this try run](https://treeherder.mozilla.org/jobs?repo=try&group_state=expanded&revision=4ab9eb90818a09ffad2b79fbba921d98a837a79c) .  the IDL look like [this](https://hg.mozilla.org/try/file/4ab9eb90818a09ffad2b79fbba921d98a837a79c/js/src/webidl/Spec.webidl), and bindgen is in [this directory](https://hg.mozilla.org/try/file/4ab9eb90818a09ffad2b79fbba921d98a837a79c/js/src/bindings/)
+
+[05:55:19.0897] <hsivonen>
+I'm trying to understand how big a deal would it be to declare e.g. an array of argument conversion function pointers so that the engine would loop over such an array of argument marshaling function and arguments, put the unmarshaled arguments (integer, native-typed object pointers, or string pointer) into the right places according to the C calling convention and then call a C-linkage function that expects integers, native-typed object pointers or string pointers accordingly.
+
+[05:55:44.0623] <hsivonen>
+That is, surely there has to be a way that results in smaller code size than e.g. https://searchfox.org/mozilla-central/source/js/src/builtin/temporal/PlainDateTime.cpp#1215-1279
+
+[05:55:58.0167] <hsivonen>
+> <@arai:mozilla.org> the patch stack is in [this try run](https://treeherder.mozilla.org/jobs?repo=try&group_state=expanded&revision=4ab9eb90818a09ffad2b79fbba921d98a837a79c) .  the IDL look like [this](https://hg.mozilla.org/try/file/4ab9eb90818a09ffad2b79fbba921d98a837a79c/js/src/webidl/Spec.webidl), and bindgen is in [this directory](https://hg.mozilla.org/try/file/4ab9eb90818a09ffad2b79fbba921d98a837a79c/js/src/bindings/)
+
+Thanks.
+
+[06:08:17.0799] <arai>
+is "code side" about the binary size, or simplicity of the source code?
+
+[06:11:30.0895] <arai>
+for simple case, where arguments are handled before any other code, in the same order as arguments, with mono-morphic type, introducing the mapping would be easy
+
+[06:12:41.0973] <arai>
+but I think there are several cases where arguments are handled after other code, in different order than the arguments, and also being `undefined` is used as condition.  I'm not sure how they fit the scheme
+
+[06:14:17.0092] <arai>
+but we could incrementally introducing types into the bindgen above and evaluate the feasibility, I guess?
+
+[06:14:51.0999] <arai>
+ * is "code size" about the binary size, or simplicity of the source code?
+
+[06:15:31.0649] <Ms2ger (back in 2024 W2)>
+Yeah, once the idl is in place, it should be pretty easy to incrementally extend it
+
+[06:16:40.0981] <Ms2ger (back in 2024 W2)>
+Curious what your motivation is to build this
+
+[06:19:09.0889] <arai>
+it's for replacing [CommonPropertyNames.h](https://searchfox.org/mozilla-central/rev/52f45d12530f9f8da61c6c7237003b5d1499b6d1/js/src/vm/CommonPropertyNames.h) with better data source. Generating binding is for verifying the consistency between the generated IDL and the implementation.
+
+[06:31:56.0036] <arai>
+hm, maybe we could use the native function with native-types in JIT, with adding the corresponding type-check into JIT compiler?
+
+[08:11:42.0861] <jonco>
+To follow up on the zero-length arrays question, C++ disallows zero-length arrays: https://eel.is/c++draft/dcl.array#1
+
+[08:11:58.0368] <jonco>
+thanks to tcampbell for the answer
+
+[08:58:47.0549] <smaug>
+jonco: if nursery heap contains only stuff which can be finalized in a background thread, how much of the minorGC needs to happen still on the main thread?
+
+[09:18:44.0279] <jonco>
+smaug: In general the nursery contains stuff which does not have finalizers, with some exceptions for things we really want to run in the nursery. These things get finalized on the main thread.
+
+[09:19:38.0810] <jonco>
+Moving GC things to the tenured heap (the bulk of collection) also needs to happen while the mutator is paused otherwise it could observe stale pointers
+
+[09:33:36.0006] <@allstarschh>
+jonco, sfink : meeting?
+
+[10:01:32.0223] <hsivonen>
+> <@arai:mozilla.org> is "code size" about the binary size, or simplicity of the source code?
+
+I meant binary size
+
+[10:29:41.0300] <arai>
+so, the conversion is dynamically dispatched for each argument, based on some data structure, instead of generating a sequence of conversion as code?
+
+[10:29:52.0902] <arai>
+ * so, the conversion is dynamically dispatched for each argument, based on some data structure, instead of generating a sequence of conversion as native code?
+
+[12:51:25.0006] <hsivonen>
+Yeah. Superficially at least that would seem to result in smaller binary size. Unclear how important that _really_ is, though.
+
+
+2024-01-11
+[04:30:29.0959] <Standard8>
+How easy (or crazy) would it be to add top-level await support to xpcshell?
+
+For context, I've been wondering if we could improve xpcshell-tests when they are [waiting for the jsdebugger to connect](https://searchfox.org/mozilla-central/rev/961a9e56a0b5fa96ceef22c61c5e75fb6ba53395/testing/xpcshell/head.js#489-497). Currently they spin a CPU at 100% and dump out "Still waiting for debugger to connect" many many times.
+
+The dump is easy to fix, but the CPU still runs at 100%. The only way I can see would be to use a timer instead of `spinEventLoopUntil`, but then we're into needing to run async.
+
+If it isn't a trivial change then it probably isn't worth it for now at least - I'll just fix the log spam. The CPU isn't a massive problem, just looking to avoid spinning when we don't need to.
+
+[04:40:21.0777] <arai>
+Standard8: I don't see a difference between what timer provides vs what top-level await provides.  top-level await is async.
+
+[04:40:53.0143] <arai>
+is it to avoid having expllicit async function ?
+
+[04:42:49.0604] <Standard8>
+arai: spinning the event loop keeps it synchronous. If we try to wait for something async then xpcshell simply exits even without a call to quit.
+
+[04:43:34.0389] <arai>
+doesn't xpcshell support microtask?
+
+[04:44:08.0093] <Standard8>
+What's microtask?
+
+[04:44:47.0464] <arai>
+err, I mean,   Promise is already working in xpcshell, right?
+
+[04:45:10.0542] <arai>
+given many tests are written with add_task with async function
+
+[04:45:28.0967] <Standard8>
+oh hmm.
+
+[04:46:49.0363] <arai>
+maybe that's done also by spinning event loop tho
+
+[04:47:35.0118] <arai>
+anyway, the CPU cost doesn't change with top-level await vs regular promise or async function, unless the underlying thing change
+
+[04:48:40.0315] <arai>
+then, I wonder if you can use `Atomics.wait` or something, if you want to wait for something without consuming CPU time
+
+[04:53:41.0790] <Standard8>
+Ah yeah, I think the tests are spinning the event loop https://searchfox.org/mozilla-central/rev/961a9e56a0b5fa96ceef22c61c5e75fb6ba53395/testing/xpcshell/head.js#245-247
+
+That's called just after the test task is kicked off, 
+
+[04:53:43.0588] <Standard8>
+ * Ah yeah, I think the tests are spinning the event loop https://searchfox.org/mozilla-central/rev/961a9e56a0b5fa96ceef22c61c5e75fb6ba53395/testing/xpcshell/head.js#245-247
+
+That's called just after the test task is kicked off.
+
+[04:56:21.0474] <arai>
+now looking into `_setupDevToolsServer`.  so, it's waiting for an observer notification, right?
+
+[04:56:53.0787] <Standard8>
+yep
+
+[04:57:21.0840] <arai>
+and apparently it's from [ThreadActor.attach](https://searchfox.org/mozilla-central/rev/961a9e56a0b5fa96ceef22c61c5e75fb6ba53395/devtools/server/actors/thread.js#431).  that sounds like it's in different thread
+
+[04:58:15.0828] <arai>
+in that case, the main thread can wait with `Atomics.wait` and the devtools can wake it with `Atomics.notify` I think
+
+[04:58:45.0249] <arai>
+the problem is how to share a buffer between them tho...
+
+[04:59:23.0092] <arai>
+(I'm not sure how tightly those 2 files are coupled...)
+
+[05:01:32.0938] <Standard8>
+ok, thanks, I'll take a look and see if there's anything easy we can do there, if not I can at least stop the console spam - the CPU isn't a huge issue.
+
+[05:02:44.0327] <nchevobbe>
+this might be fixed ~ soon: https://phabricator.services.mozilla.com/D194081
+
+[05:06:00.0086] <arai>
+oh, does it mean `Atomics.wait` won't work on the main thread until it's fixed?
+
+[05:06:44.0054] <arai>
+err, I misread the commit message. it says "worker uses `Atomics.wait`"
+
+[05:07:15.0090] <arai>
+so I guess the above xpcshell's case isn't affected
+
+[05:10:46.0524] <Standard8>
+I was just trying something, and got `TypeError: waiting is not allowed on this thread`
+
+[05:12:26.0149] <Standard8>
+I think I'll just go the simple route for now 😉 
+
+[05:13:19.0049] <arai>
+I guess xpcshell needs this: https://searchfox.org/mozilla-central/rev/961a9e56a0b5fa96ceef22c61c5e75fb6ba53395/js/src/shell/js.cpp#11031
+```cpp
+JS_SetFutexCanWait(cx);
+```
+
+[05:26:21.0491] <nchevobbe>
+I read it too fast and thought you were referencing to the known issue, sorry
+
+[05:27:48.0366] <Standard8>
+Ok, that does look like it'd allow the wait, but the simple thing I was trying didn't work, probably because I was then hanging up the main thread.
+
+I don't think this is worth spending more time on though.
+
+[09:00:47.0385] <nbp>
+`bin/ar: unable to copy file 'libjs_static.a'; reason: Success`
+That's a first for me!
+
+
+2024-01-12
+[06:14:47.0230] <aolo2 (Alex)>
+> <@mgaudet:mozilla.org> Depends a bit on your workload -- if you can get it to run in the shell, then you can use tools like perf; then to determine the compute / mem bound you'd want to look at questions like "is the IPC of your workload as high as it could be". For regular code in the browser... I'm less sure about the good story here
+
+I have since rewritten the intensive part in wasm, for which I use regular profiling tools, and it's great!
+
+[08:47:14.0075] <mgaudet>
+There's no such thing as a cross-zone pointer right? So, really, a fuse for 'hasSeenObjectEmulatesUndefined' could be on the Zone, not the runtime right? 
+
+[08:59:29.0258] <iain>
+If it's per-compartment, can you check for something being passed in when we create a CCW?
+
+[09:01:55.0431] <mgaudet>
+Hmm. I mean, certainly is plausible. Would then constrain invalidation to a single compartment.
+
+[09:03:40.0361] <iain>
+We do have edges into the atom zone from outside, but I think that's a special case that doesn't matter for your original question.
+
+[09:03:59.0611] <iain>
+Otherwise, I think all inter-zone edges should be CCWs?
+
+[09:06:28.0783] <mgaudet>
+ok. I think I'm going to keep things in the runtime for simplicity until I've got this working, then I can revisit that next 
+
+
+2024-01-15
+[23:51:48.0518] <Redfire>
+What exactly is the deal with the `JS_InitClass` with regards to prototypes, I don't get it
+
+[00:18:30.0999] <hsivonen>
+Does SpiderMonkey have a policy on what compilers it needs to compile with? (I'm trying to understand the feasibility of using `__int128` internally instead of using bignums for internal math.)
+
+[00:21:18.0338] <Redfire>
+Presumably it's probably similar to firefox itself? https://firefox-source-docs.mozilla.org/contributing/build/supported.html
+
+[00:24:14.0333] <arai>
+Redfire: is it about `JS::HandleObject protoProto` parameter?
+
+[00:24:54.0944] <arai>
+if so, it's what you get with `Object.getPrototypeOf(Object.getPrototypeOf(the_class_instance))`
+
+[00:25:53.0188] <arai>
+where `Object.getPrototypeOf(the_class_instance)` is what the `JS_InitClass` returns
+
+[00:28:11.0363] <Redfire>
+Moreso about `protoClass` and `name`
+
+[00:29:10.0523] <arai>
+`name` is the constructor function's `"name"`
+
+[00:29:16.0939] <arai>
+ * `name` is the constructor function's `"name"` property
+
+[00:29:28.0083] <Redfire>
+I remember there being something about distinguishing instance vs prototype objects, is that still needed?
+https://github.com/Redfire75369/spiderfire/issues/43
+
+[00:30:16.0711] <hsivonen>
+> <@redfire75369:mozilla.org> Presumably it's probably similar to firefox itself? https://firefox-source-docs.mozilla.org/contributing/build/supported.html
+
+I was thinking SpiderMonkey might intend to support a broader range of compilers than Firefox.
+
+[00:30:48.0246] <Redfire>
+It supports more targets, not sure about compilers
+
+[00:31:22.0506] <hsivonen>
+Specifically, I'm interested in whether SpiderMonkey is still supposed to compile with MSVC.
+
+[00:33:04.0847] <arai>
+Redfire: the panic sounds like the `toString` function expects the prototype being the same thing as instance, while it's not.  then, it's more like the `toString` function's implementation's issue I think?
+
+[00:33:38.0119] <arai>
+`toString` function should check if the `this` value is compatible
+
+[00:34:41.0140] <hsivonen>
+It turns out there is https://searchfox.org/mozilla-central/source/js/src/vm/BigIntType.cpp#271
+
+[00:36:25.0029] <arai>
+my understanding is that MSVC is not supported, or at least it doesn't compile properly right now. there's bug 1768634 that's from the macro incompatibility
+
+[00:36:26.0075] <botzilla>
+https://bugzil.la/1768634 — UNCONFIRMED (nobody) — JSProtoKey macro won't compile on MSVC due to __VA_ARGS__ incompatibility
+
+[00:36:58.0456] <hsivonen>
+wingo: Is there already a way to convert int128_t/__int128 to and from SpiderMonkey BigInt?
+
+[00:37:20.0646] <wingo>
+hsivonen: i am not aware of one.  but let me look a little more
+
+[00:38:20.0638] <Redfire>
+Oh... Does it only matter that the `JSClassOps` is passed to `JS_NewObjectForConstructor` (via `JSClass`)?
+
+[00:38:44.0655] <hsivonen>
+> <@arai:mozilla.org> my understanding is that MSVC is not supported, or at least it doesn't compile properly right now. there's bug 1768634 that's from the macro incompatibility
+
+I observe that the bug hasn't been WONTFIXed.
+
+[00:38:56.0036] <hsivonen>
+> <@awingo:igalia.com> hsivonen: i am not aware of one.  but let me look a little more
+
+Thanks.
+
+[00:38:56.0281] <Redfire>
+so my `protoClass` can be null
+
+[00:41:15.0971] <wingo>
+> <@hsivonen:mozilla.org> Thanks.
+
+nothing in my now out-of-date hg checkout :)  could be someone worked on this since, though
+
+[00:41:29.0103] <wingo>
+/me clones gecko-dev
+
+[00:42:31.0289] <arai>
+hm, good point.  so it's not "not supported".  but just "doesn't compile right now"
+
+[00:49:49.0472] <arai>
+Redfire: if the prototype object can be a plain object, then yes, you can pass nullptr
+
+[00:50:28.0318] <arai>
+if you want the prototype object being something special, such like, having reserved slots etc, you can lass it to specify those things
+
+[00:50:36.0109] <arai>
+ * if you want the prototype object being something special, such like, having reserved slots etc, you can pass it to specify those things
+
+[00:54:48.0230] <hsivonen>
+Sigh. GCC and clang on godbolt seem very consistent that 64-bit targets have `__SIZEOF_INT128__` defined to 16 and 32-bit platforms don't have it defined.
+
+[01:33:28.0165] <anba>
+hsivonen: I've local patches for <https://github.com/tc39/proposal-temporal/pull/2727> to add self-written `Int128` and `Uint128` types to SpiderMonkey. (The Temporal PR allows to replace the current BigInt code in Temporal with Int128.)
+
+[01:34:19.0592] <hsivonen>
+> <@anba:mozilla.org> hsivonen: I've local patches for <https://github.com/tc39/proposal-temporal/pull/2727> to add self-written `Int128` and `Uint128` types to SpiderMonkey. (The Temporal PR allows to replace the current BigInt code in Temporal with Int128.)
+
+Great! Have you measured the impact on binary size?
+
+[01:34:47.0464] <anba>
+No, I haven't measured the impact on binary size.
+
+[01:49:43.0526] <Redfire>
+arai: I'm not doing anything fancy like that, so that shouldn't be necessary
+
+[02:21:41.0275] <valadaptive>
+Hey! Not sure if this is the right place to ask, but I haven't been able to find any information about this anywhere.
+
+It seems that creating any ArrayBuffer view (either a typed array or DataView) has a significant performance cost in all three major JS engines. Aliasing and allocation *may* affect this, but even `new Uint8Array(0)` comes with a significant slowdown, which I find odd.
+
+I ran into this when implementing some binary serialization code--the only way to encode into, or decode from, a slice of a buffer is to pass a `subarray` into `TextEncoder`/`TextDecoder`. For short-ish strings (~100 chars), the `subarray` call adds around **50-100% overhead** to each string decoded.
+
+This seems like an odd performance cliff for all 3 major JS engines to have. Is there something fundamental within the spec that adds unavoidable overhead here?
+
+The performance implications for WASM <-> JS code are also concerning. Passing data to and from WASM modules (at least, via wasm-bindgen) makes extensive use of `subarray` for marshaling data.
+
+Here's a [benchmark snippet](https://gist.github.com/valadaptive/758a45f90a6a2ea4d45ede918dd07012) if you're curious.
+
+[02:23:21.0501] <valadaptive>
+I did find a comment in ArrayBufferObject.h under InnerViewTable:
+```cpp
+  // This key is a raw pointer and not a WeakHeapPtr because the post-barrier
+  // would hold nursery-allocated entries live unconditionally. It is a very
+  // common pattern in low-level and performance-oriented JavaScript to create
+  // hundreds or thousands of very short lived temporary views on a larger
+  // buffer; having to tenure all of these would be a catastrophic performance
+  // regression. Thus, it is vital that nursery pointers in this map not be held
+  // live. Special support is required in the minor GC, implemented in
+  // sweepAfterMinorGC.
+```
+So it *seems* that creating subarrays is intended to be a very low-cost operation.
+
+[02:23:26.0726] <valadaptive>
+ * I did find a comment in ArrayBufferObject.h under InnerViewTable:
+
+```
+  // This key is a raw pointer and not a WeakHeapPtr because the post-barrier
+  // would hold nursery-allocated entries live unconditionally. It is a very
+  // common pattern in low-level and performance-oriented JavaScript to create
+  // hundreds or thousands of very short lived temporary views on a larger
+  // buffer; having to tenure all of these would be a catastrophic performance
+  // regression. Thus, it is vital that nursery pointers in this map not be held
+  // live. Special support is required in the minor GC, implemented in
+  // sweepAfterMinorGC.
+```
+
+So it _seems_ that creating subarrays is intended to be a very low-cost operation.
+
+[02:58:04.0438] <evilpie>
+I think it's "not supported" (officially), but we do take patches to make it work
+
+[04:07:49.0312] <jandem>
+I get 906ms for "encoding a string" and 1513ms for "encoding a string (w/ subarray)". A version with just the `subarray` call is about 600 ms. This is for 10 million iterations so it's not too horrible
+
+[04:09:36.0999] <jandem>
+our `subarray` implementation is currently self-hosted and I don't think we've optimized it a lot: https://searchfox.org/mozilla-central/rev/bc6a50e6f08db0bb371ef7197c472555499e82c0/js/src/builtin/TypedArray.js#1228
+
+[04:10:28.0565] <jandem>
+the `new Uint8Array(0)` loop gets a lot faster for me with `new Uint8Array(1)`. Let me see what's going on there, maybe the fast path checks > 0 somewhere
+
+[04:11:07.0297] <valadaptive>
+> <@jandem:mozilla.org> our `subarray` implementation is currently self-hosted and I don't think we've optimized it a lot: https://searchfox.org/mozilla-central/rev/bc6a50e6f08db0bb371ef7197c472555499e82c0/js/src/builtin/TypedArray.js#1228
+
+I [profiled it](https://profiler.firefox.com/public/t672qx8e9hbdk9azxf76sr0yjccy5xa5472v4ar/flame-graph/?globalTrackOrder=0&thread=0&v=10) and it looks like most of the time is spent in `TypedArrayCreateWithBuffer`, not `subarray` itself
+
+[04:11:55.0563] <valadaptive>
+Seems to be doing a lot of GC-related(?) stuff that doesn't happen when creating other objects
+
+[04:12:55.0635] <jandem>
+yes there's some necessary bookkeeping involved for arraybuffer views unfortunately
+
+[04:13:27.0063] <jandem>
+we did optimize this fairly recently in [this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1872982). I see your profile is with 121 so maybe it's worth testing with the latest nightly to see if it's faster now
+
+[04:15:56.0405] <valadaptive>
+It's way worse on nightly- 10x slower
+```
+encoding a string: 2259ms
+encoding a string (w/ subarray): 26385ms - timer ended
+new Uint8Array(0): 955ms - timer ended
+byteLength getter: 784ms - timer ended
+``
+
+[04:16:01.0333] <valadaptive>
+ * It's way worse on nightly- 10x slower
+
+```
+encoding a string: 2259ms
+encoding a string (w/ subarray): 26385ms - timer ended
+new Uint8Array(0): 955ms - timer ended
+byteLength getter: 784ms - timer ended
+```
+
+[04:16:26.0854] <jandem>
+(also the web console has some perf cliffs so for most reliable results it's best to load an HTML file)
+
+[04:17:02.0811] <jandem>
+that is interesting, let me update to the latest nightly..
+
+[04:19:36.0517] <valadaptive>
+Ah, yup, seems to be a weird devtools performance cliff
+
+[04:20:34.0115] <jandem>
+we check for length > 0 [here](https://searchfox.org/mozilla-central/rev/bc6a50e6f08db0bb371ef7197c472555499e82c0/js/src/jit/WarpCacheIRTranspiler.cpp#4139). That explains the `new Uint8Array(1)` vs `new Uint8Array(0)` cliff
+
+[04:25:28.0949] <anba>
+length = 0 requires to use `ZeroLengthArrayData`, which we don't support in the JITs, so it always takes the slow path
+
+[04:27:59.0045] <jandem>
+ `ArrayBufferObject::addView` should probably have a fast path for when we're creating new views for the same buffer as last time
+
+[04:28:47.0880] <jandem>
+there are a number of different issues so I'm not sure how much that'd actually help
+
+[04:36:05.0747] <jandem>
+the `subarray` call is about 2-3x faster for me in chrome and safari. Feel free to file a bug for this
+
+[04:36:19.0690] <jandem>
+else I can do it
+
+[04:42:01.0499] <valadaptive>
+> <@jandem:mozilla.org> the `subarray` call is about 2-3x faster for me in chrome and safari. Feel free to file a bug for this
+
+Wait, I just tested it on nightly and Chrome and the version with `subarray` is 60% slower on both
+
+[04:43:31.0332] <anba>
+For measuring the view-table overhead, it's possible to use a TypedArray with a SharedArrayBuffer. That should give a rough estimation how much overhead the view tracking creates.
+
+[04:44:41.0964] <valadaptive>
+> <@anba:mozilla.org> For measuring the view-table overhead, it's possible to use a TypedArray with a SharedArrayBuffer. That should give a rough estimation how much overhead the view tracking creates.
+
+Can you elaborate? What kind of benchmark setup would that be?
+
+[04:45:15.0306] <valadaptive>
+Measuring the difference between a regular ArrayBuffer and SharedArrayBuffer?
+
+[04:45:19.0666] <jandem>
+> <@valadaptive:mozilla.org> Wait, I just tested it on nightly and Chrome and the version with `subarray` is 60% slower on both
+
+oh I mean a version with just the `subarray` call itself without the encoding is about 2-3x faster in chrome/safari than in firefox
+
+[04:45:47.0167] <valadaptive>
+Interesting
+
+[04:45:52.0599] <valadaptive>
+They aren't optimizing it out, are they?
+
+[04:46:40.0287] <anba>
+Instead of `new Uint8Array(1024)`, use `new Uint8Array(new SharedArrayBuffer(1024))`. That should make the `subarray` call slightly faster in SpiderMonkey.
+
+[04:48:06.0568] <valadaptive>
+Is there a way to do that without spinning up a server with COEP and COOP headers set?
+
+[04:49:23.0974] <anba>
+hmm, I don't know.
+
+[04:49:32.0106] <valadaptive>
+Ah, just found the setting in about:config; never mind
+
+[04:49:37.0965] <valadaptive>
+`dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled`
+
+[04:53:49.0096] <valadaptive>
+```
+modify an ArrayBuffer: 5 ms
+modify an ArrayBuffer (w/ subarray): 652 ms
+modify a SharedArrayBuffer: 5 ms
+modify a SharedArrayBuffer (w/ subarray): 621 ms
+```
+
+[04:54:22.0353] <valadaptive>
+Couldn't use `TextEncoder` here because it doesn't work on `SharedArrayBuffer`
+
+[05:01:03.0558] <anba>
+hsivonen: I've posted the Int128 patch to <https://phabricator.services.mozilla.com/D198534>. (Bug 1874684 applies on top of bug 1870251, which isn't yet on central.)
+
+[05:01:04.0732] <botzilla>
+https://bugzil.la/1874684 — ASSIGNED (anba) — Update Temporal implementation for Duration normalization, part 2
+
+[05:01:05.0229] <botzilla>
+https://bugzil.la/1870251 — ASSIGNED (anba) — Update Temporal implementation to draft Dec 14, 2023
+
+[05:19:01.0880] <Ms2ger>
+Why in `js/src/builtin/temporal/` rather than `mfbt`?
+
+[05:26:17.0185] <valadaptive>
+> <@jandem:mozilla.org> the `subarray` call is about 2-3x faster for me in chrome and safari. Feel free to file a bug for this
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1874699 - let me know if there's more info I should provide
+
+[05:29:09.0536] <anba>
+It probably should live in `mfbt`, but right now it's only used for Temporal. When Temporal is no longer hidden behind the `--with-temporal-api` config flag, we can move it into a better directory (if not `mfbt`, then at least `js/src/util`). 
+
+[05:49:30.0283] <jandem>
+valadaptive: that looks great, thanks!
+
+[05:56:48.0365] <liam_g>
+In my embedding, all JS events are driven by a dispatch loop, where the timing of the next event is well defined using a Promise checker. It's quite common for one task to finish and the next Promise event to be scheduled a few hundred milliseconds or more into the future, during which time the dispatch loop is idle. It seems to me that this would be a good opportunity to optimise garbage collection, i.e. I could make it so that if the dispatch loop will be idle for the next say 200 milliseconds, it queries if a garbage collection is pending, and if necessary runs it. Is this a good idea, or should I just let the GC do its thing?
+
+[06:13:40.0405] <jonco>
+liam_g: You can call JS_MaybeGC in situations like this to GC if you are getting near to triggering one
+
+[06:18:21.0706] <liam_g>
+Are there any hidden costs or gotchas? Especially if I'm calling it quite frequently.
+
+[06:20:57.0128] <jonco>
+No, that should be fine
+
+[10:06:34.0425] <zombie>
+do we not use any idl for exposing WebAssembly? https://searchfox.org/mozilla-central/source/js/src/wasm/WasmJS.cpp#976
+
+[10:19:39.0519] <zombie>
+or more concretely, given there's a wpt, would this be a reliable description for the api shape exposed in gecko? https://searchfox.org/mozilla-central/source/testing/web-platform/tests/interfaces/wasm-js-api.idl#6
+
+[10:19:50.0773] <zombie>
+ * or more concretely, given there's a wpt, would this be a reliable description for the api shape exposed in gecko? https://searchfox.org/mozilla-central/source/testing/web-platform/tests/interfaces/wasm-js-api.idl
+
+[14:05:27.0068] <mgaudet>
+> <@zombie:mozilla.org> do we not use any idl for exposing WebAssembly? https://searchfox.org/mozilla-central/source/js/src/wasm/WasmJS.cpp#976
+
+Inside the JS engine we don't (currently) use WebIDL. Investigation is underway to partially consume it. 
+
+As to your second question, I'll have to leave it to the Wasm team tomorrow to answer 
+
+[14:12:06.0052] <mgaudet>
+confession: [JS::WeakCache](https://searchfox.org/mozilla-central/source/js/public/GCHashTable.h#377) != [JS::WeakCache](https://searchfox.org/mozilla-central/source/js/public/SweepingAPI.h#90)... which is confusing. 
+
+
+
+[14:12:10.0562] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:14:20.0691] <zombie>
+thanks, i figured as much when i couldn't find things like `uneval` in any idl in m-c :)
+
+
+2024-01-16
+[02:58:18.0717] <sonarshroom>
+Hello! I am currently working on an in-house game engine which embeds SpiderMonkey. I am attempting an upgrade from SM 38 to SM 91. Is this the right place to ask about issues I'm facing?
+
+[03:08:40.0155] <arai>
+yes, feel free to ask questions 
+
+[03:53:31.0284] <sonarshroom>
+Alright, thanks! So, the current problem we're facing is weird to say the least.
+
+We already have some of the bindings working, namely those that don't use inheritance of any kind. Our inheritance was essentially done with a couple of templated classes which served to invoke methods on our target object. The parent object's method data was injected using an std::vector<JSFunctionSpec> stored within the parent which served to invoke those parent methods using. Part of the weirdness comes from the fact that we can access the properties of the derived class that are injected using a similar vector of JSPropertySpec's, but none of the methods that are defined by the class, only its upper most parent (for example, in our case we have Entity -> Container, in this case all of the properties from Entity are accessible in a Container, but only the methods defined in Entity are accessible in a Container).
+
+I have more info, but this feels like it's the most relevant to share. During the initial update process I used a lot of snippets from the cookbook, as well as followed a post in 0ad's forums someone made when upgrading their version from 30 or so to 64 I believe. Some of the older context options were no longer available as well so I removed them. This might be irrelevant but might as well share too.
+
+If you could help me figure this out I'd be wholly appreciated.
+
+[04:08:09.0640] <arai>
+sonarshroom: I have some questions, in order to understand the situation better:
+ * (a) is "inheritance" about C++ side, or JS side?
+ * (b) How do you use `std::vector<JSFunctionSpec>` ?
+ * (c) what exactly do you mean by "we can access the properties" ?  what operation? C++ side or JS side? what's the target?
+ * (d) what is "class" here?  `JSClass` ?  `class` syntax in JS code? or something else?
+
+
+[04:16:30.0159] <sonarshroom>
+> <@arai:mozilla.org> sonarshroom: I have some questions, in order to understand the situation better:
+>  * (a) is "inheritance" about C++ side, or JS side?
+>  * (b) How do you use `std::vector<JSFunctionSpec>` ?
+>  * (c) what exactly do you mean by "we can access the properties" ?  what operation? C++ side or JS side? what's the target?
+>  * (d) what is "class" here?  `JSClass` ?  `class` syntax in JS code? or something else?
+
+(a) if I understand the question correctly, this is about the bindings created within C++ to access from JS. We have a few macros to declare the bindings for JS:
+	DEF_BIND(Container)
+	DEF_PARENT(Entity)
+In this case Container and Entity are classes that serve as the bridge between JS and C++, written in the C++ side.
+(b) The std::vector<JSFunctionSpec> contains the results of the macros JS_FN using the methods names. In the case of our bindings we have, in the same block something along these lines
+	DEF_METHOD(clone)
+
+[04:16:57.0574] <sonarshroom>
+This clone is a method in the same Container class.
+
+[04:20:14.0757] <sonarshroom>
+(c) I have a script that adds behavior to a class. If in that script I try to call "container.clone" for example which is a method defined in the same Container glue class, it won't get called, even though it's inside the std::vector<JSFunctionSpec>. If I use any method from the Entity parent class however in my JS scripts, it works as normal.
+(d) I'm referring to the class as our glue classes in C++.
+
+[04:20:38.0411] <sonarshroom>
+Sorry for being so vague, I'm essentially talking to my lead if I have permission to share some stuff in here.
+
+[04:23:02.0223] <arai>
+so, about (a), when you say "don't use inheritance", it means C++ classes `Container` and `Entity` has no relation in term of C++ class?  or does it mean that JS classes corresponds to `Entity` and `Container` has no relation in term of JS prototype ?
+
+[04:23:18.0783] <arai>
+ * so, about (a), when you say "don't use inheritance", it means C++ classes `Container` and `Entity` has no relation in term of C++ class?  or does it mean that JS classes corresponds to `Entity` and `Container` has no relation in term of JS prototype chain ?
+
+[04:26:04.0199] <sonarshroom>
+I believe the latter applies, since, in our case, when we do DEF_PARENT(Entity) we get it's std::vector<JSFunctionSpec> remove it's last element (the JS_FN_END) and use those same objects.
+
+[04:27:42.0470] <arai>
+okay, then about (b). now I see how you create the `std::vector<JSFunctionSpec>` data.  can you tell me how you use the data?  which JSAPI do you pass the data to?
+
+[04:35:50.0149] <sonarshroom>
+Of course. The structure is a bit complex, so I'll try to simplify. The Container class in the previous example refers to a glue class in our code. This also creates a "Binding" object templated on this glue code class. When the macro DEF_METHOD is invoked on any bind, it creates a templated object which invokes the target method in the glue code class. In essence, we get this pushed onto our JSFunctionSpec vector:
+(JS_FN(strdup(name.c_str()), wrapper::JSNativeFunction, wrapper::ArgsCount, 0)
+In which wrapper is said class that invokes the method using template black magic (we unwrap the definition of the method in the template and call it with the correct object).
+
+[04:45:16.0757] <arai>
+hm, maybe my question wasn't clear.  what JSAPI function do you call with the data represented by the vector?  is it `JS_InitClass`, `JS::NewFunctionFromSpec`, `JS_DefineFunctions`, or something else?
+
+[04:46:06.0449] <sonarshroom>
+Oh my bad. JS_InitClass is called with the pointers to said vectors
+
+[04:46:43.0987] <sonarshroom>
+I was wondering what you meant by JSAPI, only now I recalled that it's used pretty much all over the docs haha
+
+[04:47:53.0130] <arai>
+okay. then, it sounds like the vector is dynamically modified.  when does it happen?  before calling `JS_InitClass` ?  or you keep the vector after calling `JS_InitClass` and modify it?
+
+[05:02:12.0068] <arai>
+then, about (c), is the "script" a JS script?  what is `container` there? an instance of `Container` JS class?  what do you mean by "won't get called"?  what exactly do you observe instead?  do you get error?  or it silently fails, or it crashes the process?
+
+[05:20:22.0993] <sonarshroom>
+> <@arai:mozilla.org> okay. then, it sounds like the vector is dynamically modified.  when does it happen?  before calling `JS_InitClass` ?  or you keep the vector after calling `JS_InitClass` and modify it?
+
+We keep the vector initially, and "truncate" the binding with it's parent information before calling JS_InitClass. Afaik, it's never modified after the fact.
+
+[05:26:10.0567] <sonarshroom>
+> <@arai:mozilla.org> then, about (c), is the "script" a JS script?  what is `container` there? an instance of `Container` JS class?  what do you mean by "won't get called"?  what exactly do you observe instead?  do you get error?  or it silently fails, or it crashes the process?
+
+The script is a JS script yes. Container refers to an entity type in our game scene, more specifically, in this example, it refers to the class in C++ which acts as the glue code between the actual entity in C++ land, and the JS code in the scripts. Regarding the won't get called, I forgot to mention that it fails with the following error:
+Error: TypeError: this.root.getEntity is not a function
+In this case, this.root refers to an entity in the tree which our behavior is attached to, of type Container. The getEntity is a function defined in the Container class, but it always throws this error. If I instead had called a function that's defined in the Entity class which Container derives from, it works.
+
+[05:28:42.0942] <arai>
+where does `this.root.getEntity` come from?
+
+[05:29:58.0496] <arai>
+ * where does `this.root.getEntity` expression come from?
+
+[05:34:40.0717] <arai>
+and what's the relation between the following?
+  * `container.clone` expression
+  * `this.root.getEntity` expression
+  * `JSFunctionSpec` vector
+
+[05:44:54.0200] <sonarshroom>
+> <@arai:mozilla.org> where does `this.root.getEntity` expression come from?
+
+This is a line from the script I'm loading in the game
+
+[05:46:45.0684] <arai>
+so, there are 2 scripts related to this issue? one with `container.clone` expression in it, and one with `this.root.getEntity` in it?
+
+[05:48:10.0528] <sonarshroom>
+> <@arai:mozilla.org> and what's the relation between the following?
+>   * `container.clone` expression
+>   * `this.root.getEntity` expression
+>   * `JSFunctionSpec` vector
+
+`container.clone` is an example line i used where I'm calling the clone function on a container;
+`this.root.getEntity` is the actual line in one of our projects in which the function `getEntity` is called. `getEntity` is itself a function defined in `Container` which derives from `Entity`;
+`JSFunctionSpec` vector is the vector we use in our C++ class that keeps track of said JSFunctionSpec's for the glue classes in our engine.
+
+[05:48:43.0075] <sonarshroom>
+> <@arai:mozilla.org> so, there are 2 scripts related to this issue? one with `container.clone` expression in it, and one with `this.root.getEntity` in it?
+
+The `container.clone` part is just an example. Currently the live example I'm working with is that `getEntity` call.
+
+[05:53:15.0844] <arai>
+sorry, can you explain the issue from the beginning, without using example or dummy code?  I'm lost what's important info and what's unrelated info
+
+[05:55:11.0140] <arai>
+(or maybe we'd better waiting for the approval for the sharing code...)
+
+[05:55:43.0731] <arai>
+ * (or maybe we'd better waiting for the approval for sharing code...)
+
+[05:56:34.0239] <arai>
+or, if you cannot provide the actual code, the other option is to create a minimal testcase that demonstrates the issue
+
+[05:57:04.0864] <arai>
+currently there are so many thing happening, and most of them are actually unrelated to SpiderMonkey itself. and hard to follow
+
+[05:57:18.0371] <arai>
+ * currently there are so many thing happening, and most of them are actually unrelated to SpiderMonkey itself. and hard to follow without looking the code
+
+[05:57:44.0333] <sonarshroom>
+> <@arai:mozilla.org> sorry, can you explain the issue from the beginning, without using example or dummy code?  I'm lost what's important info and what's unrelated info
+
+Ofc, so essentially we have a game engine, which exports types from C++ to JS. Those types follow C++'s inheritance hierarchy but, due to us having used an older version of SpiderMonkey until now (version 38), we'd essentially create various classes using JS_InitClass, and inject into them the information from their parents (meaning that they don't share prototypes I believe). The issue we're having right now is that for some reason we can only call methods from the top most parent of the classes, not from the actual classes themselves.
+
+[05:58:49.0374] <sonarshroom>
+> <@arai:mozilla.org> or, if you cannot provide the actual code, the other option is to create a minimal testcase that demonstrates the issue
+
+The code is quite complex on our side, leaving me without understanding if this is an issue with the glue code itself, or something else. Too much templates does bad to the brain I'm afraid haha
+
+[05:59:35.0745] <sonarshroom>
+> <@arai:mozilla.org> (or maybe we'd better waiting for the approval for sharing code...)
+
+I'm gonna try to get it in the meanwhile, sorry about it :(
+
+[06:08:16.0676] <arai>
+okay, now the questions are:
+  * (e) what is the exact operation for "inject into them the information from their parents" ?
+  * (f) what is the exact operation for "call methods from the top most parent of the classes" ?
+  * (g) what is the exact operation for "call methods from the actual classes themselves" ?
+
+
+[06:34:08.0337] <sonarshroom>
+I've gotten permission to share a bit more so here goes: in our code we have the following
+```cpp
+DEF_BIND(Container)
+DEF_PARENT(Entity)
+DEF_METHOD(getEntity)
+// plus a bunch more DEF_METHOD calls here
+DEF_METHOD_IMMUTABLE_PROPERTY(children, GetChildren)
+// plus a bunch more DEF_METHOD_PROPERTY calls here
+DEF_METHOD_PROPERTY(acceptsMouse, acceptsMouseInput, setAcceptsMouseInput);
+```
+This defines a static Binding object, templated on the Container class (the DEF_BIND call). This Binding object contains most importantly the following:
+```cpp
+class BindingBase {
+	public:
+		struct CallbackDef {
+			std::string name;
+			std::string substructure;
+		};
+
+		struct CustomMethodDef {
+			JSNativeFunction func;
+			uint16 argc;
+		};
+
+		std::vector<JSPropertySpec> 						propertyspec;
+		std::vector<JSPropertySpec> 						staticpropertyspec;
+		std::vector<JSFunctionSpec> 						functionspec;
+		std::vector<JSFunctionSpec> 						staticfunctionspec;
+		std::vector<CallbackDef>							callbacks; // in this case both this and the next are not needed to understand the problem.
+		std::unordered_map<std::string, CustomMethodDef>	triggers;
+	};
+```
+These are initially full of only the results of the calls to JS_PS and JS_FS where it's required, through the DEF_METHOD (for methods this essentially adds a JS_FN) and DEF_METHOD_(IMMUTABLE_)PROPERTY (for properties this adds a JS_PSGS or JS_PSG in the case of immutable properties). Then, in the Init method for the Binding class itself, which derives from this BindingBase we have the following:
+```cpp
+void Init(JSContext* cx, JS::RootedObject* globalObject) {
+			Init ({cx, globalObject});
+		}
+
+		void Init(const InitData &data) {
+
+			InjectParentInfo();
+			TruncateBinding();
+
+			JS::RootedObject _prototype(data.context,
+										parentPrototypeBuilder ? parentPrototypeBuilder(data.context) : nullptr);
+
+			using ConstructorProvider_t = CHIM::JSUtils::ConstructorProvider<Class_t, CHIM::JSUtils::has_make<Class_t, JS::CallArgs &>::value>;
+
+			auto _constructor = static_cast<JSNative>(ConstructorProvider_t::JSConstructor);
+
+			_jsClass.oOps = &objectOps;
+			prototype = JS_InitClass(data.context,
+									   *data.globalObject,
+										_prototype,
+										&_jsClass,
+									    _constructor,
+										0,
+									    propertyspec.data(),
+										functionspec.data(),
+									    staticpropertyspec.data(),
+										staticfunctionspec.data()
+			);
+			JS::RootedObject _protoObj(data.context, prototype);
+		}
+```
+
+[06:40:38.0470] <sonarshroom>
+> <@arai:mozilla.org> okay, now the questions are:
+>   * (e) what is the exact operation for "inject into them the information from their parents" ?
+>   * (f) what is the exact operation for "call methods from the top most parent of the classes" ?
+>   * (g) what is the exact operation for "call methods from the actual classes themselves" ?
+
+So, with this context, to answer your questions:
+(e) our call in this Init method calls InjectParentInfo():
+```cpp
+		void InjectInto(BindingBase &binding) {
+
+			std::size_t _currFunctionSpec = 0;
+			for (auto &_fs : functionspec) {
+				if (_currFunctionSpec >= functionspec.size() - 1) {
+					break;
+				}
+				binding.functionspec.insert(binding.functionspec.begin(), _fs);
+				_currFunctionSpec++;
+			}
+
+			std::size_t _currPropertySpec = 0;
+			for (auto &p : propertyspec) {
+				if (_currPropertySpec >= propertyspec.size() - 1) {
+					break;
+				}
+				binding.propertyspec.insert(binding.propertyspec.begin(), p);
+				_currPropertySpec++;
+			}
+
+			std::size_t _currStaticPropertySpec = 0;
+			for (auto &p : staticpropertyspec) {
+				if (_currStaticPropertySpec >= staticpropertyspec.size() - 1) {
+					break;
+				}
+				binding.staticpropertyspec.insert(binding.staticpropertyspec.begin(), p);
+				_currStaticPropertySpec++;
+			}
+		}
+```
+Those breaks are there to not inject the JS_PS_END and JS_FN_END in the middle.
+(f) Imagine we have a Container object and I decide to call from JS the getEntity function which I defined in that example: it won't be called with that TypeError I wrote about earlier, even though it's present in it's functionspec vector. If I call any of it's parent class' methods (in this case Entity is it's parent class) they can be called.
+(g) I think I answered this in (f).
+
+Hope this helps a bit more :D
+
+[06:45:30.0712] <arai>
+so `DEF_METHOD(getEntity)` puts an item for `getEntity` into `BindingBase::functionspec` vector, and the spec is supposed to be passed to `JS_InitClass` call for the `Container`, right?
+
+[06:46:21.0833] <arai>
+have you verified that `getEntity` is part of the `functionspec.data()` for each `JS_InitClass` call which expects `getEntity` in it?
+
+[06:46:53.0990] <arai>
+once you verified that part, the code before `JS_InitClass` becomes unrelated
+
+[06:51:21.0412] <sonarshroom>
+> <@arai:mozilla.org> so `DEF_METHOD(getEntity)` puts an item for `getEntity` into `BindingBase::functionspec` vector, and the spec is supposed to be passed to `JS_InitClass` call for the `Container`, right?
+
+Essentially yes
+
+[06:51:54.0002] <sonarshroom>
+> <@arai:mozilla.org> once you verified that part, the code before `JS_InitClass` becomes unrelated
+
+Yes it is inside. I don't know if can send pictures of the debugger but it's there
+
+[07:04:14.0671] <arai>
+okay, then the next thing is to verify that the prototype object created by JS_InitClass has the property.  and then the next thing is to verify the prototype of the object you want to call getEntity is the same prototype object 
+
+[07:05:10.0029] <sonarshroom>
+I'd imagine it would be easier to check that in JS correct?
+
+[07:05:19.0245] <arai>
+yes
+
+[07:05:31.0865] <sonarshroom>
+Ok
+```js
+
+[07:05:58.0295] <arai>
+if your global has `console.log` or equivalent, it should be easy
+
+[07:06:08.0835] <sonarshroom>
+ * Ok
+```js
+for (let prop of Container.__prototype__)
+{
+console.log(prop)
+}
+
+[07:06:16.0179] <sonarshroom>
+something along those lines right?
+
+[07:06:51.0707] <arai>
+for-of won't work 
+
+[07:07:22.0725] <sonarshroom>
+hmm even if the properties are JS_ENUMERABLE?
+
+[07:07:41.0839] <arai>
+you want for-in
+
+[07:07:48.0998] <sonarshroom>
+Ah I see
+
+[07:07:54.0964] <sonarshroom>
+thanks, I'll get back to you
+
+[07:26:51.0484] <sonarshroom>
+> <@arai:mozilla.org> okay, then the next thing is to verify that the prototype object created by JS_InitClass has the property.  and then the next thing is to verify the prototype of the object you want to call getEntity is the same prototype object
+
+Running that code yields no properties at all
+
+[07:27:51.0787] <sonarshroom>
+I've also made sure to make all properties enumerable explicitely
+
+[07:28:20.0183] <arai>
+what happens if you do property access directly?
+
+[07:29:32.0853] <arai>
+like `typeof Container.prototype.getEntity`
+
+[07:30:12.0386] <sonarshroom>
+Wait, another person that's helping me debug said that instancing a Container and iterating the same way yields the properties, but I'm unsure if that's the same. I.e.:
+```js
+var c = new Container
+for (let prop in c.__prototype__) {
+    console.log(prop);
+}
+
+[07:30:20.0422] <sonarshroom>
+> <@arai:mozilla.org> like `typeof Container.prototype.getEntity`
+
+lemme check
+
+[07:30:46.0506] <arai>
+is that the exact code?
+
+[07:32:08.0941] <arai>
+`Container.__prototype__` is not what you want (unless you define something special).  you want `Container.prototype`
+
+[07:32:13.0030] <sonarshroom>
+> <@sonarshroom:mozilla.org> Wait, another person that's helping me debug said that instancing a Container and iterating the same way yields the properties, but I'm unsure if that's the same. I.e.:
+> ```js
+> var c = new Container
+> for (let prop in c.__prototype__) {
+>     console.log(prop);
+> }
+
+The one he tested yes. This one yields the correct properties. If I try Container.__prototype__ instead, none are outputted
+
+[07:32:34.0426] <sonarshroom>
+ * The one he tested yes. This one yields the correct properties. If I try `Container.__prototype__` instead, none are outputted
+
+[07:32:44.0660] <arai>
+I don't know where the property with double underscores comes from
+
+[07:32:47.0793] <sonarshroom>
+> <@arai:mozilla.org> `Container.__prototype__` is not what you want (unless you define something special).  you want `Container.prototype`
+
+Oh lemme check that as well
+
+[07:36:06.0500] <sonarshroom>
+> <@arai:mozilla.org> I don't know where the property with double underscores comes from
+
+It was my mistake. Container.prototype does yield the correct properties.
+
+[07:36:42.0890] <sonarshroom>
+> <@arai:mozilla.org> like `typeof Container.prototype.getEntity`
+
+This one yields the correct result as well, "function" in this case.
+
+[07:37:32.0708] <arai>
+to be clear, there's `__proto__` property, but it's different thing.  `obj.__proto__` is the equivalent of `Object.getPrototypeOf(obj)`
+
+[07:37:41.0112] <arai>
+(but still not `__prototype__`)
+
+[07:37:48.0772] <sonarshroom>
+Got it
+
+[07:38:06.0184] <arai>
+so, `c.__proto__` would be the same thing as `Container.prototype`
+
+[07:39:17.0798] <arai>
+then the next thing is to verify that the object has expected prototype when you observe the issue
+
+[07:40:51.0515] <sonarshroom>
+Something along the lines of
+```js
+Container.prototype.isPrototypeOf(this.root)
+```
+correct?
+
+[07:42:46.0022] <arai>
+I guess so
+
+[07:57:42.0445] <sonarshroom>
+So I just had another potentially related problem. In trying to find a script in which `this.root` is *exactly* a Container, I found out that running this isPrototypeOf call in the first script that's loaded works, while in the next ones it fails with this error:
+Error: TypeError: Container.prototype.isPrototypeOf is not a function
+
+[08:03:09.0951] <arai>
+what is `Container.prototype` then?
+
+[08:08:41.0391] <kevin_wang_22>
+Hi, 
+
+Are there options to make mozjs efficient when building mozjs-102? I am now using the following build options:
+```
+JIT ?= ""
+JIT:mipsarch = "--enable-jit"
+
+do_configure() {
+    cd ${B}
+    python3 ${S}/configure.py \
+        --enable-project=js \
+        --with-intl-api \
+        --target=${TARGET_SYS} \
+        --host=${BUILD_SYS} \
+        --prefix=${prefix} \
+        --libdir=${libdir} \
+        --disable-jemalloc \
+        --disable-strip \
+        --disable-debug \
+        ${JIT}
+}
+
+```
+
+Thanks
+
+[08:09:21.0462] <Redfire>
+I'm confused as to why this doesn't print `[object FakeBlob]`. Is there something I'm missing with how it works?
+```js
+> Object.prototype.toString(Object.create(null, { [Symbol.toStringTag]: { get() { return "FakeBlob" }, enumerable: true } }))
+"[object Object]"
+```
+
+[08:11:53.0423] <sonarshroom>
+> <@arai:mozilla.org> what is `Container.prototype` then?
+
+In my case it print object as well.
+
+[08:12:17.0789] <arai>
+Redfire: you need `Object.prototype.toString.call`
+
+[08:12:40.0406] <sonarshroom>
+> <@arai:mozilla.org> what is `Container.prototype` then?
+
+ * In my case it prints object as well.
+
+[08:13:11.0810] <arai>
+sonarshroom: what's the detail of the object?
+
+[08:13:46.0784] <sonarshroom>
+It prints the same properties as before (the expected ones).
+
+[08:16:23.0447] <arai>
+so, it has the same set of own properties, while `isPrototypeOf` is not a function?
+
+[08:16:25.0715] <arai>
+what's the value?
+
+[08:16:38.0414] <sonarshroom>
+> <@arai:mozilla.org> so, it has the same set of own properties, while `isPrototypeOf` is not a function?
+
+Supposedly yeah
+
+[08:17:32.0271] <sonarshroom>
+> <@arai:mozilla.org> what's the value?
+
+Sorry, this one I don't know how to answer, my test code until now is:
+```js
+console.log("INIT:")
+	console.log(typeof Container.prototype.getEntity);
+	console.log("CONTAINER PROTO BEGIN:")
+	for (let prop in Container.prototype) {
+		console.log(prop);
+	}
+```
+	console.log("CONTAINER PROTO END.")
+	console.log(typeof Container.prototype);
+	console.log(Container.prototype.isPrototypeOf(this.root));
+    console.log("ID:" + this.root.id);
+
+[08:17:45.0645] <sonarshroom>
+> <@arai:mozilla.org> what's the value?
+
+ * Sorry, this one I don't know how to answer, my test code until now is:
+
+```js
+console.log("INIT:")
+	console.log(typeof Container.prototype.getEntity);
+	console.log("CONTAINER PROTO BEGIN:")
+	for (let prop in Container.prototype) {
+		console.log(prop);
+	}
+console.log("CONTAINER PROTO END.")
+console.log(typeof Container.prototype);
+console.log(Container.prototype.isPrototypeOf(this.root));
+console.log("ID:" + this.root.id);
+```
+
+[08:18:10.0455] <arai>
+`console.log(typeof Container.prototype.isPrototypeOf)`?
+
+[08:18:43.0847] <arai>
+and also `console.log(Object.getPrototypeOf(Container.prototype))` to make sure if it has prototype
+
+[08:19:04.0502] <arai>
+and then `console.log(Object.getPrototypeOf(Container.prototype) == Object.prototype)`, maybe?
+
+[08:23:28.0825] <sonarshroom>
+> <@arai:mozilla.org> `console.log(typeof Container.prototype.isPrototypeOf)`?
+
+This one works, it's object.
+
+[08:23:42.0767] <sonarshroom>
+> <@arai:mozilla.org> and also `console.log(Object.getPrototypeOf(Container.prototype))` to make sure if it has prototype
+
+This one hits an assert inside SpiderMonkey
+
+[08:23:55.0908] <sonarshroom>
+js/src/vm/ObjectOperations-inl.h:266
+
+[08:24:44.0978] <arai>
+it shouldn't be an object. it should be a function
+
+[08:25:15.0182] <arai>
+I wonder if you're using multiple globals, while reusing the same `Container` object across them
+
+[08:25:54.0354] <arai>
+can you provide the details of the "in the next ones" ? 
+
+[08:27:29.0033] <sonarshroom>
+> <@arai:mozilla.org> can you provide the details of the "in the next ones" ?
+
+For each game entity I have behaviors in, I load them in - by the next ones I mean the behavior scripts that are loaded after the first in this case.
+
+[08:27:40.0303] <sonarshroom>
+> <@arai:mozilla.org> I wonder if you're using multiple globals, while reusing the same `Container` object across them
+
+I'll send here my initialization code in a sec
+
+[08:28:58.0658] <arai>
+when posting long code, please use https://paste.mozilla.org/ (possibly with long timeout).  please make sure the paste becomes public and anyone can see it
+
+[08:29:31.0090] <sonarshroom>
+Will do
+
+[08:33:05.0797] <sonarshroom>
+https://paste.mozilla.org/32S3Y9f3
+
+[08:33:55.0034] <sonarshroom>
+All code commented in that snippet is old code from when we had SM36
+
+[08:36:25.0349] <sonarshroom>
+> <@arai:mozilla.org> I wonder if you're using multiple globals, while reusing the same `Container` object across them
+
+Do we need to explicitely destroy the global object before calling JS_ShutDown?
+
+[08:38:01.0416] <tcampbell>
+> <@sonarshroom:mozilla.org> Do we need to explicitely destroy the global object before calling JS_ShutDown?
+
+generally, yes. https://searchfox.org/mozilla-central/source/js/src/vm/Initialization.cpp#258-266
+
+[08:39:47.0482] <sonarshroom>
+I don't hit that print when calling it
+
+[08:39:55.0497] <sonarshroom>
+So I don't think that's happening
+
+[08:40:34.0567] <arai>
+what's the relation between the initialization code, the Container class , and first script and the next script?
+
+[08:41:18.0194] <sonarshroom>
+> <@arai:mozilla.org> I wonder if you're using multiple globals, while reusing the same `Container` object across them
+
+Since you had that hunch it might've been related I figured I'd share the init code.
+
+[08:42:17.0596] <arai>
+sorry, I don't mean it's unrelated.   my question is that how they interact
+
+[08:42:28.0487] <sonarshroom>
+Oh
+
+[08:42:54.0842] <arai>
+when what's done, in which order, etc
+
+[08:44:31.0677] <sonarshroom>
+Init is done first, which then creates the bindings for each objects (Entity, Container, etc), then the scene is loaded, in which behavior scripts are loaded (JS scripts go here)
+
+[08:46:32.0954] <arai>
+so, both "first" and "next" scripts are loaded in the same way, into the same global?
+
+[08:46:43.0281] <sonarshroom>
+Yes
+
+[08:48:26.0841] <arai>
+can you make the content of the first and next scripts to only `console.log(typeof Container.prototype.isPrototypeOf)`, and run them to see what's printed?
+
+[08:49:44.0819] <sonarshroom>
+There are a lot of scripts but I'll do it for the first couple of em :D
+
+[08:49:52.0570] <sonarshroom>
+I'll get back to you in a sec
+
+[08:57:37.0620] <sonarshroom>
+> <@arai:mozilla.org> can you make the content of the first and next scripts to only `console.log(typeof Container.prototype.isPrototypeOf)`, and run them to see what's printed?
+
+on all of the ones I tested, object is the type
+
+[08:58:50.0029] <arai>
+I expected it to print "function".  what's the output for `console.log(typeof function(){});` ?
+
+[09:00:07.0519] <arai>
+also, what's the output for `console.log(typeof Array.prototype.isPrototypeOf)` ?
+
+[09:01:04.0800] <sonarshroom>
+> <@arai:mozilla.org> I expected it to print "function".  what's the output for `console.log(typeof function(){});` ?
+
+all of them print function
+
+[09:02:14.0247] <sonarshroom>
+same here
+
+[09:02:23.0931] <sonarshroom>
+> <@arai:mozilla.org> also, what's the output for `console.log(typeof Array.prototype.isPrototypeOf)` ?
+
+here I mean
+
+[09:03:26.0316] <arai>
+can you check this?  `console.log(Object.getPrototypeOf(Container) == Function.prototype)`
+
+[09:04:56.0633] <sonarshroom>
+true is the result
+
+[09:06:08.0113] <arai>
+what's the value of `Container.prototype.isPrototypeOf.toString()` ?
+
+[09:08:13.0600] <sonarshroom>
+This error pops up: Error: TypeError: Container.prototype.isPrototypeOf is null
+
+[09:08:36.0594] <arai>
+oh, that's the reason why typeof says object...
+
+[09:11:46.0137] <arai>
+and it's strange. if the property doesn't exist (for example when it doesn't have `Object.prototype` in prototype chain), it typeof should've say `undefined`
+
+[09:11:55.0233] <arai>
+do you define `isPrototypeOf` ?
+
+[09:12:30.0225] <arai>
+ * and it's strange. if the property doesn't exist (for example when it doesn't have `Object.prototype` in prototype chain), the typeof should've say `undefined`
+
+[09:12:32.0744] <sonarshroom>
+No
+
+[09:13:24.0841] <arai>
+is this true?  `Object.getPrototypeOf(Container.prototype) == Object.prototype` 
+
+[09:14:41.0877] <sonarshroom>
+No, it's false
+
+[09:17:55.0029] <arai>
+oh, then your prototype doesn't have Object.prototype as its `[[Prototype]]`.
+
+[09:18:35.0137] <arai>
+anyway, I think this is unrelated to the main issue. you just need to avoid using `isPrototypeOf`
+
+[09:19:18.0058] <sonarshroom>
+I see
+
+[09:19:23.0274] <arai>
+just use `Object.getPrototypeOf(this.root) == Container.prototype` instead
+
+[09:23:08.0349] <sonarshroom>
+False as well
+
+[09:24:11.0271] <arai>
+what is the expected value of `this.root` there?
+
+[09:25:33.0577] <sonarshroom>
+The object that represents the container in the scene
+
+[09:25:56.0808] <arai>
+where is it created and where is it assigned to `root` ?
+
+[09:28:11.0662] <sonarshroom>
+so in this case it's created in C++ https://paste.mozilla.org/LO8SyzmW
+
+[09:29:29.0327] <arai>
+that code defines the property, but it retrieves the actual value from owner->scene->GetScriptingSystem().GetBindable(root)->GetJSObject(owningcontext)`
+
+[09:29:42.0183] <arai>
+ * that code defines the property, but it retrieves the actual value from `owner->scene->GetScriptingSystem().GetBindable(root)->GetJSObject(owningcontext)`
+
+[09:31:03.0379] <sonarshroom>
+ahh I see
+
+[09:31:32.0003] <sonarshroom>
+you want the GetJSObject function I think
+
+[09:32:13.0788] <arai>
+or somewhere that actually creates the object
+
+[09:33:15.0505] <sonarshroom>
+https://paste.mozilla.org/Ypuqe2Wu
+
+[09:42:10.0588] <arai>
+I think you need to use [JS_NewObjectWithGivenProto](https://searchfox.org/mozilla-esr91/rev/f3f439e007bdd4b5b1c2ba05ca706b68563413b2/js/src/jsapi.h#562-563), passing the `Container.prototype` object
+
+[09:43:00.0374] <arai>
+`JS_NewObject` uses `Object.prototype` for classes which isn't built-ins
+
+[09:43:01.0629] <sonarshroom>
+I'll check it out
+
+[10:24:05.0882] <l11d>
+is there a hidden bug for an assertion failing at `jit/VMFunctions.cpp:2979`?
+
+[10:31:00.0634] <iain>
+l11d: [This helper](https://searchfox.org/mozilla-central/source/js/src/jit/VMFunctions.cpp#2978-2980)? That's just the C++ code that gets called when an assertion we generate in JIT code fails. I'm not aware of any outstanding bugs of that kind, so if you've found something, please go ahead and file it
+
+[10:48:44.0501] <sonarshroom>
+> <@arai:mozilla.org> I think you need to use [JS_NewObjectWithGivenProto](https://searchfox.org/mozilla-esr91/rev/f3f439e007bdd4b5b1c2ba05ca706b68563413b2/js/src/jsapi.h#562-563), passing the `Container.prototype` object
+
+Unfortunately even with that call it does not solve my problem, though after having a hunch I decided to check something related to the js::ObjectOps class we are using and wanted to confirm the following: are methods considered properties to be passed to the getProperty function this object receives a pointer of?
+
+[10:50:39.0668] <sonarshroom>
+Because, more specifically in my case, I get the "getEntity" method name passed into that function.
+
+[10:54:04.0069] <arai>
+if your class has `GetPropertyOp`, then all property access will be caught by it
+
+[10:54:22.0550] <arai>
+and yes, method is property
+
+[10:58:49.0206] <sonarshroom>
+Ok it is partially explained then
+
+[10:59:05.0680] <sonarshroom>
+if not all explained :D
+
+[10:59:32.0775] <sonarshroom>
+I'll get back to you soon, probably tomorrow but that was awesome help :D
+
+[10:59:37.0020] <sonarshroom>
+thanks a lot!
+
+[11:18:52.0193] <gkw>
+sfink: happy new year! Bug 1873328 and bug 1874785 for you, though probably not s-s :)
+
+[11:18:53.0434] <botzilla>
+https://bugzil.la/1873328 — NEW (nobody) — AddressSanitizer: stack-overflow on address 0x7ffe5ed61d08 with ubi node takeCensus
+
+[11:18:53.0721] <botzilla>
+https://bugzil.la/1874785 — NEW (nobody) — LeakSanitizer: detected memory leaks [@ CustomSerializableObject::ActivityLog]
+
+[11:19:04.0664] <gkw>
+oh nice, botzilla
+
+[11:22:27.0942] <sfink>
+if you're going to give me something fuzzy, I'd prefer socks
+
+[11:22:30.0554] <sfink>
+:-)
+
+
+2024-01-17
+[01:24:28.0545] <gkw>
+jandem: https://bugzilla.mozilla.org/show_bug.cgi?id=1875032
+
+[01:24:45.0783] <gkw>
+not sure how to start, but it's late here and I'll see what I can do
+
+[01:36:27.0752] <jandem>
+gkw: I'll take a look. I might be able to figure this out from the stack trace
+
+[07:04:52.0721] <caleb.distributive>
+Hey folks, I'm embedding SpiderMonkey, and was wondering how I might go about running code when an arbitrary object is finalized. I have some object that depends on a resource I control, and all I want to do is decrement a counter when the object finalizes.
+
+[07:08:34.0306] <arai>
+you can use [JSClassOps::finalize](https://searchfox.org/mozilla-central/rev/1aa61dcd48e128a8cbfbe59b7ba43d31bd3c248a/js/public/Class.h#593,601), ([JSFinalizeOp](https://searchfox.org/mozilla-central/rev/1aa61dcd48e128a8cbfbe59b7ba43d31bd3c248a/js/public/Class.h#293-298))
+
+[07:09:15.0594] <arai>
+oh, to be clear, it's not actually for "arbitrary object".  but for objects that has your own `JSClass`
+
+[07:09:44.0193] <caleb.distributive>
+yeah I'd like to be able to do this even for JSClasses that are not my own, ideally
+
+[07:13:38.0754] <caleb.distributive>
+is there a way to tell in a JSFinalizeCallback or a JSGCCallback when a given object is about to be finalized?
+
+[07:17:50.0437] <arai>
+how about putting an object with your JSClass into the "given object"'s property?  so that your object will also be finalized at almost same time as the "given object"
+
+[07:20:48.0308] <caleb.distributive>
+ah, yes that could work
+
+[07:20:55.0263] <caleb.distributive>
+thats clever, thanks!
+
+[07:29:15.0945] <mgaudet>
+There's also https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/FinalizationRegistry 
+
+[09:54:18.0571] <sonarshroom>
+My issue from yesterday was fully resolved, so thanks again for all the help! I do have another question now though. In our old version of SM, 36 we had in our JSClass a function to destroy some private data associated to the object when it was destroyed called JSDestructor mapped to it's finalize member. In the newer versions is this the finalize member of the js::ObjectOps class?
+
+[09:58:24.0848] <sonarshroom>
+Oh I think it is, just saw that finalize message :D
+
+[12:01:34.0862] <sfink>
+> <@arai:mozilla.org> how about putting an object with your JSClass into the "given object"'s property?  so that your object will also be finalized at almost same time as the "given object"
+
+yeah, you have roughly 3 options. I would order them by preference: first is to use a plain property as arai said, probably a non-enumerable property. If that isn't possible or desired, use a `WeakMap` to map from your random object to your finalizable object. That's `WeakMap`'s usual usage: a way to decorate an object with information that can go away if the key goes away. Only if that is problematic for some reason would I reach for `FinalizationRegistry`. It has some weird timing, exposes internal details, and is relatively easy to mess up and end up making things uncollectable.
+
+[12:02:25.0431] <sfink>
+(note that if the plain property's name could collide with something else in the property, you can always key it off of a `Symbol` instead.)
+
+
+2024-01-18
+[00:57:31.0261] <smaug>
+is "TemplateMap" implemented in SM ?
+
+[01:18:49.0307] <jandem>
+smaug: we implement this by storing the template objects in the JSScript when we parse a function, and then we just return the object from there
+
+[01:19:35.0330] <smaug>
+jandem: context is https://w3c.github.io/trusted-types/dist/spec/#check-templatedness-algorithm but I think that part of the spec might go away
+
+[01:19:43.0582] <smaug>
+for now at least
+
+[01:22:14.0385] <jandem>
+hm yeah that's not easy to implement for us because we don't have an explicit map and the template objects are just plain arrays currently
+
+[01:25:20.0904] <jandem>
+ * hm yeah that's not super easy to implement for us because we don't have an explicit map and the template objects are just plain arrays currently
+
+[01:25:53.0573] <jandem>
+we currently also can't relazify functions with template objects so maybe at some point adding `realm.TemplateMap` would make sense, although we'd probably want an O(1) implementation for this check instead of O(n)
+
+[01:26:39.0930] <jandem>
+ * we currently also can't relazify functions with template objects so maybe at some point adding `realm.TemplateMap` would make sense, although we'd probably want an O(1) implementation for this "check templatedness" check instead of O(n)
+
+[01:28:09.0494] <smaug>
+yeah, definitely. Anyhow, sounds like that feature is postponed 
+
+[01:30:46.0618] <jandem>
+that does make our lives easier :)
+
+[09:14:02.0692] <sfink>
+mgaudet: https://searchfox.org/mozilla-central/rev/9d88be0557a5bc39d3da288f9aff71414baa303e/js/public/SweepingAPI.h#60
+
+[09:32:19.0014] <mgaudet>
+Ah, thanks!
+
+
+2024-01-19
+[03:17:51.0560] <sonarshroom>
+Hey again! I'm trying now to build SM91 on windows, to no avail. I tried to follow the build instructions for mozilla firefox using mozilla build, while trying to use the source downloaded from the ftp server referenced in the spidermonkey embedded examples. I also tried to follow these instructions (https://theqwertiest.github.io/foo_spider_monkey_panel/docs/for_developers/building_spidermonkey/ ) but on all of the options I keep hitting an error in python. To build this on windows should I be using msys2 or something along those lines instead?
+
+[03:19:19.0157] <evilpie>
+Are you using python2?
+
+[03:19:36.0112] <evilpie>
+Aside: Any particular reason you are using an outdated version of SM?
+
+[03:20:35.0902] <sonarshroom>
+> <@evilpie:mozilla.org> Are you using python2?
+
+I don't think the mozilla build version I used (both 4.1 and 4.0.2) have python 2
+
+[03:21:09.0145] <sonarshroom>
+> <@evilpie:mozilla.org> Aside: Any particular reason you are using an outdated version of SM?
+
+Hum, let's just say this isn't my choice to make unfortunately
+
+[03:22:00.0168] <sonarshroom>
+I want to do the full upgrade tho don't get me wrong
+
+[04:11:54.0807] <arai>
+what error do you get in which step?
+
+[04:17:44.0887] <arai>
+on windows, the mozilla-build shell should work
+
+[04:30:20.0131] <sonarshroom>
+I've just reinstalled the latest mozilla-build, so I'll get back to you asap
+
+[04:59:21.0360] <sonarshroom>
+So in my case the steps I followed were:
+1. Install mozilla-build and start it's shell;
+2. Download firefox 91.13.0 esr from the ftp server and place it inside the mozilla-build folder;
+3. Run the bootstrap.py script inside mozilla-build's shell;
+4. Run the build steps inside the esr91 branch of the spidermonkey embedding examples with configure having the following arguments:
+../configure --disable-jemalloc --without-system-zlib --disable-debug-symbols
+or
+../configure --disable-jemalloc --with-system-zlib --disable-debug-symbols
+With system zlib, it fails to find zlib, while without, I get an error: https://paste.mozilla.org/fVxTHgBL
+
+[05:03:14.0566] <arai>
+oh, I was wrong.  the combination with "latest mozilla-build shell + the latest mozilla-central" would work, but I think "the latest mozilla-build shell + esr91" might not work properly.  the codebase can be before the transition to python3
+
+[05:03:51.0753] <arai>
+one possible option would be to install the older mozilla-build and build on it
+
+[05:09:58.0461] <arai>
+* one possible option would be to install the older mozilla-build (with python 2) and build on it
+
+[05:54:57.0327] <arai>
+ESR 91 is released at 2021-08-10, so MozillaBuild 3.2 would've been the latest one at that point
+
+[07:38:18.0737] <sonarshroom>
+I swapped to Mozilla Build 3.2 as you said, but I had no luck even after installing clang 13. On clang 16/17 I had an issue where a compiler flag was unrecognized (error: unknown argument: '-fexperimental-new-pass-manager'), and on clang 13 I get an error on a static_assert:  error: static_assert failed "Error in C++ Standard Library usage." - The earliest clang I tried was 12, but with that one I can't get past the configure step.
+
+[07:41:35.0811] <arai>
+you'll need to address the compatibility issue one by one. there may be some hint about the compatible versions of toolchain in the source, or the error message 
+
+[08:25:05.0382] <sfink>
+the bootstrap script doesn't give you the appropriate versions?
+
+[08:46:28.0489] <sonarshroom>
+On mozilla build 3.2 I cant run it unfortunately
+
+[08:47:39.0519] <sonarshroom>
+> <@arai:mozilla.org> you'll need to address the compatibility issue one by one. there may be some hint about the compatible versions of toolchain in the source, or the error message
+
+The maximum I get is said assert, which says to use clang 16 or newer, but then it tries to use the compile flag that does not exist
+
+[08:48:42.0649] <sonarshroom>
+I'm still exploring more stuff tho
+
+[08:50:12.0371] <arai>
+can you provide the exact output, in https://paste.mozilla.org/ ?
+
+[08:50:30.0504] <sonarshroom>
+under clang 13?
+
+[08:50:45.0160] <arai>
+for each case
+
+[08:51:02.0178] <sonarshroom>
+Surely, gimme a sec
+
+[08:51:03.0876] <arai>
+I'm not sure what's the right option there
+
+[08:51:23.0005] <arai>
+so we need to look into each output and see what's required, what's missing, etc
+
+[09:01:39.0159] <sonarshroom>
+https://paste.mozilla.org/o90Fwv71
+
+[09:01:49.0631] <sonarshroom>
+both in the same paste
+
+[09:03:52.0545] <arai>
+which of clang 13 and clang 17 go further?
+
+[09:05:55.0638] <arai>
+(I suppose 17 goes further, but I'd like to make sure)
+
+[09:07:26.0269] <sonarshroom>
+I wanna say they both get to the same step, but would you the full output? I see they both got to the mkdir -p './deps' command
+
+[09:07:47.0328] <sonarshroom>
+no actually
+
+[09:08:08.0613] <sonarshroom>
+13 goes further, 1 more file
+
+[09:08:22.0464] <arai>
+I guess, you can compare the content of obj-*/config.log, or maybe just the length
+
+[09:10:01.0220] <arai>
+okay, if 13 goes further, let's look into that one.  then, given the error happens in the MSVC header, you might need to install older version of MSVC or its header
+
+[09:40:47.0041] <sonarshroom>
+I think I found what you meant in VS2022's installer. I am removing the latest and installing 2019's version
+
+
+2024-01-22
+[05:14:59.0926] <sonarshroom>
+> <@arai:mozilla.org> okay, if 13 goes further, let's look into that one.  then, given the error happens in the MSVC header, you might need to install older version of MSVC or its header
+
+I finally managed to make compilation work with the latest tools by using the flag `--disable-new-pass-manager` in the configure step. It manages to compile everything, but fails to link. I wonder if I'm missing a flag related to these specific functions from windows?
+
+Paste: https://paste.mozilla.org/WDvS8V3Y
+
+
+[05:18:17.0772] <arai>
+what's your mozconfig, or the configura parameters?
+
+[05:19:27.0438] <sonarshroom>
+```bash
+../configure --disable-jemalloc --without-system-zlib --disable-debug-symbols --disable-tests --disable-new-pass-manager --with-intl-api
+```
+
+[05:21:30.0952] <arai>
+hmm, I thought it might be a conflict around jemalloc, but if you disable it, then I'm not sure
+
+[05:22:08.0387] <arai>
+those functions are defined in `memory/mozalloc/winheap.cpp`.  maybe you could try commenting them out to see what happens?
+
+[05:22:21.0273] <sonarshroom>
+will do
+
+[06:06:01.0530] <sonarshroom>
+Started getting errors linking a rust executable I think: https://paste.mozilla.org/Q5ejdgQT
+
+Tried some more flags `--without-intl-api` and `--disable-cargo-incremental` but had no difference
+
+[14:49:11.0440] <iain>
+bvisness: Bug 1869814 👏👏👏
+
+[14:49:13.0511] <botzilla>
+https://bugzil.la/1869814 — NEW (bvisness) — Make iongraph live in tree
+
+
+2024-01-23
+[08:59:49.0320] <Bryan Thrall [:bthrall]>
+I'm running into "too much recursion" running the rooting hazards analysis when I have a class like this:
+```
+class ParseRecordObject {
+ public:
+  using EntryMap = js::GCHashMap<PropertyKey, ParseRecordObject>;
+
+  UniquePtr<EntryMap> entries;
+  void trace(JSTracer* trc) {}
+};
+```
+The error occurs after running `./mach hazards analyze --project=js`.
+
+Is there an annotation I should be using to avoid this, or should I report a bug?
+
+[10:00:13.0707] <sfink>
+that's definitely a bug
+
+[10:00:17.0428] <sfink>
+one I haven't seen
+
+[10:00:33.0809] <sfink>
+too much recursion is a JS error, so it's in the analysis code
+
+[10:00:51.0312] <Bryan Thrall [:bthrall]>
+Yeah, I'll create a bug with all the details 🙂
+
+[10:02:43.0288] <sfink>
+is there any built-in decompression available to JS in the browser? I'm thinking of packaging a bunch of stuff into a single HTML file, and it would be a lot smaller if I could eg create a JS string literal containing compressed data.
+
+[10:05:12.0735] <sfink>
+hm, there's a DecompressionStream
+
+[10:07:33.0460] <sfink>
+yeah, looks like it's doable with Blob + DecompressionStream
+
+[10:08:59.0461] <sfink>
+I could even do it as a pair of files, HTML + compressed data, and use Blob#slice with indexes embedded in the HTML to pull out the relevant (separately compressed) portion and decompress it.
+
+[10:10:37.0152] <sfink>
+I need to embed N separate files, but did not want O(N) separate files on disk. 2 or 3 files is ok. (No, this is not related to iongraph, though it sounds coincidentally similar.)
+
+[12:49:02.0198] <Bryan Thrall [:bthrall]>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1876152
+
+[13:03:24.0618] <sfink>
+great test case, thanks. I think I probably know what's going on here. I'm guessing it's because of `MOZ_INHERIT_TYPE_ANNOTATIONS_FROM_TEMPLATE_ARGS`
+
+[13:05:08.0119] <sfink>
+`RecursiveType` containing a field of type `GCHashMap<Key, RecursiveType>` would normally be ok because `RecursiveType` would have to be a pointer or reference, but I'm guessing that with the annotation, it's being considered as a direct member (or the logical equivalent).
+
+[13:05:23.0900] <sfink>
+I'm not sure how this didn't already happen *somewhere*, though
+
+[13:06:02.0557] <sfink>
+ * `RecursiveType` containing a field of type `GCHashMap<Key, RecursiveType>` would normally be ok because the `RecursiveType` hashmap value would have to be a pointer or reference, but I'm guessing that with the annotation, it's being considered as a direct member (or the logical equivalent).
+
+[13:16:23.0392] <sfink>
+oh. Nope, I'm pretty sure it requires `UniquePtr` too, in order to get the self-recursion.
+
+[13:49:35.0429] <mgaudet>
+I'm 90% sure [this comment](https://searchfox.org/mozilla-central/rev/b9d9a1a873302452fc918505d62cd226d81b67d0/js/src/debugger/Debugger.cpp#3201-3204) about off-thread-compilation is out of date, but someone who is more up to date should weigh in
+
+
+2024-01-24
+[00:12:03.0822] <jandem>
+yes that per-realm comment isn't true anymore
+
+[02:38:59.0290] <joyjobigo>
+Hi, I have questions about Compartments; I saw in the docs how wrapper are assigned to Compartments based on the comprehension relationship between the principals, but I haven't understood if compartments located on different Content Process have visibility over each other or if this rules are on "tab-specific".
+
+[05:03:44.0795] <jandem>
+joyjobigo: mostly tab-specific with some exceptions for things like `window.open()` (which opens a new window/tab)
+
+[05:04:28.0930] <jandem>
+ * joyjobigo: mostly tab-specific with some exceptions for things like `window.open()` (which opens a new window/tab), although that would still be same-process if they're same origin
+
+[05:05:54.0904] <jandem>
+there's also `RemoteObjectProxy` [here](https://searchfox.org/mozilla-central/rev/961556b584938a694d7df6e7bf25d70253c37060/dom/bindings/RemoteObjectProxy.h#131-142) for cross-process 
+
+[06:33:13.0342] <mccr8>
+There's a very limit set of properties you can see cross-process (because things you can see that are in another process are not same-site), and RemoteObjectProxy implements those.
+
+[06:49:24.0915] <Bryan Thrall [:bthrall]>
+I'm a little surprised it hasn't happened somewhere already, too (even given the `UniquePtr`)
+
+[08:18:24.0314] <sfink>
+It's turning out surprisingly hard to create a minimal test case, so apparently it requires some additional weirdness. I can get it to happen by cutting & pasting all of UniquePtr.h.
+
+[08:18:52.0730] <sfink>
+but I can't reproduce with handwritten minimal UniquePtr<T> types.
+
+[08:19:32.0896] <sfink>
+and minimizing the cut & paste is hard, because the recursive type definition really is kind of recursive, so the compile fails if I ever do anything that needs more than a forward declaration. :-(
+
+[08:19:43.0791] <sfink>
+(of the T within the UniquePtr<T>)
+
+[08:22:20.0712] <sfink>
+I can probably fix the bug without a minimal test case, but I don't want to land without a test case, so I may as well write that first.
+
+[14:38:17.0266] <gkw>
+sfink: bug 1876404
+
+[14:38:19.0687] <botzilla>
+https://bugzil.la/1876404
+
+
+2024-01-25
+[00:59:43.0838] <gkw>
+jandem: https://bugzilla.mozilla.org/show_bug.cgi?id=1876468
+
+[01:00:17.0071] <gkw>
+I have a coredump for you, but no nice testcase
+
+[02:00:31.0775] <jandem>
+gkw: thanks! I'll take a looks
+
+[02:04:50.0781] <joyjobigo>
+> <@mccr8:mozilla.org> There's a very limit set of properties you can see cross-process (because things you can see that are in another process are not same-site), and RemoteObjectProxy implements those.
+
+What happens if i open the same domain on two separated tabs? are they considered same-site? Is there any way for them to communicate?
+
+[02:05:53.0739] <joyjobigo>
+> <@joyjobigo:mozilla.org> What happens if i open the same domain on two separated tabs? are they considered same-site? Is there any way for them to communicate?
+
+And is there any difference if the two tabs belongs to different windows?
+
+[02:06:15.0732] <joyjobigo>
+> <@joyjobigo:mozilla.org> And is there any difference if the two tabs belongs to different windows?
+
+Or tab-group?
+
+[04:27:20.0561] <jandem>
+ * gkw: thanks! I'll take a look
+
+[06:14:21.0211] <mccr8>
+> <@joyjobigo:mozilla.org> What happens if i open the same domain on two separated tabs? are they considered same-site? Is there any way for them to communicate?
+
+Those pages are same-site, but there is no way for them to interact synchronously (same with the other two situations you described), so it is okay for them to be in separate processes. This is because of the DOM spec. (These are all really #dom:mozilla.org questions rather than #spidermonkey:mozilla.org questions.)
+
+[09:38:50.0786] <sonarshroom>
+Hello again! I took a break from trying to compile SM91 on windows, trying to get what we have to work fully on linux. I'm faced with another behavior which does not work post update: we have a property which is supposed to be accessed as an array of values, i.e. `history[index] = something`. To get this to work I have to implement the GetElementsOp of the js::ObjectOps I pass into my JSClass correct? Or is there something else I have to do?
+
+[10:03:50.0479] <mgaudet>
+sfink: mercurial question. I seem to have confused my repo by hitting ctrl-c at an inopportune time, and so now it's in the middle of a 'fixup', but neither `--abort` nor `--continue` will work, as it complains about a missing revision. Any idea what my options are here?
+
+[10:05:13.0698] <sfink>
+`hg status` doesn't give any hints?
+
+[10:05:49.0541] <sfink>
+there's `hg recover`, which usually doesn't help
+
+[10:05:55.0596] <mgaudet>
+```
+# The repository is in an unfinished *fixup* state.
+
+# To continue:    hg fixup --continue
+# To abort:       hg fixup --abort
+```
+
+[10:06:13.0383] <mgaudet>
+```
+matthew@xtower:~/unified$ hg fixup --abort
+abort: unknown revision '7d1ee08c8b054c86f81d78d3f7bc695076ecf114'
+matthew@xtower:~/unified$ hg fixup --continue
+abort: unknown revision '7d1ee08c8b054c86f81d78d3f7bc695076ecf114'
+```
+
+[10:06:26.0411] <sfink>
+`hg debugrebuilddirstate` sometimes helps
+
+[10:07:16.0258] <mgaudet>
+hrm. Also no. 
+
+[10:07:40.0775] <sfink>
+`hg debugcheckstate`?
+
+[10:08:43.0414] <mgaudet>
+well, that did something... in that `hg status` is now taking forever :)
+
+[10:08:54.0209] <mgaudet>
+but we'll see what it says when it finishes :P 
+
+[10:08:59.0164] <sfink>
+I skimmed through all the debug commands, and didn't see other promising things.
+
+[10:09:15.0079] <mgaudet>
+Been a while since I broke my repo like this... like 2-3 years!
+
+[10:09:40.0319] <sfink>
+it seems like it would probably be ok to just flush out whatever's holding onto that state, but I'm not sure where that is
+
+[10:10:06.0687] <sfink>
+do you have anything new or interesting in `.hg/`?
+
+[10:10:13.0731] <mgaudet>
+(I hit ctl c because I never know why I keep trying fixup; it never works how I want; it claimed to have rolled back a transaction, but that was clearly a lie)
+
+[10:10:36.0358] <arai>
+sonarshroom: that's scope of getProperty/setProperty
+
+[10:10:36.0945] <sfink>
+yeah, I tried fixup a couple of times, and only remember that I didn't get any use out of it
+
+[10:10:52.0805] <mgaudet>
+hmm, there's a `fixup-state` which looks promising
+
+[10:12:03.0660] <mgaudet>
+ok; removing that makes it no longer think its in fixup; I can probably get myself unstuck now
+
+[10:12:07.0641] <mgaudet>
+thanks!
+
+[10:12:23.0666] <sfink>
+scary
+
+[10:13:12.0726] <mgaudet>
+-sigh- I mean, evolve is still officially 'unstable'; and fixup is pretty crappy so not surprised it's not getting the crap beat out of it.
+
+[10:14:37.0075] <sfink>
+I guess I'll stick with `absorb`, and what it can't handle, creating various fixup commits and using `histedit` to roll them into place. A good `fixup` command definitely feels like it's missing; it's such a common operation.
+
+[10:15:08.0736] <sfink>
+but I guess if we're abandoning hg, I won't be caring for long.... :-(
+
+[10:15:21.0377] <mgaudet>
+... yep. 
+
+[10:15:37.0304] <mgaudet>
+need to do my `git-branchless` experiment 
+
+
+2024-01-26
+[18:27:30.0019] <jlink>
+I just noticed that we have both a js namespace _and_ a JS namespace. The [former](https://searchfox.org/mozilla-central/search?q=namespace+js+%7B&path=*.h&case=true&regexp=false) seems to be about 3.25x as common as [the latter](https://searchfox.org/mozilla-central/search?q=namespace+JS+%7B&path=*.h&case=true&regexp=false).
+Is there any difference between how the two should be used? Or is the capitalized version just an accident?
+
+[18:28:35.0026] <arai>
+uppercase `JS` is public.  lowercase `js` is private
+
+[18:30:27.0856] <jlink>
+Oh, interesting. Thanks!
+
+[21:46:59.0119] <Redfire>
+Is there any way to create a "opaque object" for WebAssembly to import, without creating a bunch of jsfunctions and it could just call native functions?
+I was noticing nodejs' wasi implementation had a lot of js functions. Given how wasm is strictly typed, could that a be done?
+```js
+WebAssembly.instantiate(module, {
+  customImport: { /*... user specified */ },
+  wasi_preview1: new WASI().imports(), // opaque object
+});
+```
+
+[06:55:06.0986] <nbp>
+I think I have too many opened tabs … `JS_Stringify` takes 16s when used by the SessionWriter.
+
+[06:55:34.0101] <Ms2ger>
+Nah, it's the JS engine that must be wrong
+
+[06:56:06.0913] <Ms2ger>
+[insert Principal Skinner meme]
+
+[09:17:35.0171] <sfink>
+> <@nbp:mozilla.org> I think I have too many opened tabs … `JS_Stringify` takes 16s when used by the SessionWriter.
+
+Mine is not that bad, but I've definitely been seeing this too. Everything is sluggish, I take a profile, it's spending lots of time JSON serializing the session.
+
+[09:18:36.0455] <sfink>
+I had seen it showing up in profiles before, and in fact there's a bug open for that, but in the last several weeks it has been noticeably much worse.
+
+[09:18:53.0338] <kevin_wang_22>
+Hi, I have 2 questions here:
+1. In one **JSContext**, there are two global data, i need to use **JS_WrapValue()/JS_WrapObject()** to make value/object can be shared between these two different global data, right?
+2. It's so few information can be found, can I have some examples to show how to use **JS_WrapValue()/JS_WrapObject()**
+
+[09:26:01.0966] <nbp>
+sfink: I opened a bug against SessionWriter, and I will look if I can optimize the way JS_Stringify allocates / reallocates its buffer, but before I should give a look at the escaping code which does the other half of the time.
+
+[09:28:26.0689] <nbp>
+https://searchfox.org/mozilla-central/source/js/src/builtin/JSON.cpp#93 I love it! Why haven't I thought of it before?!
+
+[09:42:16.0109] <sfink>
+nbp: bug 1849393 is the existing bug I was thinking of.
+
+[09:42:17.0377] <botzilla>
+https://bugzil.la/1849393 — NEW (nobody) — Firefox regularly hangs for over half a second in SessionWriter.sys.mjs calling IOUtils.writeJSON serializing a massive JS object when saving tab state
+
+[09:44:56.0210] <nbp>
+Apparently my bug as been marked as duplicate. The thing I do not understand is that the bug I am seeing really started a week ago.
+
+[09:46:05.0971] <sfink>
+? bug 1876766 is not marked duplicate (yet)
+
+[09:46:07.0951] <botzilla>
+https://bugzil.la/1876766 — NEW (nobody) — SessionWriter freezes Firefox
+
+[09:47:04.0948] <nbp>
+ok, apparently someone as creative as me opened another bug with almost the same title: https://bugzilla.mozilla.org/show_bug.cgi?id=1827433
+
+[09:56:53.0497] <sfink>
+I'm wondering if it is exacerbated by Tree Style Tabs? I know that tends to bloat up sessionstore.js by a lot, and I'm seeing lots of time spent in the WebExtensions process.
+
+[09:58:43.0499] <nbp>
+In my case, I definitely think this might be "Simple Tab Groups" adding overhead here.
+
+[10:25:05.0043] <arai>
+my understanding is that, it depends on whether those 2 globals share same compartment or not.  if they share, there's no need to wrap.  if not, then you need to wrap value/object to pass values/objects between them
+
+[10:29:59.0611] <arai>
+the basic usage is, when you have a `JS::Value` or `JSObject*` from global A and want to pass it to global B:
+  1. enter the global B's realm by allocating `JSAutoRealm` on stack, passing the global B's global object or something that belongs to global B
+  2. put the value to `JS::Rooted<JS::Value>`, or the object to `JS::Rooted<JSObject*>` local variable
+  3. call `JS_WrapValue`/`JS_WrapObject` on the value/object
+  4. now the local variable contains a cross-compartment wrapper for the global A's value/object, and those wrapped value/object can be put into global B's object or variable
+
+
+[10:43:35.0031] <sfink>
+yeah, I just disabled TST and the perf issue is gone.
+
+[10:47:21.0482] <nbp>
+the prospect of disabling STG is scary.
+
+[12:31:26.0635] <asuth>
+> <@sfink:mozilla.org> yeah, I just disabled TST and the perf issue is gone.
+
+there are experimental versions on https://github.com/piroor/treestyletab/issues/3434 you can try, or check the "persist tree cache" option.  Also xref https://github.com/piroor/treestyletab/issues/3388
+
+[12:31:45.0466] <asuth>
+* there are experimental versions on https://github.com/piroor/treestyletab/issues/3434 you can try, or potentially check the "persist tree cache" option.  Also xref https://github.com/piroor/treestyletab/issues/3388
+
+[12:36:07.0761] <sfink>
+ooh, thank you! I remember TST bloated up the sessionstore, but I hadn't realized quite how bad it was.
+
+[12:36:57.0122] <sfink>
+on the bright side, disabling TST makes my browser very difficult to use, which has the major advantage that I use it less and get more done as a result...
+
+[12:38:01.0831] <asuth>
+Yes, TST is life.
+
+[12:39:03.0502] <asuth>
+Note that there's also `browser.sessionstore.interval` which you can increase to make it save the session less, with obvious trade-offs.  Although those experimental XPIs are probably a better approach in general.
+
+[15:00:56.0133] <iain>
+Does anybody who runs Fedora locally want to take a shot at reproducing / debugging bug 1874834? Apparently Firefox crashes semi-reliably when profiling on Fedora (and *only* on Fedora). There are steps to replicate in comment 8.
+
+[15:00:59.0264] <botzilla>
+https://bugzil.la/1874834 — NEW (nobody) — Crash in [@ js::jit::ScriptFromCalleeToken] when profiling
+
+
+2024-01-27
+[16:18:47.0169] <sfink>
+I'll take a shot. I'm on Fedora 38, with the Mozilla-built Firefox. I'll try running the Fedora packaged browser and following the STR in the bug.
+
+[16:24:19.0968] <sfink>
+not crashing
+
+[16:24:27.0518] <sfink>
+will leave it running while I pick up a kid
+
+[16:29:13.0049] <sfink>
+crashed!
+
+[16:30:01.0896] <iain>
+Success!
+
+[16:31:53.0582] <sfink>
+...now need to get rr working on my upgraded system
+
+[16:43:27.0363] <iain>
+sfink: Note that you may need to [build rr from source](https://github.com/rr-debugger/rr/wiki/Building-And-Installing). For the record, I suspect that the bug is somewhere in the SuspendAndSampleAndResumeThread / DoSharedSample infrastructure, where we pause the running thread remotely and read its stack to capture a profile sample.
+
+[16:44:02.0623] <sfink>
+yep, build just completed. I've been through this many times, but normally these days I run rr on my threadripper work machine.
+
+[16:47:26.0829] <sfink>
+crashed under rr
+
+[16:49:09.0142] <iain>
+In a good way or a bad way?
+
+[16:49:26.0067] <sfink>
+good way, hopefully
+
+[16:49:31.0025] <sfink>
+trying to submit to pernosco now
+
+[16:49:43.0636] <sfink>
+hoping I disabled the right flags
+
+[16:53:31.0616] <sfink>
+strangely slow upload, 130KB/s. I expected s3 uploads to be better. My network connection is fiber, and pretty fast fiber too.
+
+[16:57:00.0021] <sfink>
+looks like it'll take about an hour. I'll post a link then.
+
+[16:57:29.0571] <sfink>
+it crashed a content process only, not the parent. Recording looks good locally.
+
+
+2024-01-29
+[08:25:38.0423] <sonarshroom>
+I see. Is looking at the definitions of the default Get/SetProperty enough to understand how to proceed in case I get a method call in Get/SetProperty? I'm asking because in the older version we were using, it seems like method calls were not being handled there, and due to that I have no examples 😅
+
+[09:33:13.0495] <arai>
+if you look at ObjectOps instances, there would be some examples that uses get/set ops https://searchfox.org/mozilla-central/search?q=objectops&path=&case=false&regexp=false
+
+[13:02:07.0532] <sonarshroom>
+> <@arai:mozilla.org> if you look at ObjectOps instances, there would be some examples that uses get/set ops https://searchfox.org/mozilla-central/search?q=objectops&path=&case=false&regexp=false
+
+I've been trying to follow the example present here https://searchfox.org/mozilla-central/source/js/src/proxy/Proxy.cpp#481
+However, even after setting vp to what I believe to be the correct value that should point to a function, it gives an error saying that the property is not a function. Here's my GetProperty function: https://paste.mozilla.org/WyTRiSzt
+
+
+[13:02:55.0504] <sonarshroom>
+> <@arai:mozilla.org> if you look at ObjectOps instances, there would be some examples that uses get/set ops https://searchfox.org/mozilla-central/search?q=objectops&path=&case=false&regexp=false
+
+ * I've been trying to follow the example present here https://searchfox.org/mozilla-central/source/js/src/proxy/Proxy.cpp#481
+However, even after setting vp to what I believe to be the correct value that should point to a function, it gives an error saying that the property is not a function. Here's my GetProperty function: https://paste.mozilla.org/nkFPNqCb
+
+[13:03:02.0106] <arai>
+what's the error, for which line?
+
+[13:04:32.0048] <sonarshroom>
+It runs through that function, but my JS::Evaluate fails on the same line in the JS it's evaluating (from JS::Evaluate)
+
+[13:05:15.0718] <sonarshroom>
+so that function does not error, I think vp has a non function set
+
+[13:05:39.0203] <arai>
+so, by "error", you mean you get JavaScript runtime error?
+
+[13:05:47.0425] <arai>
+what's the exact error message?
+
+[13:06:47.0280] <sonarshroom>
+> <@arai:mozilla.org> so, by "error", you mean you get JavaScript runtime error?
+
+Yes
+
+[13:07:48.0826] <sonarshroom>
+> <@arai:mozilla.org> what's the exact error message?
+
+`TypeError: data.GetSize is not a function`
+
+[13:09:26.0976] <sonarshroom>
+In this case, GetSize is what's being passed into the GetProperty function. I've already triple checked and GetSize is in the FunctionSpecs passed into that particular class
+
+[13:19:07.0487] <arai>
+what's actually received on JS side?
+
+[13:19:18.0994] <arai>
+if it's not a function, what type of value?
+
+[13:25:18.0358] <sonarshroom>
+> <@arai:mozilla.org> if it's not a function, what type of value?
+
+Would a `console.log(typeof data.GetValue)` suffice to check that?
+
+[13:25:48.0864] <sonarshroom>
+I'll test it tomorrow and post it here
+
+[13:35:25.0054] <arai>
+yes.  try checking if the type matches between what the GetProperty returns 
+
+
+2024-01-30
+[02:12:18.0419] <sonarshroom>
+Hmm that was a good hunch, it gives me `undefined`
+
+[02:13:27.0350] <sonarshroom>
+which is weird, shouldn't the `JS_GetPropertyById` call at the end return the value in the prototype at least in vp?
+
+[04:57:53.0730] <rinwaoluwa>
+Hello, my name is Rinwa I'm just finding this room. Please I'd like to ask if SpiderMokey could be available as a part of outreachy 2024 cohort projects.
+
+[04:58:54.0766] <rinwaoluwa>
+I really want to contribute to the project for my application for outreachy, I'm really passionate about it. 
+
+[07:33:02.0266] <arai>
+have you verified the value in C++ side?
+
+[07:43:51.0319] <arai>
+try checking 1. whether the execution reaches the `JS_GetPropertyById` for the call, and 2. what value is returned by `JS_GetPropertyById`
+
+[08:47:50.0485] <mgaudet>
+I see jandem has pulled the auspicious https://phabricator.services.mozilla.com/D200000
+
+[08:48:09.0007] <Ms2ger>
+🍾
+
+[09:06:01.0480] <mgaudet>
+(Relatedly, I haven't reviewed it yet, but the associated Bug 1877193 looks **So exciting**)
+
+[09:06:02.0835] <botzilla>
+https://bugzil.la/1877193 — ASSIGNED (jandem) — Make StaticPrefList.yaml prefs available in SpiderMonkey
+
+[09:31:11.0262] <sonarshroom>
+> <@arai:mozilla.org> try checking 1. whether the execution reaches the `JS_GetPropertyById` for the call, and 2. what value is returned by `JS_GetPropertyById`
+
+Been hard at work trying to figure this out, and finally managed on my own with another person at work. I think at least the issue is that, at least in SM 91, if I don't create the object with the prototype returned by JS_InitClass, I can't walk the prototype chain in my own GetPropertyOp. This is still a bit confusing to me, since, before, I used JS_NewObject with the correct JSClass pointer, but no prototype, leading me to believe the object would have the correct prototype.
+
+[09:32:14.0325] <sonarshroom>
+Thanks for your inputs though. This is one of the more difficult tasks I've faced, and you've been a huge help
+
+
+2024-01-31
+[00:20:05.0496] <gkw>
+jandem: https://bugzilla.mozilla.org/show_bug.cgi?id=1877586
+
+[00:21:07.0241] <jandem>
+gkw: thanks! I'll take a look today
+
+[00:21:17.0130] <gkw>
+thanks!
+
+[07:58:45.0747] <iain>
+rinwaoluwa: Hi, thanks for your interest! Unfortunately, SpiderMonkey doesn't have a project available for Outreachy this year.
+
+[09:45:07.0551] <jonco>
+sfink: this is the ubuntu issue I mentioned earlier: https://hacks.mozilla.org/2024/01/option-soup-the-subtle-pitfalls-of-combining-compiler-flags/
+
+[10:03:23.0204] <sfink>
+wow, that's quite an ugly story!
+
+[10:40:26.0627] <gkw>
+sfink: https://bugzilla.mozilla.org/show_bug.cgi?id=1876404
+
+[10:58:56.0291] <nbp>
+The most amazing part to me was that NixOS users manage to appear in statistics :P
+
+[10:59:09.0728] <nbp>
+ * The most amazing part to me was that NixOS users managed to appear in statistics :P
+
+[12:33:00.0931] <gkw>
+nbp: The most amazing part to me was that your name was mentioned in the blogpost :P
+

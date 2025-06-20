@@ -1,0 +1,2411 @@
+2022-03-01
+[09:10:44.0123] <nbp>
+decoder: does Bugmon attempt at bisecting the bugs on the correct architecture, such as Arm64?
+
+[09:11:48.0506] <decoder>
+no. arm64 is unsupported
+
+[11:54:04.0421] <chaircrusher>
+Greetings
+
+[11:54:36.0103] <chaircrusher>
+I started from SpiderMonkey.dev and tried to file a bug, but I couldn't figure out which bugzilla category to use.
+
+[11:56:05.0587] <chaircrusher>
+It's a fun one. One of our devs made a typo and pasted some absolute nonsense code in a script.
+
+ ./js
+js> var http = { test:'1', test2:'2'};
+var lmsUserId        = http.(custom_canvas_user_login_id || '').
+  replace(/^(.+)@.*/g, '$1') || '';
+
+var http = { test:'1', test2:'2'};
+js> var lmsUserId        = http.(custom_canvas_user_login_id || '').
+  replace(/^(.+)@.*/g, '$1') || '';
+typein:2: TypeError: XML filter is applied to non-XML value ({test:"1", test2:"2"})
+js>
+
+
+
+[11:56:54.0953] <chaircrusher>
+I saw the bug in our spidermonkey embedded but I duplicated with the js shell that SpiderMonkey builds.
+
+[11:56:57.0995] <chaircrusher>
+as above
+
+[11:57:01.0274] <chaircrusher>
+That's JS78
+
+[11:58:40.0959] <chaircrusher>
+Yes it is an error but that error message is mystifying.
+
+[12:00:17.0580] <evilpie>
+This must be an older version of SpiderMonkey that supports ESR, not 78
+
+[12:00:37.0569] <evilpie>
+ * This must be an older version of SpiderMonkey that supports E4X, not ESR78
+
+[12:01:00.0115] <chaircrusher>
+esr78 is what we build with
+
+[12:01:48.0313] <chaircrusher>
+i stand corrected that's actually 1.8.5 ;-)
+
+[12:01:51.0944] <chaircrusher>
+sorry
+
+[12:03:26.0865] <arai>
+the error message is removed in bug 788293 [patch](https://hg.mozilla.org/mozilla-central/rev/c929583ba8ae39a6e32752039fc538f3e94fde9a)
+
+[12:03:28.0323] <botzilla>
+https://bugzil.la/788293 — RESOLVED (n.nethercote) — Remove E4X from SpiderMonkey
+
+[12:04:12.0179] <chaircrusher>
+yup ESR78 throws a better error
+
+[12:04:40.0370] <chaircrusher>
+believe me the moment I'm not simultaneously 1.8.5 and a newer ESR will be a great day.
+
+[12:05:31.0775] <chaircrusher>
+This is ESR78 
+var x = { a:1 }; var y = x.(notdefined || '')
+typein:5:27 SyntaxError: missing name after . operator:
+typein:5:27 var x = { a:1 }; var y = x.(notdefined || '')
+typein:5:27 ...........................^
+j
+
+
+2022-03-02
+[01:57:46.0833] <ochameau>
+Hi! Does someone know how to programmatically clear WASM sources? I'm trying to write a test around this in devtools, where we can't display the WASM sources once spidermonkey dismiss their sources.
+
+[02:00:10.0899] <ochameau>
+It relates to this precise case: https://searchfox.org/mozilla-central/rev/292d17c13daa61016fd082e2337297091d53a015/js/src/debugger/Source.cpp#267-273
+
+[02:13:49.0878] <nbp>
+^ Maybe lth would know.
+
+[02:14:12.0149] <lth>
+looking
+
+[02:16:08.0836] <lth>
+wasm "sources", ie bytecode, can't be cleared explicitly in general, the bytecode is gc'd with its Module
+
+[02:16:25.0846] <lth>
+generally speaking, @yury probably knows a lot more about this than i do
+
+[02:16:41.0540] <lth>
+ * generally speaking, yury  probably knows a lot more about this than i do
+
+[02:17:26.0433] <lth>
+if by "sources" you mean textual-format assembly then I really don't know how this works
+
+[02:30:16.0225] <ochameau>
+I'm also having very limited knowledge on wasm, so I'm not sure about exactly what is what.
+
+[02:30:34.0992] <ochameau>
+But I have a concrete example on chat.mozilla.org. There is this wasm file: https://chat.mozilla.org/olm.cccfd1d.wasm
+
+[02:31:14.0658] <ochameau>
+in the debugger you can see its sources (i.e. `(module (func $import0 (import "a" "a") (param i32 i32 i32) (result i32)) ...`) very rarely
+
+[02:31:37.0507] <ochameau>
+mostly only the first time you load the page. if you restart firefox, you won't be able to see its sources anymore.
+
+[02:31:54.0378] <ochameau>
+I'm trying to add a test to cover this.
+
+[03:00:55.0197] <lth>
+ok, so that is a rendered version of the source, the source being binary
+
+[03:02:13.0300] <lth>
+uncertain about who does the rendering any more, we removed that code from the engine; the debugger may have its own code for it (likely third-party rust, from wasm-tools)
+
+[04:01:03.0391] <l11d>
+if I define a MConstant in the graph.entryBlock() block, can I use this constant in all phis throughout the MIRGraph?
+
+[04:06:38.0921] <nbp>
+l11d: no, because of OSR.
+
+[04:07:08.0267] <nbp>
+l11d: We might have a few exception for constants, where it is known that they are "inlined" by the LIR.
+
+[04:11:51.0297] <l11d>
+this explains the assert I was seeing. I tried adding the constant to the OSR block directly, but this fails with "We are not supposed to add any instruction in OSR blocks". so how does one select a constant via phi (0, if this makes a difference) when entering via an OSR block?
+
+[04:38:27.0269] <nbp>
+I guess only the "inlined" by LIR (generate at uses) is the only remaining option if the value is not represented on the interpreter stack.
+
+[06:47:19.0049] <yury>
+ochameau: as it was designed, the wasm module/instance will not keep original source around -- it can be really big
+
+[06:50:02.0169] <yury>
+That is why we need devtools to reload a page to engage the "debug" mode. The JIT also compiles code without any debug info or metadata, so it will be impossible to recompile a function/module to do debugging on the spot
+
+[06:52:54.0179] <yury>
+Keeping wasm bytecode in memory can be a bad idea, especially on low powered devices. That's devtools (by itself) use bytecode and generate text format to save space in JS runtime on the device that executes wasm, and let UI handle text representation.
+
+[06:53:21.0964] <yury>
+ * Keeping wasm bytecode in memory can be a bad idea, especially on low powered devices. That's why devtools (by itself) uses bytecode and generates text format to save space in JS runtime on the device that executes wasm, and let UI handle text representation.
+
+[07:57:39.0193] <ochameau>
+yury: note that I'm not trying to suggest any change. I'm only trying to reproduce a test. Do you know how to reliably flush the original sources (programmatically)? Or are you saying we never keep orginal source when Devtools aren't opened? (Is so I could probably reproduce by loading the page *before* opening the devtools?)
+
+[07:59:15.0548] <yury>
+Idea is to never keep wasm binary (sources?) around, unless the runtime is in debug mode
+
+[08:00:10.0917] <yury>
+devtools can tell runtime to switch into debug mode via observeAsmJS attribute
+
+[08:03:41.0893] <yury>
+is this the test https://searchfox.org/mozilla-central/source/devtools/server/tests/xpcshell/test_wasm_source-01.js ?
+
+[08:03:51.0234] <ochameau>
+Speaking about `observeAsmJS` I put up a patch to toggle this on only when the debugger is opened: https://phabricator.services.mozilla.com/D140069 I have no real idea of the consequences of doing this. So I'm eager to get your feedback on it.
+
+[08:05:43.0004] <ochameau>
+No that's a brand new test. We are significantly increasing (and improving) the test coverage of the debugger. I'm trying to assert the various times where we see `Error loading this URI: Unknown source` message when we open a WASM source`.
+
+[08:10:21.0254] <yury>
+ochameau: is this code common to main thread and workers?
+
+[08:11:51.0367] <yury>
+e.g. if new worker will be created, will it receive `observeAsmJS: true,`
+
+[08:12:30.0049] <ochameau>
+Yes, in theory it should. But do not hesitate to report anything suspicious. Workers are still having a complex codepath in DevTools.
+
+[08:14:00.0351] <ochameau>
+There might (but I hope not) be some race condition. It isn't completely impossible that the flag is set late.
+
+[08:14:41.0625] <ochameau>
+I would be happy to write a devtools test if you see a buggy STR.
+
+[08:17:02.0851] <yury>
+`observeAsmJS: true` will set runtime into "debug" mode, though it will not change state of already loaded wasm modules/instances, so race conditions can introduce some issues
+
+[08:50:02.0890] <iain>
+l11d: Is there a reason you can't just emit the constant everywhere and let the optimizer clean it up?
+
+[09:00:18.0807] <l11d>
+iain: I'd like to select (via phi) a different constant depending on the predecessor. if the predecessor happens to be a (the?) osrblock, then adding the value to the osrblock fails because it cannot be modified. alternatively, I thought about adding the constant to the entryblock, however this also failed because the entryblock doesn't dominate the osrblock (unless I got something wrong)
+
+[09:02:48.0004] <l11d>
+its not terribly important though; I can work-around the problem via a safe fallback strategy
+
+[09:16:22.0442] <iain>
+Ah, got it
+
+[09:17:03.0391] <iain>
+You are correct that there can only be one OSR block, and the entry block doesn't dominate the OSR block
+
+[09:21:51.0209] <iain>
+Another thing you might run into is that in some cases the OSR and entry blocks are disconnected. For example, in `function foo() { bar(); for (...) { /*computation here*/ } }`, if we execute `bar()` in the C++ interpreter before we attach ICs, then OSR into the loop, then the Warp CacheIR transpiler won't have any CacheIR data for the call, so it will generate an MBail. We end up pruning the unreachable path from the entry block to the OSR header, so the CFG contains a vestigial entry block (that will almost immediately bail) and a loop that can only be entered via OSR
+
+[09:22:46.0751] <iain>
+Not sure if that will affect your plans
+
+[09:31:02.0896] <l11d>
+thanks a lot for the in-depth explanation; I need to think about whether this impacts my scheme
+
+[10:22:45.0273] <iain>
+l11d: Take this with a grain of salt, but off the top of my head it also seems fine (especially if you are just doing this in your own local build) to relax the restrictions on inserting nodes into OSR blocks. It was added as part of [this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1257929), and AFAICT it was done out of precaution, not necessity. We special-case range analysis to insert nodes in the OSR block ([see here](https://searchfox.org/mozilla-central/source/js/src/jit/RangeAnalysis.cpp#2516-2524)), so you could try something similar in your case.
+
+[12:24:14.0419] <sfink>
+bleh, naming. I'm stuck on naming. Of something that almost nobody will ever see. I'm wasting my life, aren't I?
+
+[12:25:14.0524] <iain>
+It's one of the two fundamental hard problems in programming, along with cache invalidation and off-by-one errors
+
+[12:25:38.0809] <sfink>
+yep
+
+[12:26:51.0559] <sfink>
+I made an attempt to come up with a version of that joke that incorporated cache invalidation (eg by inserting another entry in the middle of the list), but it was too clunky.
+
+[12:27:07.0073] <sfink>
+Waldo would probably make a valiant attempt of it.
+
+[12:28:38.0792] <iain>
+It's one of the two fundamental hard problems in programming, along with cache invalidation and off-by-one errors
+
+[12:28:44.0470] <iain>
+Wait, did I already tell that joke?
+
+[13:44:14.0843] <sfink>
+:-)
+
+
+2022-03-03
+[00:17:57.0189] <nchevobbe>
+Hello folks, I'm trying to implement some changes to the DebuggerObject and I would need some help.
+
+Basically we have this `getOwnPropertyNamesMethod` function https://searchfox.org/mozilla-central/rev/ad7ecfa618ec3a65db8405d9f1125059fe4a6a15/js/src/debugger/Object.cpp#770-783
+that returns an array of strings representing the property names of an object.
+Instead of getting an array directly, I'd like to get an ArrayIterator as the function can be costly on objects with lots of properties (e.g. `window`) and the DevTools callsite might not need it _all_ the names anyway.
+
+I guess what I could do is have something similar to `IdVectorToArray` https://searchfox.org/mozilla-central/source/js/src/debugger/Frame.cpp#1924 , but that would return an ArrayIterator (e.g. `IdVectorToArrayIterator`).
+I came across `NewArrayIterator` https://searchfox.org/mozilla-central/source/js/src/vm/Iteration.cpp#1281 but I'm not sure how to use it / if this is the appropriate function I should be using.
+It would be great if someone could point me into the right direction :)
+
+[00:55:30.0419] <jandem>
+nchevobbe: is the expensive part the `IdVectorToArray` call? that seems a bit surprising to me. That said, `IdVectorToArray` is inefficient because it does two copies
+
+[00:55:50.0246] <jandem>
+let me try rewriting that to be more efficient
+
+[01:00:06.0689] <nchevobbe>
+I'm not sure what's the expensive part, but in a previous patch that I wrote, I got positive performance improvement not returning an array (see https://bugzilla.mozilla.org/show_bug.cgi?id=1756941)
+
+[01:00:51.0324] <nchevobbe>
+and the function does show up in profiles . you can run `./mach talos-test --suite damp --subtests console.bulklog --cycles 1 --tpcycles 1 --gecko-profile --gecko-profile-entries 100000000` on latest central and check the content process
+
+[01:05:15.0757] <jandem>
+nchevobbe: it'd also be interesting to know if we often have integers there (for array objects for example). We currently convert these to strings similar to `Object.getOwnPropertyNames` etc, but we could also leave them as integers for devtools for perf reasons
+
+[01:43:44.0650] <nchevobbe>
+> <@jandem:mozilla.org> nchevobbe: it'd also be interesting to know if we often have integers there (for array objects for example). We currently convert these to strings similar to `Object.getOwnPropertyNames` etc, but we could also leave them as integers for devtools for perf reasons
+
+so, I guess we may depending on the object we're handling. we already have different branches for arrays in devtools js code as we probably noticed at some point that calling `getOwnPropertyNames` was too slow (see https://searchfox.org/mozilla-central/rev/ad7ecfa618ec3a65db8405d9f1125059fe4a6a15/devtools/server/actors/object.js#197-204)
+
+[01:44:15.0522] <jandem>
+ah nice
+
+[01:45:12.0640] <nchevobbe>
+I don't think the perf test we have is stressing logging big arrays, we were discussing having individual perf test for each js types so we could monitor performance of each of them.
+
+[01:45:36.0555] <nchevobbe>
+for now, the one we have is logging a window, an object with thousand of properties, whose value is also an object with 10000 properties: https://profiler.firefox.com/public/1j9tmk3j0fder1vh9pyfdpjg1772edfdkfxaew8/flame-graph/?globalTrackOrder=0&localTrackOrderByPid=54815-0&profileName=page_0_pagecycle_2%2Fcycle_0.profile&thread=0&timelineType=cpu-category&v=6
+
+[02:29:07.0566] <jandem>
+patches in bug 1757899 should help a bit, but there's still some other overhead in the profiles
+
+[02:29:09.0039] <botzilla>
+https://bugzil.la/1757899 — ASSIGNED (jandem) — Get rid of some unnecessary vector copies in the debugger code
+
+[05:24:38.0029] <nchevobbe>
+> <@jandem:mozilla.org> patches in bug 1757899 should help a bit, but there's still some other overhead in the profiles
+
+Thanks a lot. I pushed to our perf test see what kind of gain we'll get from it. We have other patches in flight to reduce time spent in console.log in the content process, so we might record new profiles after everything landed
+
+[05:26:21.0980] <jandem>
+nchevobbe: thanks for checking
+
+[06:53:20.0969] <nbp>
+confession: Treeherder fails to load properly when using concurrent delazification. Let's build a differential test case which will attempt to minimize 1.9 MB of JavaScript as long as errors are different.
+
+[06:53:24.0014] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[11:19:35.0901] <tcampbell>
+iain: debugger + bailout + exceptions... it feels like you are handing me a sandwich I forgot in my locker before my leave
+
+[11:20:25.0055] <tcampbell>
+Agree that making the excInfo more self-contained seems the right path forward to decouple bailout from the cx
+
+[11:20:43.0212] <iain>
+tcampbell: Okay, cool, I can probably write up a quick patch
+
+[14:32:00.0847] <chaircrusher>
+Speaking of Spidermonkey debugging.
+
+[14:33:08.0168] <chaircrusher>
+Is there a minimal example of writing a C++ NewGlobalObject function?   I've gotten frustrated wading through the example in the JSShell example.
+
+[14:34:09.0288] <chaircrusher>
+In particular I'd love to get a JS stack trace in either a script or C++, because the TypeScript compiler seems to be doing something insane and I can't work out how/where it's happening.
+
+[14:57:57.0637] <tcampbell>
+chaircrusher: jsshell "sandbox" is pretty minimal https://searchfox.org/mozilla-central/rev/d6850ecec549f9a1b10dd8ec8823db3791cf81fd/js/src/shell/js.cpp#4286
+
+[14:58:59.0185] <tcampbell>
+And another minimal example: https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/d9a734321de9394ac4cd30cb2889970622c12136/examples/repl.cpp#L131-L145
+
+
+2022-03-04
+[14:12:14.0473] <jrmuizel>
+is there a tracking bug for improving matrix-react-bench?
+
+[14:14:26.0716] <jrmuizel>
+or to phrase my question completely differently: If I'm also seeing slow react performance how do I know if the problems I'm seeing are the same as the problems we've identified on matrix-react-bench
+
+[14:17:51.0050] <iain>
+jrmuizel: That is a great question, and I wish I knew the answer. We are still at the point where we know *that* we're slow on React code, but we don't know *why*
+
+[14:18:51.0134] <iain>
+matrix-react-bench is our attempt at getting a benchmark that we can work on optimizing, in the hopes that it will also move the needle on other react websites
+
+[14:19:18.0481] <iain>
+So in a sense if you are seeing slow react performance and it isn't the same problems as matrix-react-bench, that's a problem with matrix-react-bench
+
+[14:20:08.0547] <jrmuizel>
+iain: do we know how we're going to find out why we're slow on matrix-react-bench?
+
+[14:20:25.0636] <iain>
+Jan is actively working on it
+
+[14:20:56.0601] <jrmuizel>
+ok
+
+[14:21:29.0069] <iain>
+Here's a meta bug where I was collecting examples of slow react code: https://bugzilla.mozilla.org/show_bug.cgi?id=1707066
+
+[14:21:41.0357] <jrmuizel>
+ah great
+
+[14:35:14.0647] <jrmuizel>
+iain: matrix-react-bench runs faster in Firefox than Chrome for me
+
+[14:35:28.0714] <iain>
+That is weird and unexpected
+
+[14:35:38.0574] <jrmuizel>
+Firefox:
+```
+Finished 50 iterations at 40.08 ms each. main.js:145:127308
+Finished 50 iterations at 29.34 ms each. main.js:145:127308
+Finished 50 iterations at 27.86 ms each. main.js:145:127308
+Finished 50 iterations at 27.72 ms each.
+```
+
+[14:35:48.0970] <jrmuizel>
+Chrome:
+```
+Finished 50 iterations at 41.7 ms each.
+main.js:145 Finished 50 iterations at 32.8 ms each.
+main.js:145 Finished 50 iterations at 31.34 ms each.
+main.js:145 Finished 50 iterations at 31.32 ms each.
+```
+
+[14:36:59.0629] <jrmuizel>
+that's on a MacBook Pro
+
+[14:37:08.0143] <iain>
+Fascinating
+
+[14:37:12.0096] <iain>
+jandem: ^
+
+[14:37:43.0285] <iain>
+jrmuizel: M1?
+
+[14:37:47.0501] <jrmuizel>
+no
+
+[14:37:49.0269] <jrmuizel>
+x86
+
+[14:37:54.0408] <jrmuizel>
+let me try an M1
+
+[14:42:40.0854] <jrmuizel>
+Chrome is faster on the M1
+
+[14:42:57.0608] <jrmuizel>
+8.5ms
+
+[14:43:08.0297] <jrmuizel>
+vs 15-16ms
+
+[14:43:36.0445] <iain>
+I think those numbers are closer to what we'd been seeing
+
+[14:43:46.0508] <jrmuizel>
+well the numbers are a bit unreliable
+
+[14:44:24.0215] <jrmuizel>
+but Chrome is definitely faster
+
+[14:44:56.0117] <iain>
+"Chrome is definitely faster" was pretty much my understanding of the status quo
+
+[14:45:04.0622] <iain>
+Which is why I was so surprised about your earlier numbers
+
+[14:45:10.0193] <jrmuizel>
+now it seems more like 10.5ms vs 14.5ms
+
+[14:46:54.0203] <jrmuizel>
+crazy that it's 3x faster on the M1
+
+[14:55:41.0054] <jrmuizel>
+iain: do you know how to build matrix-react-bench without minification?
+
+[14:56:04.0249] <iain>
+jrmuizel: I do not
+
+[14:56:30.0567] <iain>
+tcampbell might?
+
+
+2022-03-07
+[08:45:06.0684] <shu>
+hi spidermonkey folks, has there ever been any attempts to completely remove `function.arguments` on function instances?
+
+[08:45:36.0370] <shu>
+apparently the feature was already actively discouraged back in 1997 with the 1st ed of 262
+
+[08:45:40.0829] <shu>
+wonder if it's time we can pull the plug
+
+[09:06:09.0143] <iain>
+shu: There are [already cases](https://searchfox.org/mozilla-central/source/js/src/vm/JSFunction.cpp#196) where we don't guarantee that we can recover `function.arguments` from an Ion frame
+
+[09:08:12.0244] <iain>
+I don't think anybody here would be sad if we removed it entirely
+
+[09:12:33.0523] <shu>
+iain: interesting info, good to know
+
+[09:12:55.0402] <shu>
+chrome will add use counters for both `function.arguments` and `function.caller`, we'll see in a few months what the release numbers are like
+
+[09:13:07.0000] <shu>
+indeed, i don't think anybody anywhere will be sad if we removed these
+
+[09:13:12.0624] <shu>
+except maybe hackers
+
+[09:15:25.0048] <chaircrusher>
+OK I'm using ESR78, and trying to implement the debugger.  I use the test case in the spidermonkey.dev examples.
+The problem I'm having is that compiling the module with JS::CompileModule succeeds, JS::ModuleInstantiate succeeds, but JS::ModuleEvaluate fails, without triggering any exceptions.
+
+How can I get an idea of why the ModuleEvaluate fails if there was no exception.
+
+BTW the script is this:
+var global = newGlobal();
+
+// Create a new Debugger, and use its `onEnterFrame` hook to report function
+// calls in `global`.
+new Debugger(global).onEnterFrame = (frame) => {
+  if (frame.callee) {
+    print_doc(`called function ' + frame.callee.name + '\n`);
+  }
+};
+
+global.eval(`
+  function f() { }
+  function g() { f(); }
+  g();
+`);
+
+
+
+[09:19:48.0639] <DerekNonGeneric>
+chaircrusher (or anyone who knows), ESR means Extended Support Release, right?
+
+[09:19:59.0285] <chaircrusher>
+eys
+
+[09:20:00.0579] <chaircrusher>
+yes
+
+[09:20:46.0732] <chaircrusher>
+I built SpiderMonkey for debugging and I'm getting to where JS::InternalCallOrConstruct calls RunScript and runscript returns false
+
+[09:21:05.0116] <chaircrusher>
+but no error message or exception just silent failure
+
+[09:25:13.0762] <chaircrusher>
+when I step into JS and follow it, Interpret returns an error which is no place to step through and get any satisfaction.
+
+[09:25:30.0679] <chaircrusher>
+PS 'print_doc' is our native function that just prints to stdout.
+
+[09:44:53.0437] <DerekNonGeneric>
+Huh, you built SpiderMonkey for debugging purposes? On ESR78? I'd like to get started on an ESR version, is that best one to start on?
+
+[09:45:33.0795] <chaircrusher>
+If you're going to go through the trouble of getting an ESR version to run, do it with the latest.
+
+[09:49:59.0781] <chaircrusher>
+We haven't gotten up to the latest (96? 97?) because it's always an effort and esr78 is good enough
+
+[09:54:58.0184] <DerekNonGeneric>
+Okay, good enough sounds good to me. I will get on ESR78 (not sure how long support will be extended for that version tho). Is it almost time to upgrade?
+
+[09:57:19.0205] <chaircrusher>
+If you're just starting I'd go with ESR91, which corresponds with the current ESR firefox
+
+[09:58:36.0473] <chaircrusher>
+On github https://github.com/mozilla/gecko-dev/tree/FIREFOX_ESR_91_6_X_RELBRANCH
+
+[09:59:48.0454] <chaircrusher>
+Note that we still use the 'legacy' build for the library (i.e. down in gecko-dev/js) because I never got the current build instructions working on Linux
+
+[10:00:00.0178] <chaircrusher>
+i.e. https://firefox-source-docs.mozilla.org/js/build.html
+
+[10:00:21.0602] <chaircrusher>
+They've put together their own build system based around 'mach' which I'm not familiar with.
+
+[10:02:35.0861] <sfink>
+`mach` is homegrown and so far Mozilla-specific, though it's less of a build system and more just a command runner. I believe both `mach build` and `js/src/configure` call into the (partially homegrown) Mozilla build system.
+
+[10:03:03.0517] <chaircrusher>
+OK yeah.
+
+[10:04:41.0602] <chaircrusher>
+Maybe when I go up to ESR91 or whatever I'll bite the bullet and try and build with mach.
+
+[10:04:53.0088] <sfink>
+it's gluten free and pasture-raised (everybody working on the build system works remotely afaik)
+
+[10:05:32.0807] <chaircrusher>
+any clues why I can't evaluate the script with a debugger object, as above?
+
+[10:06:11.0355] <chaircrusher>
+The script returns false with no output.
+
+[10:07:10.0725] <sfink>
+for similar problems, I've stepped painfully through a debug build, sometimes even giving up and making a `--disable-optimize --enable-debug` build. If you capture it in rr and `reverse-step` from the false return, you should get to the cause pretty quickly.
+
+[10:07:32.0426] <sfink>
+(assuming you're blessed with working on a system that rr supports)
+
+[10:08:03.0417] <chaircrusher>
+OK I don't even know what rr is
+
+[10:08:31.0203] <sfink>
+It is the Way and the Light. https://rr-project.org/
+
+[10:09:29.0413] <sfink>
+basically, gdb but with reverse execution capability and a very modest slowdown.
+
+[10:10:15.0483] <chaircrusher>
+Looking to see if it's a package I can install on Rocky Linux
+
+[10:11:14.0723] <sfink>
+it's not too hard to build from source, if necessary. I'm always running from a self-built binary.
+
+[10:11:53.0212] <chaircrusher>
+Even debugging with RR, the problem remains, that I am trying to run a script that's literally on spidermonkey.dev. It's failing silently and not producing output and I have no clue what's going on.
+
+[10:12:35.0559] <chaircrusher>
+Like there's no "this function didn't work" or anything -- what does it mean when JS::ModuleEvaluate failes but without an exception?
+
+[10:12:38.0213] <sfink>
+rr is also nice if what you want to debug is spawned by a process that is spawned by a shell that is... etc. You can choose the process after the fact.
+
+[10:13:11.0106] <sfink>
+we call it an "uncatchable exception". It should be a rare thing. You can't catch it with a `try` block or anything.
+
+[10:13:25.0766] <chaircrusher>
+well there's this: I can install rr 5.4.0-1.el8 from epel
+
+[10:13:27.0198] <sfink>
+I think it happens with some OOM situations, for example.
+
+[10:13:58.0067] <sfink>
+it may be a bug that an exception isn't being thrown.
+
+[10:17:08.0756] <sfink>
+I see a [ForcedReturn](https://searchfox.org/mozilla-central/rev/cdab8eb3407f8fe216d5357c09aa5bfa479651f2/js/public/Exception.h#66-68) thing that doesn't *sound* like it's what you're running into, but it's similar.
+
+[10:17:28.0216] <chaircrusher>
+well I know what's failing after adding print statements.   Sometimes returning to 1983 debugging methods is the only thing that works.
+
+[10:18:01.0436] <sfink>
+your version probably doesn't have `ExceptionStatus` yet.
+
+[10:18:42.0960] <chaircrusher>
+Well in this script it never gets to the final print_doc, so the eval is failing.
+var global = newGlobal();
+print_doc("global created\n");
+var dbg =
+new Debugger(global).onEnterFrame = (frame) => {
+  if (frame.callee) {
+    print_doc(`called function ' + frame.callee.name + '\n`);
+  }
+};
+print_doc("Debugger created\n");
+global.eval(`
+  function f() { }
+  function g() { f(); }
+  g();
+`);
+print_doc("after global.eval\n");
+
+
+
+[10:20:48.0538] <chaircrusher>
+btw the global.eval statement is garbled by the chat engine - it's a multiline string; equivalent to:
+global.eval('function f() { } function g() { f(); }  g();');
+
+
+[10:21:35.0867] <sfink>
+yeah, I figured that out. You might be able to wrap your code in triple-backticks to maintain formatting.
+
+[10:22:21.0487] <chaircrusher>
+how painful is it to turn on the mozilla trace logger.
+
+[10:22:43.0730] <sfink>
+I think it's broken now.
+
+[10:22:50.0291] <sfink>
+and I doubt it would help much here
+
+[10:23:17.0647] <sfink>
+you don't get any "called function" printouts, I assume?
+
+[10:24:24.0944] <chaircrusher>
+hope
+
+[10:24:31.0312] <chaircrusher>
+ * nope
+
+[10:25:17.0773] <sfink>
+Shouldn't `onEnterFrame` be returning a [resumption value](https://developer.mozilla.org/en-US/docs/Tools/Debugger-API/Conventions#resumption-values)?
+
+[10:25:28.0285] <sfink>
+argh, sorry, broken link
+
+[10:25:47.0056] <sfink>
+I was looking at https://developer.mozilla.org/en-US/docs/Tools/Debugger-API/Debugger
+
+[10:26:22.0816] <sfink>
+https://firefox-source-docs.mozilla.org/js/Debugger/index.html must be the current location
+
+[10:26:29.0215] <chaircrusher>
+I was looking at
+https://hacks.mozilla.org/2020/03/future-proofing-firefoxs-javascript-debugger-implementation/
+
+[10:26:51.0180] <sfink>
+https://firefox-source-docs.mozilla.org/js/Debugger/Debugger.html#onenterframe-frame
+
+[10:26:54.0878] <chaircrusher>
+I'll look at that. New one on me
+
+[10:26:59.0018] <sfink>
+https://firefox-source-docs.mozilla.org/js/Debugger/Conventions.html#resumption-values
+
+[10:27:36.0329] <sfink>
+I think you may be getting the equivalent of a `null` resumption value, which should basically terminate everything silently. :-(
+
+[10:27:56.0692] <sfink>
+sorry, I probably should have realized that sooner. I've worked with the Debugger API a little bit.
+
+[10:28:18.0720] <sfink>
+try adding an explicit `return undefined`
+
+[10:28:50.0674] <sfink>
+(inside your `onEnterFrame` callback)
+
+[10:29:15.0456] <sfink>
+I'm guessing it's executing once for the toplevel script, so `frame.callee` is unset, so no printout.
+
+[10:34:44.0835] <chaircrusher>
+OK 
+
+[10:35:38.0040] <chaircrusher>
+well it still exits the script at the global.eval
+
+[10:37:29.0147] <chaircrusher>
+var global = newGlobal();
+print_doc("global created\n");
+var dbg =
+    new Debugger(global).onEnterFrame = (frame) => {
+        if (frame.callee) {
+            print_doc(`called function ' + frame.callee.name + '\n`);
+            return undefined;
+        }
+    };
+```
+print_doc("Debugger created\n");
+var script = `
+  function f() { }
+  function g() { f(); }
+  g();
+`;
+global.eval(script);
+print_doc("after global.eval\n");
+```
+
+
+[10:37:58.0221] <sfink>
+the `return undefined` has to be outside of the `if (frame.callee)`
+
+[10:38:52.0070] <chaircrusher>
+you're right but it still doesn't print anything.
+
+[10:40:27.0029] <chaircrusher>
+LOL I'm trying to make this work NOW to debug the TypeScript compiler going pear shaped.
+
+So I'm now debugging the debugger.
+
+I've build SpiderMonkey with DEBUG & I'm not running into any assertion failures.
+
+[10:41:01.0099] <chaircrusher>
+The script definitely thinks it's done after that global.eval
+
+[10:43:53.0065] <sfink>
+if anything is returning false without setting an exception, then it's going to stop executing anything sometime during that eval.
+
+[10:44:15.0049] <sfink>
+for the JS shell, that `newGlobal()` would need to be `newGlobal({newCompartment: true})`.
+
+[10:44:35.0323] <sfink>
+though that should result in a *catchable* exception
+
+[10:47:16.0048] <chaircrusher>
+OK I'm using a much simplified newGlobal. I'll add that option.
+
+[10:49:22.0773] <sfink>
+you might be fine with it being the default. In fact, you might have already made it that way. Or the esr you're on might have it as the default.
+
+[10:50:14.0337] <sfink>
+yeah, it would error out at the `new Debugger(global)` part if that were an issue.
+
+[10:50:23.0901] <sfink>
+I'll try building the example locally.
+
+[11:54:16.0081] <sfink>
+Oops. In messing around with building the embedding examples with my current checkout, I accidentally pushed some trunk fixes without going through review or PRs or anything. With great power comes great incompetence.
+
+[11:59:25.0958] <sfink>
+chaircrusher: what do you mean by "using the test case in the spidermonkey.dev examples"? Now that I have the examples compiling and running, I'm not sure what I should be trying to run. examples/repl.cpp doesn't give `newGlobal` or `Debugger` or anything.
+
+[12:03:16.0447] <chaircrusher>
+On this page: https://hacks.mozilla.org/2020/03/future-proofing-firefoxs-javascript-debugger-implementation/
+Under "The Principle in Action"
+
+[12:03:32.0281] <chaircrusher>
+I am trying that example in the JS shell.
+
+[12:04:23.0058] <chaircrusher>
+the effed up thing is at least with what I build (ESR78) the  frame I get in my onEnterFrame callback is empty
+
+[12:05:01.0505] <chaircrusher>
+```var global = newGlobal({newCompartment:true});
+print("global created\n");
+
+var dbg =
+    new Debugger(global);
+print("Debugger created\n");
+dbg.onEnterFrame = (frame) => {
+    print("Frame: " + JSON.stringify(frame));
+    if (frame.callee) {
+        //       print(`called function ' + frame.callee.name + '\n`);
+        print("Callee: " + JSON.stringify(frame.callee));
+    }
+    return undefined;
+};
+print("onEnterFrame added\n");
+dbg.onError = (frame, report) => {
+    print('debugger error: ' + report.message + '\n');
+}
+print("onError added\n");
+
+var script = `
+  function f() { }
+  function g() { f(); }
+  g();
+`;
+global.eval(script);
+print("after global.eval\n");
+
+```
+
+[12:34:40.0257] <chaircrusher>
+Also JS Shell lets me add an onError callback, but my implementation does not.
+
+[12:36:19.0256] <chaircrusher>
+the interpreter barfs (silently, of course) on ```db.onError = (frame,report) => { print('debugger error: ' + report.message + '\n'); }
+
+[12:36:34.0512] <chaircrusher>
+ * the interpreter barfs (silently, of course) on ```db.onError = (frame,report) => { print('debugger error: ' + report.message + '\n'); }```
+
+[13:12:24.0361] <chaircrusher>
+OK I tried to more faithfully imitate what the js shell does when creating a secondary global object for the debugger.
+
+Now I get a compartment mismatch error somewhere when I call JS::ModuleEvaluate
+
+Hit MOZ_CRASH(*** Compartment mismatch 0x47b1650 vs. 0x4815790 at argument 0) at /hom\|=>          bool evaluateSuccess = !JS::ModuleEvaluate(context,module);
+e/develop/pagewiz/build/js/js/src/vm/JSContext-inl.h:61 
+```
+
+[13:12:31.0291] <chaircrusher>
+ * OK I tried to more faithfully imitate what the js shell does when creating a secondary global object for the debugger.
+
+Now I get a compartment mismatch error somewhere when I call JS::ModuleEvaluate
+```
+Hit MOZ_CRASH(*** Compartment mismatch 0x47b1650 vs. 0x4815790 at argument 0) at /hom|=>          bool evaluateSuccess = !JS::ModuleEvaluate(context,module);
+e/develop/pagewiz/build/js/js/src/vm/JSContext-inl.h:61
+```
+
+[13:13:21.0976] <chaircrusher>
+ * OK I tried to more faithfully imitate what the js shell does when creating a secondary global object for the debugger.
+
+Now I get a compartment mismatch error somewhere when I call JS::ModuleEvaluate
+```Hit MOZ_CRASH(*** Compartment mismatch 0x47b1650 vs. 0x4815790 at argument 0) at /home/develop/pagewiz/build/js/js/src/vm/JSContext-inl.h:61
+```
+
+[13:14:03.0961] <chaircrusher>
+ * OK I tried to more faithfully imitate what the js shell does when creating a secondary global object for the debugger.
+
+Now I get a compartment mismatch error somewhere when I call JS::ModuleEvaluate
+Hit MOZ_CRASH(*** Compartment mismatch 0x47b1650 vs. 0x4815790 at argument 0) at /home/develop/pagewiz/build/js/js/src/vm/JSContext-inl.h:61
+
+[14:22:10.0121] <chaircrusher>
+How the F- would I tell what's causing the compartment mismatch?  Objviously something in that script, but none of the statements in that script are executed.
+
+[14:34:17.0789] <DerekNonGeneric>
+chaircrusher,(or anyone who may know), what ESR version should I be using nowadays?
+
+[14:36:44.0901] <ptomato>
+if you're not starting from legacy code, use esr91
+
+[14:40:07.0664] <DerekNonGeneric>
+Okay, thanks! That's two people saying 91, but when will the extended part become irrelevant? Like, why not higher numbers? Is nobody familiar with working on higher numbers?
+
+[14:42:04.0578] <evilpie>
+The next ESR version will be 102, but that hasn't even been released yet
+
+[14:44:30.0071] <DerekNonGeneric>
+Do they have names like Node.js has release line names and stuff (Gallium 16.x release line is currently LTS)
+
+[14:44:59.0795] <DerekNonGeneric>
+* Do they have names like Node.js has release line names and stuff (Gallium 16.x release line is currently LTS)?
+
+[14:47:41.0017] <chaircrusher>
+They have numbers. The ESR #  matches the version # of Firefox ESR
+
+[14:48:27.0118] <chaircrusher>
+since they're the exact same codebase. To Embed SpiderMonkey you check out the whole Firefox source and compile the subset in gecko-dev/js/src
+
+[15:18:19.0368] <DerekNonGeneric>
+[`gecko-dev/js/src`](https://github.com/mozilla/gecko-dev/tree/FIREFOX_ESR_91_6_X_RELBRANCH/js/src)
+
+[15:21:42.0002] <DerekNonGeneric>
+alrighty (sorry had to take an important phone call), so chaircrusher, your issue is in that repo at that directory location, but on the ESR78 branch?
+
+[15:23:46.0338] <chaircrusher>
+Yes 
+
+
+2022-03-08
+[03:03:05.0584] <Standard8>
+For the work for moving to ES modules, we've been concentrating on dropping `null` and `this` as the target arg to `ChromeUtils.import`.
+
+Presumably it would also help to drop the second (target) arg completely?
+
+[03:38:36.0590] <evilpie>
+I think so. Everything that reduces the difference to ES modules helps
+
+[04:47:51.0288] <l11d>
+is there a MIR instruction just returning the input value? the problem I'm trying to solve is: a Phi node should select V1 when entering via BB1 and V2 when entering via BB2. V2 is the very value returned by the Phi, however I cannot (afaikt) use a phi as its own operand. because the phi instruction dominates BB2, a "copy this MIR value"-instruction should work
+
+[04:56:31.0492] <evilpie>
+l11d: Pretty sure you can use a phi as its own operand
+
+[04:59:16.0119] <l11d>
+evilpie: thanks, I'll give that another try
+
+[06:09:57.0992] <nbp>
+confession: Trying to reduce treeherder JavaScript source code by automatically starting firefox and comparing the console output. Let's see if [Lithium](https://github.com/MozillaSecurity/lithium) can be used for that once all failures modes of Firefox are worked around …
+
+[06:10:00.0024] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[07:59:09.0868] <DerekNonGeneric>
+chaircrusher, would you like to guide me on a usual build procedure for ESR78?
+
+[08:02:31.0501] <DerekNonGeneric>
+going to need to download Rocky Linux https://rockylinux.org/
+
+[08:05:05.0633] <DerekNonGeneric>
+oh, it's a distro of RHEL / CentOS
+
+[08:12:38.0283] <DerekNonGeneric>
+wow, this is an impressive OS, can tell why you like it already wow
+
+[08:26:15.0499] <DerekNonGeneric>
+> <@chaircrusher:mozilla.org> CENTOS8
+
+correction ^
+
+[08:31:09.0017] <DerekNonGeneric>
+would like to know more about that particular fork or whatever, but that is a known issue and actually the reason why loss of support is coming for Node.js v18.x release line, sad to say and sad to see that happen
+
+[09:03:42.0840] <DerekNonGeneric>
+> <@dereknongeneric:mozilla.org> would like to know more about that particular fork or whatever, but that is a known issue and actually the reason why loss of support is coming for Node.js v18.x release line, sad to say and sad to see that happen
+
+this is what concerned me about all this: https://github.com/nodejs/nodejs.org/pull/4279 and there is a good video on youtube explaining the whole problem, so surprised that a way was found around that whole problem
+
+[09:16:12.0249] <nbp>
+l11d: Do you mind if I create a meta bug for all the fuzzing you do in the JS engine?
+
+[09:36:44.0731] <l11d>
+nbp: not at all
+
+[09:52:43.0546] <nbp>
+l11d: Bug l11d-js-fuzzing ;)
+
+[09:53:06.0548] <nbp>
+ * l11d: [Bug l11d-js-fuzzing](https://bugzil.la/l11d-js-fuzzing) ;)
+
+[10:35:23.0165] <l11d>
+more bugs than I could remember :D anyways, I'm still working to make the list longer
+
+[13:01:51.0829] <chaircrusher>
+DerekNonGeneric: I can tell you what we do, but you'll have to work out how to do it in your context.
+
+[13:07:07.0026] <chaircrusher>
+If you check out gecko-dev from github:
+git clone https://github.com/mozilla/gecko-dev.git
+cd gecko-dev
+git checkout FIREFOX_ESR_78_10_X_RELBRANCH
+Then follow the instructions here: https://firefox-source-docs.mozilla.org/js/build.html
+
+That seemed to not work very well to me so we fell back on the gnu/linux configure
+
+cd gecko-dev/js/src
+autoconf
+cd ../..
+
+[13:08:17.0598] <chaircrusher>
+ * If you check out gecko-dev from github:
+git clone https://github.com/mozilla/gecko-dev.git
+cd gecko-dev
+git checkout FIREFOX_ESR_78_10_X_RELBRANCH
+Then follow the instructions here: https://firefox-source-docs.mozilla.org/js/build.html
+
+That seemed to not work very well to me so we fell back on the gnu/linux configure
+
+cd gecko-dev/js/src
+autoconf
+cd ../..
+mkdir js-build
+cd js-build
+../gecko-dev/js/src/configure <config params>
+make
+
+[13:14:16.0133] <chaircrusher>
+the caveats: the js configure script seems to require an obsolete version of autoconf.
+http://ftp.gnu.org/gnu/autoconf/autoconf-2.13.tar.gz
+That's pretty straightforward, but you need install it somewhere and use it to configure the configure script.
+
+the flags we use are --disable-jemalloc --with-system-zlib --with-system-icu
+For debugging add --disable-optimize --enable-debug --enable-debug-symbols
+For release --enable-optimize
+
+In general you should compile it for release, even if you're compiling your program debug, because unless you're a mad genius like @evilpie there's not much sense you'll make out of stepping into the SpiderMonkey api calls.
+
+There's some serious juju in there that really isn't for mere mortals to mess with, unless you want a job at Mozilla hacking the gecko source
+
+[13:17:00.0174] <chaircrusher>
+anyone have anything to add?
+
+[13:17:50.0864] <chaircrusher>
+Also I might add don't start from ESR78, we're stuck on that for the moment because we're working on our own code and porting up to the latest always takes me several days.
+
+[13:19:03.0032] <chaircrusher>
+If I was starting today from a standing start, I'd use FIREFOX_ESR_91_6_X_RELBRANCH instead of ESR_78
+
+[13:19:26.0854] <DerekNonGeneric>
+I just want to test out this workflow, not going to be permanent (have a few days down-time anyways)
+
+[13:19:37.0845] <chaircrusher>
+good luck
+
+[13:20:34.0901] <chaircrusher>
+Not to criticize anyone present, but companies as large and established as Mozilla end up in a pocket universe of software development that isn't easily understood from the outside.
+
+[15:20:06.0468] <dvir>
+hi folks! I'm dealing with a random crash that looks pretty core, and was directed here by folks in GeckoView. Hope it's ok :)
+
+I'm testing a prototype Android app with GeckoView. I'm seeing a hard crash when setting up surfaces and starting the runtime, but that same crash goes away if I remove three other completely unrelated native libraries from the app.
+
+The crash looks cryptic to me and I couldn't find anything about it online. I'm looking for any advice debugging this - any prefs or args I can throw in to get an idea of what's going on would be much appreciated!
+
+The stack trace:
+
+```
+pid: 27771, tid: 28172, name: MainThread  >>> com~sanitized <<<
+uid: 10088
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+Cause: null pointer dereference
+#00 pc 0000000002e08568  /data/app/com~sanitized/lib/arm64/libxul.so (mozilla::detail::ThreadLocal<bool, mozilla::detail::ThreadLocalKeyStorage>::infallibleInit()+88) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#01 pc 00000000047b2760  /data/app/com~sanitized/lib/arm64/libxul.so (js::wasm::EnsureEagerProcessSignalHandlers()+152) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#02 pc 000000000444ae28  /data/app/com~sanitized/lib/arm64/libxul.so (js::NewContext(unsigned int, JSRuntime*)+92) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#03 pc 00000000036d96f8  /data/app/com~sanitized/lib/arm64/libxul.so (mozilla::CycleCollectedJSContext::Initialize(JSRuntime*, unsigned int)+44) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#04 pc 0000000000ffc550  /data/app/com~sanitized/lib/arm64/libxul.so (XPCJSContext::Initialize()+60) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#05 pc 0000000000ffcdf4  /data/app/com~sanitized/lib/arm64/libxul.so (XPCJSContext::NewXPCJSContext()+32) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#06 pc 000000000100bb00  /data/app/com~sanitized/lib/arm64/libxul.so (nsXPConnect::InitJSContext()+8) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#07 pc 0000000002f89258  /data/app/com~sanitized/lib/arm64/libxul.so (XREMain::XRE_mainRun()+568) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#08 pc 0000000002f89e5c  /data/app/com~sanitized/lib/arm64/libxul.so (XREMain::XRE_main(int, char**, mozilla::BootstrapConfig const&)+732) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#09 pc 0000000002f8a4a4  /data/app/com~sanitized/lib/arm64/libxul.so (XRE_main(int, char**, mozilla::BootstrapConfig const&)+124) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#10 pc 0000000002f8c5dc  /data/app/com~sanitized/lib/arm64/libxul.so (GeckoStart+68) (BuildId: b7f2fa3022d4cbfee57cded75955f0ca02f5193d)
+#11 pc 00000000000aae74  /data/app/com~sanitized/lib/arm64/libmozglue.so (Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun+500) (BuildId: 39e0516fe27739ad20f0aeacb8decee25d7123c0)
+#12 pc 0000000000143b50  /apex/com.android.runtime/lib64/libart.so (art_quick_generic_jni_trampoline+144) (BuildId: 696a9ee06663eab7dc720a88a3a44ae1)
+```
+
+thank you!
+
+
+2022-03-09
+[02:14:07.0011] <Ms2ger 💉💉>
+Ew
+
+[02:15:42.0018] <l11d>
+I'm still fighting with phi insertion maybe someone has an idea: I insert 2 constants, Co and Ce, in the osrBlock() and the entryBlock(). in the osrPreHeaderBlock I'm inserting a phi, selecting Co and Ce. AssertGraphCoherency is happy afterwards, however register allocation fails in mergeAndQueueRegisters via an assertion violation of Assertion failure: isUse() in LALLOC_CAST(Use). all my other phis work; is there anything special about phis selecting from/in osrPreHeaderBlock?
+
+[02:18:55.0854] <jandem>
+l11d: is there a reason you can't insert the constants where you need them, and let later optimizations fold them?
+
+[02:20:14.0627] <l11d>
+going forwards these constant should be regular instructions; I tried to reduce complexity to encircle the problem
+
+[03:51:02.0453] <l11d>
+are there other entries into a function besides osrBlock and entryBlock? the failing sample contains a BB with no predecessors, but the block is neither the entryBlock nor the osrBlock
+
+[06:47:43.0986] <nbp>
+confession: `lithium --lines --strategy=minimize diff_test -a '--full-parse ' -b '--concurrent ' $(pwd)/firefox-wrapper.sh $(pwd)/index.js` is finally keeping my computer busy \o/
+
+[06:47:45.0793] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[06:52:10.0621] <tcampbell>
+dvir: that isn't a failure we've seen before in SpiderMonkey itself. The segfault occurs in low level threading code that is pretty OS-specific. It is possible that the other native libraries are introducing symbols that conflict with the pthreads implementation. Are you able to say what those libraries are?
+
+[07:51:54.0764] <l11d>
+finally got my phi issues sorted out. turns out one needs to call BuildPhiReverseMapping after inserting new phis otherwise the backtracking allocator gets confused 🤷
+
+[08:18:54.0318] <sfink>
+seems like there ought to be an assertion to detect that situation
+
+[09:11:27.0759] <jrmuizel>
+tcampbell, jandem: do you know how to build https://github.com/mozilla/perf-automation/tree/master/benchmarks/matrix-react-bench without symbol minification?
+
+[09:12:13.0012] <tcampbell>
+jrmuizel: https://github.com/mozilla/perf-automation/blob/master/benchmarks/matrix-react-bench/webpack.config.js#L4
+
+[09:13:02.0719] <jrmuizel>
+tcampbell: changing that gives me a slower version
+
+[09:13:26.0789] <tcampbell>
+Oh, you just want minifier off?
+
+[09:13:34.0942] <jrmuizel>
+yeah
+
+[09:13:59.0498] <jrmuizel>
+and I can get that to happen for matrix code, but the react code still ends up minified
+
+[09:14:49.0537] <tcampbell>
+oh.. hmm
+
+[09:14:59.0013] <jrmuizel>
+I guess because of this? https://github.com/mozilla/perf-automation/blob/master/benchmarks/matrix-react-bench/node_modules/react/index.js#L4
+
+[09:16:31.0165] <tcampbell>
+yes. I believe the bundle that the package.json pulls in is minified version
+
+[09:18:12.0618] <jrmuizel>
+tcampbell: I guess you haven't run into the same issue?
+
+[09:18:54.0144] <tcampbell>
+I think I was using dev build (which is slower) when debugging
+
+[09:20:25.0961] <tcampbell>
+jrmuizel: I think I may have used https://docs.npmjs.com/cli/v8/configuring-npm/package-json#local-paths
+
+[09:20:34.0702] <tcampbell>
+and a local clone of react
+
+[09:21:04.0067] <tcampbell>
+I did a lot of stumbling around and don't quite remember what worked best
+
+[09:21:15.0867] <jrmuizel>
+tcampbell: for figuring out what to make faster are you just using the minified version?
+
+[09:21:30.0859] <tcampbell>
+yes
+
+[09:22:25.0622] <jrmuizel>
+out of curiosity how will you do that?
+
+[09:26:51.0597] <tcampbell>
+Jan has been leading that exploration, but that questions we have now are more around modified jsshell builds to see how hot scenarios around polymorphism are. And generally looking for hotspots in profiler in native-stack frames.
+
+[09:28:09.0141] <tcampbell>
+An example that we know React hits is "expando properties" where arbitrary key-values are added to DOM nodes. Having the benchmark lets us explore the side-effects of this in-situ more than a 10 line microbenchmark would.
+
+[09:28:26.0481] <tcampbell>
+Also, we are still figuring this out....
+
+[09:29:24.0011] <jrmuizel>
+tcampbell: so more focused on VM interaction rather than generated code quality per-say
+
+[09:29:38.0892] <tcampbell>
+yes.
+
+[09:30:31.0285] <tcampbell>
+With a practical react website there are tens of thousands of functions that are warm that contribute the bulk of slowdown so VM interactions often dominate (it seems..)
+
+[09:30:43.0257] <jrmuizel>
+tcampbell: do you have a sense for how deterministic is the benchmark expected to be?
+
+[09:31:24.0107] <jrmuizel>
+i.e. could there be event reordering between runs?
+
+[09:32:47.0928] <tcampbell>
+Yes, it is far from perfect, but was giving us more determinism than live sites.
+
+[09:33:14.0661] <jrmuizel>
+tcampbell: the higher level question I'm currently trying to answer is how similar are the react performance problems on twitch compared to the matrix-react demo
+
+[09:33:51.0710] <tcampbell>
+I would not have much confidence in that correlation yet.
+
+[09:33:58.0339] <iain>
+jrmuizel: If we knew the answer to that question it would be a lot easier to fix the problems
+
+[09:34:04.0912] <jrmuizel>
+🙂
+
+[09:34:06.0594] <tcampbell>
+What is the scenario on twitch that is slow?
+
+[09:34:21.0795] <jrmuizel>
+one example is just dragging the volume slider
+
+[09:34:33.0130] <tcampbell>
+/me looks towards iain
+
+[09:35:04.0901] <tcampbell>
+We should probably profile a bit and see if the JS stuff resembles what we are seeing on matrix
+
+[09:35:52.0800] <jrmuizel>
+https://share.firefox.dev/3HXNmuO
+
+[09:35:54.0099] <iain>
+jrmuizel opened a bug last week with a profile, and I took a quick look then. IIRC, the hot JS was once again in megamorphic property lookup and in the guts of the react dom code
+
+[09:36:33.0291] <tcampbell>
+So iain, would you say that our work is likely to improve at least a portion of the twitch scenario?
+
+[09:36:46.0598] <iain>
+I would say that it looks very similar to the other profiles I've seen
+
+[09:37:04.0179] <iain>
+And that I would expect a rising React tide to lift all React boats
+
+[09:37:28.0413] <iain>
+With the obvious caveat that we do not know when/how the tide will come in
+
+[09:37:47.0852] <tcampbell>
+Obviously we should just blow up the moon
+
+[09:37:52.0768] <iain>
+Obviously
+
+[09:38:31.0881] <iain>
+Put differently: we know that we are slow across many react websites, so it seems likely that the problem is in how we handle React, not in how we handle the details of a dozen different websites
+
+[09:38:52.0129] <iain>
+So I would expect that improvements to React performance would apply broadly
+
+[09:41:49.0658] <tcampbell>
+One piece that is probably worth us testing again in more detail is functional-programming-style microbenchmarks in JS. Lots of tiny objects for filters/maps does tend to make the engine a bit sad. And that is pretty prolificit in how most react sites seem to be written.
+
+[12:41:25.0399] <sefeng>
+does anyone know what `matrix react bench` benchmark does?
+
+[12:46:01.0985] <iain>
+sefeng: It's adapted from the matrix code. It switches rooms back and forth really quickly. It's a benchmark we wrote to help us find/track improvements in our React performance.
+
+[12:46:22.0435] <iain>
+ * sefeng: It's adapted from the matrix code (as in, the code for the website we're currently chatting on). It switches rooms back and forth really quickly. It's a benchmark we wrote to help us find/track improvements in our React performance.
+
+[12:48:12.0127] <sefeng>
+iain: I wrote a patch which allows us to cache the page even if `beforeunload` handler is presented, and it regress this test a lot 
+
+[12:48:42.0208] <sefeng>
+I am having a hard time to find the code about it 
+
+[12:51:12.0037] <iain>
+https://searchfox.org/mozilla-central/source/taskcluster/ci/fetch/benchmarks.yml#58
+
+[12:51:32.0091] <iain>
+You can download a zip file from here
+
+[12:55:06.0070] <iain>
+I suspect that the key important fact is that we're switching rooms (and likely therefore pages?) really quickly, which probably hits your code a lot
+
+[13:20:54.0676] <tcampbell>
+sefeng: the main loop of the test is here https://github.com/mozilla/perf-automation/blob/master/benchmarks/matrix-react-bench/src/index.js
+
+[13:21:09.0708] <sefeng>
+thanks all! 
+
+[13:21:23.0572] <tcampbell>
+It shouldn't be navigating but rather just triggering the DOM to rerender data.
+
+[13:28:40.0488] <sefeng>
+still looking, but looks like it does some inner window switching 
+
+[14:10:49.0557] <tcampbell>
+Maybe there is an harness around the test. I didn't look at the final version in automation yet
+
+
+2022-03-10
+[19:07:51.0930] <iain>
+confession: I have simple cases of try-finally working in Warp, although I still have to teach the bailout code what to do
+
+[19:07:53.0893] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[06:26:09.0751] <tcampbell>
+sefeng: in the full element web app, that same 'beforeunload' listerner does get added/updated each time a room is switched and so I think in this case a slowdown in the microbenchmark would be representative of a slowdown for actual users.
+
+[06:26:39.0051] <tcampbell>
+Is there special handling of the event handler that is slow, or do you think just being in bfcache is giving us trouble?
+
+[06:28:14.0899] <tcampbell>
+The handler provides real functionality (eg warning that a file upload may be interrupted).
+
+[07:38:29.0689] <sefeng>
+tcampbell: I just confirmed this with s.maug. bfcache does browsing context switches, without bfcache we could reuse the same browsing context, even docshell 
+
+[07:38:43.0307] <sefeng>
+this test is all about switching rooms right?
+
+[07:41:03.0786] <tcampbell>
+yes, test tries to mimic room switch. You said you were seeing navigations too? is that iframes in the page or something else weird?
+
+[07:41:44.0878] <tcampbell>
+Switching rooms does update the URL. Is that a "navigation" in this context?
+
+[07:42:00.0749] <tcampbell>
+/me needs to read up on more web APIs..
+
+[07:49:35.0240] <sefeng>
+I am not sure if I see a navigation..let me check again
+
+[09:36:26.0278] <tcampbell>
+jrmuizel: Is there an existing bug for twitch-volume-slider-perf-sucks?
+
+[09:38:00.0970] <iain>
+tcampbell: I think it's bug 1758202
+
+[09:38:02.0448] <botzilla>
+https://bugzil.la/1758202 — NEW (nobody) — React performance on twitch
+
+[09:38:20.0311] <tcampbell>
+thanks
+
+[10:23:59.0378] <sefeng>
+there's also bug 1749365
+
+[10:24:00.0687] <botzilla>
+https://bugzil.la/1749365 — NEW (nobody) — Twitch volume slider is very laggy on slower hardware
+
+[10:26:13.0518] <sefeng>
+tcampbell: It doesn't look like we are doing navigations..I'd like to learn more about the test itself. How does it do the room switch and how does the measuring work? 
+
+[10:38:43.0724] <sefeng>
+looks like it stores `Date.now()`, and the `render_room` method does the React stuff 
+
+[10:39:22.0394] <tcampbell>
+sefeng: I can do a call now if you'd like
+
+[10:40:59.0193] <sefeng>
+tcampbell: works for me mind join 222 970 9898?
+
+[10:41:03.0736] <sefeng>
+ * tcampbell: works for me, mind join 222 970 9898?
+
+[10:41:13.0047] <tcampbell>
+yep
+
+[12:17:19.0908] <jrmuizel>
+tcampbell: yeah, bug 1749365 is a sort of meta bug for the problem 
+
+[12:17:21.0235] <botzilla>
+https://bugzil.la/1749365 — NEW (nobody) — Twitch volume slider is very laggy on slower hardware
+
+[12:17:38.0075] <jrmuizel>
+tcampbell: there have been issues unrelated to JS perf that cause it to be bad
+
+[12:18:19.0242] <jrmuizel>
+tcampbell: bug 1758202 is the best I have for JS performance right now
+
+[12:18:20.0673] <botzilla>
+https://bugzil.la/1758202 — NEW (nobody) — React performance on twitch
+
+[12:18:31.0215] <jrmuizel>
+hopefully as we learn more it will get fleshed out more
+
+[12:19:29.0693] <tcampbell>
+Thanks
+
+[13:28:58.0584] <sefeng>
+tcampbell: I forgot to ask or I forgot the answer. how does the test use `window.location`?
+
+[13:30:30.0124] <tcampbell>
+I haven't figured out exactly what it does to update URL, but was just guessing that there is probably a window.location call burried in it. Hmm
+
+[13:31:53.0061] <sefeng>
+tcampbell: that's for real matrix client or the test?
+
+[13:32:00.0296] <sefeng>
+ * tcampbell: that's for real matrix client or the benchmark?
+
+[13:32:20.0277] <tcampbell>
+full client
+
+[13:32:34.0493] <sefeng>
+I see, thanks 
+
+[13:33:03.0245] <tcampbell>
+I guess it is the `window.location.hash` value that is changing..
+
+[13:58:25.0307] <tcampbell>
+I'm not sure it is actually related to perf change
+
+
+2022-03-11
+[20:59:00.0369] <DerekNonGeneric>
+> <@chaircrusher:mozilla.org> If you check out gecko-dev from github:
+> git clone https://github.com/mozilla/gecko-dev.git
+> cd gecko-dev
+> git checkout FIREFOX_ESR_78_10_X_RELBRANCH
+> Then follow the instructions here: https://firefox-source-docs.mozilla.org/js/build.html
+> 
+> That seemed to not work very well to me so we fell back on the gnu/linux configure
+> 
+> cd gecko-dev/js/src
+> autoconf
+> cd ../..
+> mkdir js-build
+> cd js-build
+> ../gecko-dev/js/src/configure <config params>
+> make
+
+okay chaircrusher, i successfully cloned it, but you know, it would have been better to clone it w/o the whole depth of the commit history b/c that took forever 😅
+
+[22:05:28.0477] <DerekNonGeneric>
+something like this, i suppose: https://github.com/git/git/blob/82fba2b9d39163a0c9b7a3a2f35964cbc039e1aa/Documentation/git-clone.txt#L182-L184
+
+[08:54:00.0196] <sefeng>
+tcampbell: another question..when we do the room switch, does the beforeunload hander run? 
+
+[08:54:37.0532] <tcampbell>
+I believe it does
+
+[10:13:56.0210] <jrmuizel>
+nbp: I'm trying to understand how easy it would be to implement https://bugzilla.mozilla.org/show_bug.cgi?id=1530552
+
+[10:14:27.0299] <jrmuizel>
+nbp: and was wondering if you could help me understand the js stack unwinding code used by the profiler
+
+[10:46:14.0550] <jrmuizel>
+do we rejit when profiling is turned on? https://searchfox.org/mozilla-central/source/js/src/jit/shared/CodeGenerator-shared.cpp#123 suggests that we do
+
+[12:47:42.0059] <jrmuizel>
+tcampbell: I tried setting up a local path to react and got `SyntaxError: /Users/jrmuizel/src/react/packages/react/index.js: Support for the experimental syntax 'flow' isn't currently enabled (11:8):` Do you remember anything like that?
+
+
+2022-03-13
+[20:02:15.0933] <kumikumi>
+How to increase logging verbosity when building spidermonkey?
+
+[22:41:46.0591] <arai>
+kumikumi: pass `--verbose` to `./mach build` command
+
+
+2022-03-14
+[03:20:39.0213] <nbp>
+jrmuizel: To make it skip all JIT frames, this would be a long iterations over all users of the frame pointer, and adding it to the non-allocatable set of registers. To make it walk jit frames would be a huge and painful refactor of the layout of JIT frames, as just adding frame pointers would have some performance impact.
+
+[03:21:59.0955] <nbp>
+jrmuizel: we do re-jit to instrument optimized code for reporting locations, but I doubt we are doing so for frames which are already on the stack.
+
+[05:30:32.0647] <dbezhetskov>
+I'm trying to prevent all possible generation of IC stubs at runtime, I've found any flag for this so I hacked `TryAttachStub` and inserted the `return` in the beginning of it. I'm just wonder, is that enough to use only generic/C++ IC?
+
+[05:36:12.0590] <jandem>
+not completely, there are a few other places where we call `AttachBaselineCacheIRStub`
+
+[06:06:22.0438] <dbezhetskov>
+ * I'm trying to prevent all possible generation of IC stubs at runtime, I haven't found any flag for this so I hacked `TryAttachStub` and inserted the `return` in the beginning of it. I'm just wonder, is that enough to use only generic/C++ IC?
+
+[07:34:08.0295] <jrmuizel>
+nbp: if we're not rejitting that implies that sometimes we can get away with not having called masm.profilerEnterFrame?
+
+[07:34:22.0370] <jrmuizel>
+nbp: how do we unwind out of those frames?
+
+[07:35:03.0497] <nbp>
+jrmuizel: I do not recall perfectly. the problem is about frames which are on the stack, and for which we do not know how to replace them by the profiler-enabled variant.
+
+[07:35:38.0668] <nbp>
+In which case any attempt to walk the stack would result in incorrect results.
+
+[07:36:18.0313] <nbp>
+ * In which case any attempt to walk the stack would result in incomplete/incorrect results.
+
+[09:23:15.0456] <chaircrusher>
+ESR78: If you turn on trace logging it no longer builds libjs_static.a
+
+[09:23:57.0188] <chaircrusher>
+Right now we need to link JS static. Will that beccome impossible at some point?
+
+[09:29:52.0315] <nbp>
+AFAIK, trace logging is not actively maintained anymore. So I would not be surprised if this is part of the unmaintained configurations.
+
+[09:30:09.0837] <nbp>
+Maybe we should simply remove it.
+
+[09:30:24.0227] <nbp>
+Or find someone to take over the ownership.
+
+
+2022-03-15
+[09:50:29.0441] <iain>
+tcampbell: Review ping on https://phabricator.services.mozilla.com/D140283
+
+
+2022-03-16
+[00:45:18.0432] <arai>
+Can anyone help me addressing the regression in bug 1758646 ? There adding  small code piece regresses browsertime youtube score by 7% on android, and the regression persists even if the newly added code path isn't taken
+
+[00:45:20.0213] <botzilla>
+https://bugzil.la/1758646 — NEW (nobody) — 7.28 - 4.42% youtube loadtime / youtube LastVisualChange + 10 more (Android) regression on Tue January 11 2022
+
+[00:48:12.0067] <arai>
+I'm wondering if it's caused by either optimization or code size, but not sure what the best way to investigate further
+
+[00:48:27.0398] <arai>
+(currently bisecting the change)
+
+[00:49:01.0086] <arai>
+ * (currently bisecting the change within 3 functions)
+
+[00:55:33.0323] <arai>
+and I'm not sure how I could solve such issue.  so far the possible solutions I can think of are: making some function never-inline or always-inline, or adding MOZ_LIKELY or MOZ_UNLIKELY to some branch
+
+[01:27:48.0719] <jandem>
+does it only affect arm7 or also aarch64?
+
+[01:30:20.0757] <arai>
+let me check
+
+[01:30:52.0743] <arai>
+so far the alert is only for arm7
+
+[01:32:53.0950] <arai>
+I don't see any regression on aarch64
+
+[01:35:58.0485] <arai>
+https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&series=mozilla-central,3422447,1,13&series=mozilla-central,3422451,1,13&series=mozilla-central,3757026,1,13&series=mozilla-central,3757030,1,13&series=mozilla-central,3636684,1,13&series=mozilla-central,3636688,1,13&timerange=7776000&zoom=1639607402917,1647459966991,0,3333.222222222222
+
+[02:07:16.0101] <jandem>
+considering you tracked it down to a specific branch in the code, it only affects arm7 builds, and there are some improvements elsewhere, I think it's fine to accept the regression in this case
+
+[02:08:31.0050] <arai>
+okay, thank you!
+
+[10:27:09.0793] <mgaudet>
+confession: Doing review feedback on a test case found me a compartment bug. 😕 Not sure how this got missed earlier. 
+
+[10:27:11.0696] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-03-17
+[07:00:18.0688] <Caspy7>
+in case this is of interest to folks in here:
+https://boa-dev.github.io/posts/2022-03-15-boa-release-14/
+https://www.reddit.com/r/rust/comments/tfno83/boa_release_v014_a_javascript_engine_written_in/
+
+[07:02:30.0042] <Caspy7>
+> Boa release v0.14: A JavaScript engine written in Rust
+
+[07:04:34.0096] <nbp>
+Caspy7: Jorendorff and I have been in contact with the author for a while, and helping at the early stage of the project.
+
+[07:04:44.0393] <Caspy7>
+awesome
+
+[07:05:22.0877] <Caspy7>
+nbp: not necessarily with a thought towards collaboration, just general assistance I'm guessing?
+
+[07:05:56.0247] <nbp>
+Yes, mostly helping with standard and the guidance on the direction on what mattered.
+
+[07:06:33.0131] <nbp>
+I was initially in contact, as the author of HolyJIT, but as this is not get adopted within Mozilla, the promise did not held. :/
+
+[07:07:16.0788] <nbp>
+We suggested to focus on the parser and interpreter, instead of focussing on implementing a JIT.
+
+[07:10:21.0345] <Caspy7>
+nbp: suggested to the author of Boa or HolyJIT?
+
+[07:10:31.0520] <nbp>
+of Boa
+
+[07:11:11.0442] <nbp>
+The author of HolyJIT being me ;)
+
+[07:12:45.0435] <Caspy7>
+ah
+"so I was talking to myself the other day and..."
+
+[07:13:56.0266] <nbp>
+ * I was initially in contact, as the author of HolyJIT, but as this <del>is not get</del> has not been adopted within Mozilla, the promise did not held. :/
+
+[07:42:01.0210] <Caspy7>
+> <@nbp:mozilla.org> We suggested to focus on the parser and interpreter, instead of focussing on implementing a JIT.
+
+why?
+
+[07:42:34.0114] <nbp>
+Because I had still hopes to comes back to HolyJIT … which never happened.
+
+[08:09:12.0770] <chaircrusher>
+Hey, I'm trying to test JS code with the reference JS interpreter that builds with SpiderMonkey.
+How do I trick it into loading a script as a module?
+Like, if I have a.js and b.js and want a to import b,
+in a I'd have
+```import * from b;```
+But js a.js
+Gets this message:
+```test2.js:1:0 SyntaxError: import declarations may only appear at top level of a module:
+test2.js:1:0 import * from test;
+test2.js:1:0 ^
+z
+```
+
+[08:10:13.0804] <chaircrusher>
+ * Hey, I'm trying to test JS code with the reference JS interpreter that builds with SpiderMonkey.
+How do I trick it into loading a script as a module?
+Like, if I have a.js and b.js and want a to import b,
+in a I'd have
+`import * from b;`
+But js a.js
+Gets this message:
+```test2.js:1:0 SyntaxError: import declarations may only appear at top level of a module:
+test2.js:1:0 import * from test;
+test2.js:1:0 ^
+z
+```
+
+[08:10:50.0770] <chaircrusher>
+ * Hey, I'm trying to test JS code with the reference JS interpreter that builds with SpiderMonkey.
+How do I trick it into loading a script as a module?
+Like, if I have a.js and b.js and want a to import b,
+in a I'd have
+`import * from b;`
+But js a.js
+Gets this message:
+test2.js:1:0 SyntaxError: import declarations may only appear at top level of a module:
+test2.js:1:0 import * from test;
+test2.js:1:0 ^
+
+
+[08:11:26.0359] <evilpie>
+`js -m a.js`
+
+[08:11:34.0778] <chaircrusher>
+thx
+
+[09:50:37.0300] <mgaudet|sick>
+jandem: I seem to have wandered into something gross with [the private-field window proxy patch](https://phabricator.services.mozilla.com/D118414). Further testing is triggering a compartment error (honestly still not sure why I didn't see this earlier 😞) 
+
+The problem is essentially that the window proxy will get transplanted into a different compartment, but there's an outer proxy, which is a CrossOriginWrapper (which is *intentionally* designed to punt compartment issues to the wrapped proxy (always wraps a proxy)) 
+
+What I'm starting to think is that the only way I can really get this to work is by teaching nsOuterWindowProxy and RemoteObjectProxy about how to read and write the proxy expando object, as that's the only place it makes sense to do the realm switching (nsOuterWindowProxy already does this). 
+
+[09:50:55.0034] <mgaudet|sick>
+does that sounds right?
+
+[09:51:14.0281] <mgaudet|sick>
+(Honestly, I might just *do* it for science reasons) 
+
+[10:00:24.0846] <jandem>
+mgaudet|sick: it doesn't sound unreasonable, but it's hard to say for sure without paging this back in. I can take a closer look tomorrow but I agree a prototype would help
+
+[10:01:04.0209] <mgaudet>
+Ok. Yeah, this stuff is all very hard to keep in the head at once. 
+
+[14:48:57.0403] <mgaudet>
+confession: Yet more work on making the weak map illusion work for private fields on exotic objects. Now to figure out how to make a test case that ensures I correctly test RemoteObjectProxy 
+
+[14:48:59.0596] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-03-18
+[14:06:14.0379] <evilpie>
+\o/
+
+[14:08:11.0546] <mgaudet>
+^- Context free celebration :P 
+
+[14:08:32.0205] <evilpie>
+I just saw https://hg.mozilla.org/integration/autoland/rev/653e9dc63dd5917a7b29878791eac08931454f11
+
+[14:09:56.0658] <mgaudet>
+Ahahaha. Oh. That makes more sense.
+
+[14:11:18.0970] <mgaudet>
+confession: As evilpie points out, WritableStreams and pipeTo is on autoland now. I've also disabled the JS Streams CI build, as it's becoming increasingly unlikely that we will revert DOM streams... and because it was going to be a pain to maintain the dual builds in CI.
+
+[14:11:41.0907] <mgaudet>
+(I'll wait till the next merge day to rip out the JS streams integration code in gecko tho) 
+
+[14:14:02.0978] <evilpie>
+DOM streams are in beta now, right?
+
+[14:16:19.0262] <mgaudet>
+evilpie: Correct. So far so good. 
+
+[14:17:40.0345] <mgaudet>
+I'm feeling very confident it'll hit release with no concerns. 
+
+[14:18:20.0513] <mgaudet>
+evilpie: Actually, you might have an opinion here: Thinking about readable byte streams. I see no reason we can't ship them in 100... do you? As well, do you think they're worth an intent-to-ship, or no?
+
+[14:18:36.0553] <mgaudet>
+ * evilpie: Actually, you might have an opinion here: Thinking about readable (user-defined) byte streams. I see no reason we can't ship them in 100... do you? As well, do you think they're worth an intent-to-ship, or no?
+
+[14:25:25.0863] <evilpie>
+Mhm, my only concern would be that Chrome doesn't implement tee correctly 
+
+[14:25:46.0784] <evilpie>
+And of course all that arraybuffer code is slightly scary
+
+[14:28:06.0287] <mgaudet>
+> <@evilpie:mozilla.org> Mhm, my only concern would be that Chrome doesn't implement tee correctly
+
+I hadn't quite realized this (haven't looked at WPT results): Do they choose the wrong reader type?
+
+[14:30:07.0672] <mgaudet>
+Oh those are weird errors
+
+[14:30:23.0706] <mgaudet>
+... I mean, just means we'd be the first to ship them usably?
+
+[14:30:44.0317] <mgaudet>
+(agree it might be worth doing an audit with some distance from implementation of array buffers there tho) 
+
+[14:30:46.0513] <evilpie>
+I think they use a default reader instead
+
+[14:32:42.0155] <mgaudet>
+Ok. I'll look into this closer next week... may be worth waiting till 101; but would be neat to ship before everyone else
+
+[14:56:15.0050] <Tim>
+Hello; perhaps I'm overlooking something obvious, but I was wondering if there's an easy way to tell, from looking at a try failure, what mozconfig to use to reproduce the failure locally
+
+[14:57:01.0974] <arai>
+config is shown at the beginning of the build log
+
+[14:57:42.0943] <arai>
+is it SpiderMonkey job?
+
+[14:58:05.0677] <Tim>
+> <@arai:mozilla.org> is it SpiderMonkey job?
+
+Yes -- here's an example: https://treeherder.mozilla.org/logviewer?job_id=371502040&repo=try&lineNumber=20097
+
+[14:58:25.0612] <Tim>
+the log begins with "Task ID: ... Worker ID: ..."
+
+[14:58:44.0806] <arai>
+https://treeherder.mozilla.org/logviewer?job_id=371502040&repo=try&lineNumber=863
+
+[14:59:55.0029] <Tim>
+> <@arai:mozilla.org> https://treeherder.mozilla.org/logviewer?job_id=371502040&repo=try&lineNumber=863
+
+so, I did see that, but in this case I needed to pass in --disable-jit to reproduce the error (line 1347 contains "-DJS_CODEGEN_NONE=1"), and that wasn't in the config
+
+[15:00:01.0391] <Tim>
+I mean, it wasn't in the config shown on line 863
+
+[15:00:58.0857] <Tim>
+so it seems like line 863 doesn't show the entire config
+
+[15:04:54.0007] <arai>
+hmm, I don't think "Linux x64 debug B" disables JIT, unless there's something in your patch stack
+
+[15:06:46.0266] <arai>
+oh, it's disabled by `--enable-record-tuple`
+
+[15:07:15.0364] <arai>
+https://searchfox.org/mozilla-central/rev/7d379061bd56251df911728686c378c5820513d8/js/moz.configure#157-158
+
+[15:07:18.0082] <Tim>
+Not in the code running in this try build
+
+[15:07:46.0989] <arai>
+doesn't this patch enable it?  https://hg.mozilla.org/try/rev/be2ade2e9be832c59119b4b4d518d71d861725a3
+
+[15:08:38.0661] <Tim>
+> <@arai:mozilla.org> doesn't this patch enable it?  https://hg.mozilla.org/try/rev/be2ade2e9be832c59119b4b4d518d71d861725a3
+
+actually, hmm... I thought that my patches included a change to moz.configure so that it doesn't disable JIT
+
+[15:08:54.0346] <Tim>
+but it doesn't seem like it does... locally I'm passing in --disable-jit explicitly
+
+[15:09:19.0127] <Tim>
+I guess that explains it
+
+[15:09:43.0756] <Tim>
+ * but it doesn't seem like it does... locally I'm passing in --enable-jit explicitly
+
+
+2022-03-20
+[20:53:18.0901] <kumikumi>
+I need to build spidermonkey 78 for ARM64 / Apple Silicon / M1 architecture. How difficult do you all suppose this will be? Is there any hope of success for someone who is not familiar with the codebase?
+
+[21:50:03.0394] <kumikumi>
+Basically what I tried to do so far, is to download this https://ftp.mozilla.org/pub/firefox/releases/78.6.0esr/source/
+
+...and follow the build steps here https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md
+
+...on a M1 mac running macOS 12.3, and the immediate issue I'm facing has something to do with python and virtualenv: "the executable ... is not functioning"
+"virtualenv is not compatible with this system or executable"
+
+I wonder if that could be worked around somehow, and if there will be some steeper issues ahead
+
+[23:11:20.0538] <kumikumi>
+Yeah. I just realized that 78.15.0 exists and doesn't have the above issue
+
+
+2022-03-21
+[05:59:44.0770] <lth>
+evilpie: wasm CSP is https://bugzilla.mozilla.org/show_bug.cgi?id=1740263 though maybe you know that
+
+[06:00:45.0805] <evilpie>
+lth: Yes, thanks! I am going to take over for Freddy in the future
+
+[06:00:55.0136] <lth>
+ok, good to know!
+
+[06:08:20.0748] <Ms2ger 💉💉>
+Lemme know if the wasm spec side becomes a blocker - I don't have much time for it at the moment, but can prioritize
+
+[06:10:18.0110] <evilpie>
+Ms2ger 💉💉: I was mostly curious when the blocking actually happens, i.e. when calling the method or when some of promises resolve. In practice this probably doesn't make a difference for webcompat though. And I can just look at what Chrome is doing
+
+[06:10:40.0648] <Ms2ger 💉💉>
+If you figure it out, please let me know :)
+
+[10:53:16.0416] <annevk>
+I realize it's probably highly impractical, but I am kinda curious after having seen the many syntax proposals if there was ever a macro proposal for JS
+
+[10:53:32.0908] <annevk>
+Maybe the answer is Wasm? 🙂
+
+[11:16:57.0078] <yulia | sick>
+i think there wasa one
+
+[11:17:46.0504] <yulia | sick>
+but i think it is very old, or i am misremembering
+
+[11:54:23.0058] <Kelsey (jgilbert)>
+Can the length or buffer of e.g. a Uint8Array change? (except by truncation due to Transfer?)
+
+[12:02:13.0369] <iain>
+Kelsey (jgilbert): Currently no. There is a proposal in the works to add resizable array buffers: https://github.com/tc39/proposal-resizablearraybuffer
+
+[12:02:41.0434] <Kelsey (jgilbert)>
+ok I will RELEASE_ASSERT that it doesn't change
+
+[12:03:32.0422] <Kelsey (jgilbert)>
+More generally, I'm checking if there's any way for ImageData's width and height to desync from its buffer length
+
+[14:00:18.0579] <l11d>
+in a local build, I disabled NativeObject::{tryShiftDenseElements,tryUnshiftDenseElements} by just letting these functions return false. is this something "valid" to do, as in "everything should still work"?
+
+[14:03:14.0084] <iain>
+l11d: It looks like everything should still work
+
+
+2022-03-22
+[00:12:37.0051] <annevk>
+yulia | sick: if you stumble across at one point I'd appreciate a pointer. Not something I think we should pursue or anything, just a curiosity
+
+
+2022-03-23
+[22:29:51.0178] <Tim>
+Hi, I have a question about using gdb to debug ASan issues -- https://searchfox.org/mozilla-central/source/tools/sanitizer/docs/asan.rst says "To stop the app in a debugger before ASan exits it, set a
+breakpoint on ``__asan::ReportGenericError``." Setting a breakpoint on __asan::ReportGenericError has no effect -- anyone know the correct function to set the breakpoint on?
+
+[00:50:29.0575] <wingo>
+Tim: if you haven't tried it yet, you might consider using rr
+
+[00:51:57.0357] <wingo>
+`rr record ./js ....` then `rr replay`, then you are in gdb just like usual, when you continue the program it does what it did last time, and concretely if it runs off the end and exits you can "reverse-continue"
+
+[00:52:04.0556] <wingo>
+or reverse-step etc
+
+[00:52:22.0233] <wingo>
+takes away the gdb anxiety of missing your breakpoint
+
+[00:53:00.0210] <wingo>
+at the end you can `b _exit` or whatever the exit function is, and then `reverse-finish` to get back to where it was called from
+
+[03:44:13.0077] <padenot>
+Tim: `__asan_report_error` usually works, and then `__asan_describe_address(addr)`, but yeah, rr is best (both work well)
+
+[03:44:51.0399] <padenot>
+`reverse-continue` with `watch -l  <variable>` on your bad pointer it's really good
+
+[04:05:40.0583] <evilpie>
+jandem: What would be a good place for `GlobalObject::isRuntimeCodeGenEnabled` now that it doesn't actually require a GlobalObject?
+
+[04:38:38.0644] <jandem>
+evilpie: maybe a stand-alone function in JSContext.h/cpp or else a new Security/CSP file in vm/ ?
+
+[05:07:51.0343] <nbp>
+/me attempt to figure out why when starting firefox from the command line as headless it some times load the same page twice …
+
+[06:29:01.0282] <mgaudet>
+confession: WritableStreams are enabled on nightly now. 
+
+[06:29:03.0622] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[06:29:19.0530] <mgaudet>
+(patch originally bounced for inaccurate WPT expectations)
+
+[06:29:36.0156] <mgaudet>
+Thanks to evilpie for doing all the work on implementation!
+
+[07:00:42.0066] <annevk>
+Oh wow, that's huge, nice work!
+
+[07:01:40.0864] <nbp>
+is there a way to disable the session restore? Apparently we are preloading and executing scripts when they are in the session restore tab …
+
+[07:02:52.0411] <annevk>
+nbp: (guess) flip `fission.bfcacheInParent`?
+
+[07:03:50.0574] <annevk>
+There's also some stuff under `browser.sessionstore` that looks relevant
+
+[07:04:09.0009] <nbp>
+I already set all of these to false :/
+
+[07:04:22.0547] <mccr8>
+In about:preferences, you can try unchecking "open previous windows and tabs"
+
+[07:10:27.0084] <nbp>
+Thanks, I will check if I can still reproduce, and do that next.
+
+[07:14:13.0058] <mccr8>
+If that doesn't help, you could see if there's somebody around in maybe #dom:mozilla.org who actually knows something about session restore.
+
+[07:36:40.0380] <evilpie>
+mgaudet: (maybe also annevk) Results for the ReadableStream global test are now accessible: https://wpt.fyi/results/streams/readable-streams/global.html?label=master&label=experimental&aligned
+
+[07:43:18.0404] <mgaudet>
+> <@evilpie:mozilla.org> mgaudet: (maybe also annevk) Results for the ReadableStream global test are now accessible: https://wpt.fyi/results/streams/readable-streams/global.html?label=master&label=experimental&aligned
+
+Oh cool.  
+
+That’s more alignment than I had hoped for
+
+[07:43:45.0511] <mgaudet>
+Not sure why Safari is broken tho
+
+[07:46:29.0653] <evilpie>
+I had the exact same reaction
+
+[07:47:25.0366] <evilpie>
+maybe Safari doesn't create a real window object for the iframe because it's empty?
+
+[15:48:45.0642] <iain>
+What are the semantics of JSOp::SetRval / JSOp::GetRval in top-level scripts? They can be generated for finally blocks, but they don't make much sense.
+
+[16:03:54.0302] <iain>
+In baseline/blinterp we just ignore the immutable NoScriptRval flag, but Warp currently asserts that we don't emit them in NoScriptRval scripts. I wonder if we should fix this in the bytecode emitter.
+
+[16:11:00.0559] <arai>
+they're for eval's return value
+
+[16:12:01.0887] <arai>
+so, for NoScriptRval, they're not used I think?
+
+[16:14:47.0822] <arai>
+yeah, I see that they're emitted even in NoScriptRval top-level, inside finally.  they should be removed
+
+[16:17:57.0877] <iain>
+I should be able to look at `bce_->sc->noScriptRval()`, right? Testing a patch right now
+
+[16:22:21.0802] <arai>
+yes, here's the same condition used for expression statement https://searchfox.org/mozilla-central/rev/630b197be00e3df3f2e3fe995bf31ca50d146eaa/js/src/frontend/BytecodeEmitter.cpp#7042-7044
+
+[16:43:59.0209] <iain>
+The tests all pass. The code you linked checks `isTopLevelContext()`; do I need to check that too, or is `noScriptRval()` enough?
+
+[16:46:46.0393] <arai>
+maybe `noScriptRval` alone would work?  if that's the case, the code above should be rewritten with assertion about `isTopLevelContext`
+
+
+2022-03-24
+[04:00:28.0956] <arai>
+iain: `sc->noScriptRval() == true` is enough for checking "top level, non-eval".
+
+[04:00:46.0208] <arai>
+so the above code can be simplified
+
+[04:25:24.0319] <arai>
+err, "non-eval" is inaccurate.  it's used for some more things (event listener etc).  but anyway, you don't need to check `isTopLevelContext()` to omit GetRval/SetRval in finally
+
+[04:27:24.0802] <arai>
+ * <del>so the above code can be simplified</del>
+
+[06:19:07.0301] <eemeli>
+Heya. So, I’ll be presenting `Intl.MessageFormat` for Stage-1 at TC39 next week, and would appreciate a bit of review/feedback. In particular, does our [readme](https://github.com/dminor/proposal-intl-messageformat/blob/more-intro/README.md) introduce the problem space and motivation well enough? dminor and I are perhaps a bit too close to the subject to really be able to say whether it makes it clear why this is important.
+
+[06:37:31.0524] <arai>
+eemeli: is there any difference between the existing existing system and the proposal, for "localization often relies on parsing these custom formats during the runtime or rendering of an application." in the Motivation's first paragraph ?
+
+[06:37:37.0363] <arai>
+ * eemeli: is there any difference between the existing system and the proposal, for "localization often relies on parsing these custom formats during the runtime or rendering of an application." in the Motivation's first paragraph ?
+
+[06:40:17.0193] <eemeli>
+1. The syntax/format isn't custom, as it's getting specified by Unicode.
+2. The parsing would be done by the native implementation, rather than JS code that needs to be deployed to the client.
+
+[06:40:53.0650] <eemeli>
+But I think I understand your point; some syntax is indeed still getting parsed at runtime.
+
+[06:41:50.0694] <arai>
+I see.  also, I think it would be nice to mention "2" there, if deployment/traffic is part of the problem
+
+[06:42:19.0487] <eemeli>
+(it's also possible to transpile the messages into JS functions during the application's build, but afaik only my `messageformat` lib does that)
+
+[06:44:09.0575] <eemeli>
+> <@arai:mozilla.org> I see.  also, I think it would be nice to mention "2" there, if deployment/traffic is part of the problem
+
+It is a part of the problem; I'll see about making that part clearer.
+
+[07:04:00.0887] <arai>
+eemeli: what are the specific problems for translators?  having many different formats?  or having many different tools for each project?
+
+[07:06:01.0907] <arai>
+(I've done some translation before, and the latter was problematic for me, but I haven't thought about format at the point
+
+[07:07:02.0200] <arai>
+ * (I've done some translation in the past, and the latter was problematic for me, but I haven't thought about format at the point
+
+[07:14:49.0664] <arai>
+is it correct that the benefit for translators is that they can use their favorite tool for any project?  the second paragraph mentions standard tooling. does it include existing tools that is going to support MF2 ?  or is there any plan for creating a new standard tool?
+
+[07:37:41.0006] <eemeli>
+For translators, MF2 is doing at least three different things that are intended to make life easier:
+
+1. Individual messages are more linear. This matters e.g. for messages with plural cases, where the syntax & data model requires something like
+```
+n === 1 ? `You have 1 new message` : `You have ${n} new messages`
+```
+as opposed to
+```
+`You have ` + n === 1 ? `1 new message` : `${n} new messages`
+```
+which is how existing formats (e.g. MF1 and Fluent) allow you to represent a message. The former is _much_ easier for translators.
+
+2. Drawing on quite a bit of experience, we're developing a plaintext syntax that's easy to understand, edit, and parse, so that those who end up working on MF2 resource files directly have a best possible experience.
+
+3. With the work on the data model, we're creating a common target for all message formatting syntaxes and formats. Effectively, we're building the foundations for making it easy to transform messages from one representation to another. This ought to ensure that we can make it easier to use existing tools with the new shiny stuff, and to find representations of complex messages that are easier for translators to work with.
+
+[07:39:18.0540] <eemeli>
+Quite a lot of that is of course outside the scope of this `Intl.MessageFormat` proposal.
+
+[07:41:50.0678] <eemeli>
+One particular thing that we're doing in parallel is defining the XLIFF 2 representation of MF2 messages, as well as the transforms to and from XLIFF; that'll make not only plugging into a lot of the existing tooling directly easier, but it also provides an example basis for similar transforms for any other formats.
+
+[07:50:06.0094] <arai>
+sorry, give me some more time for thinking about it
+
+[08:09:22.0773] <arai>
+eemeli: how do you think about separating the problem space for MF2 and `Intl.MessageFormat` ?  I think, if the document is for people who don't know much about MF2, the Motivation part isn't much clear about what problem is solved by MF2, or `Intl.MessageFormat`
+
+[08:14:36.0674] <eemeli>
+That separation is somewhat difficult, as `Intl.MessageFormat` is an implementation of MF2. So the whole set of benefits is only really realised by the combination of both.
+
+[08:16:21.0636] <eemeli>
+So while the proposal is about implementing a syntax parser and a message formatter, those are rather essential parts for enabling all the things that the MF2 spec enables.
+
+[08:16:39.0607] <eemeli>
+(in the JS ecosystem, that is)
+
+[08:36:26.0155] <arai>
+hm, I see
+
+
+2022-03-25
+[18:32:21.0892] <Jamie>
+Hi all. I needinfoed sfink about this on Bugzilla, but I just saw he's on PTO, so I'm wondering if there's anyone else who can help. I got backed out for hazard bustage. It seems one of my patches is causing an internal compiler error in XIL_GetFunctionFields and I have no idea why. Details in [this Bugzilla comment](https://bugzilla.mozilla.org/show_bug.cgi?id=1735970#c23)
+
+[01:09:23.0794] <jonco>
+Jamie: I can take a look
+
+[01:30:02.0445] <jonco>
+Jamie: This doesn't look like something I can fix.  It does seem to be a problem with sixgill which is used for the hazard analysis.  I wouldn't suggest trying to change your code to work around it.
+
+[01:30:29.0854] <jonco>
+Steve is back on Monday and he should be able to look into it
+
+[03:35:30.0292] <Jamie>
+jonco: Thanks for looking. I'll wait until then.
+
+
+2022-03-27
+[21:30:52.0077] <kumikumi>
+I'm hacking on the configure scripts but not too familiar with the syntax. In files such as "toolchain.configure", how can I inspect/print/echo a variable such as `vc_compiler_path` or `clang_search_path`? If I do `die(clang_search_path)` I get `<mozbuild.configure.SandboxDependsFunction object at 0x105d26040>` which doesn't tell me much. Any ideas?
+
+[21:37:22.0703] <arai>
+people in #build:mozilla.org room would know
+
+[21:48:48.0056] <arai>
+maybe you can write something like:
+```
+@depends(clang_search_path)
+def foo(clang_search_path):
+    die(clang_search_path)
+```
+
+
+[21:49:36.0140] <kumikumi>
+Hey that actually works, thanks <3
+
+
+2022-03-28
+[10:56:15.0470] <mgaudet>
+confession: Shocked to discover passing a size_t to a uint32_t appears to not be a compiler error... leading to a truncation bug. 
+
+[10:56:17.0840] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[12:37:14.0737] <lth>
+> <@mgaudet:mozilla.org> confession: Shocked to discover passing a size_t to a uint32_t appears to not be a compiler error... leading to a truncation bug.
+
+Yeah, this bites me every once in a while too.
+
+[12:37:38.0447] <lth>
+I've pondered whether we could locally improve linting
+
+[12:37:49.0371] <lth>
+A function that returns something should always be [[nodiscard]]
+
+[12:37:55.0107] <lth>
+Truncation == bad
+
+[12:38:12.0361] <lth>
+There might be a handful of others, not too many, manageable engineering effort to fix
+
+[12:38:57.0625] <lth>
+(in SpiderMonkey)
+
+
+2022-03-29
+[21:05:00.0986] <Tim>
+mgaudet: Would you be able to review https://phabricator.services.mozilla.com/D142300 ? It's some spec compliance fixes for change-array-by-copy
+
+[06:14:33.0537] <mccr8>
+> <@mgaudet:mozilla.org> confession: Shocked to discover passing a size_t to a uint32_t appears to not be a compiler error... leading to a truncation bug.
+
+I think Decoder looked a bit at the errors you get when you compile Firefox with a warning for that late last year. We fixed a few issues it found. (I was also surprised to find that isn't an error by default...)
+
+[06:15:27.0856] <decoder>
+you will find a ton of errors when you enable this^^
+
+[06:15:56.0882] <decoder>
+mostly they are from bad type hygiene, pulling restricted types through larger types and then casting them back
+
+[06:19:20.0034] <mccr8>
+Interesting.
+
+[08:31:12.0732] <DerekNonGeneric>
+hey all, was reading up on Mochitest and wonder if that is still a current best practice of have y'all decided to only write WPTs now? https://web.archive.org/web/20210531162522/https://developer.mozilla.org/en-US/docs/Mozilla/Projects/Mochitest#running_tests
+
+[08:31:35.0174] <DerekNonGeneric>
+ * hey all, was reading up on Mochitest and wonder if that is still a current best practice or have y'all decided to only write WPTs now? https://web.archive.org/web/20210531162522/https://developer.mozilla.org/en-US/docs/Mozilla/Projects/Mochitest#running_tests
+
+[08:45:02.0708] <DerekNonGeneric>
+> I mean mochitests predate WPT
+> also some of them will test mozilla-specific stuff
+> but I imagine some should be migrated to WPT
+
+^ this is what someone in the WPT room wrote about that, so wonder if those are still a thing
+
+[08:53:39.0230] <mgaudet>
+> <@tjc:igalia.com> mgaudet: Would you be able to review https://phabricator.services.mozilla.com/D142300 ? It's some spec compliance fixes for change-array-by-copy
+
+Yep; I probably can get to it late this week/early next?
+
+[11:44:01.0122] <Tim>
+> <@mgaudet:mozilla.org> Yep; I probably can get to it late this week/early next?
+
+yulia also offered to review it, or at least I'm inferring that from her comment on the bug -- doesn't matter to me who reviews it, and there's no rush!
+
+[11:44:23.0096] <yulia>
+yes, either of us can do it
+
+[11:44:28.0535] <yulia>
+im also a bit busy this week, but i have time in the mornings
+
+[12:10:28.0638] <Tim>
+> <@yulia:mozilla.org> im also a bit busy this week, but i have time in the mornings
+
+I flipped a coin, yulia wins :) ( cc mgaudet )
+
+
+2022-03-30
+[23:21:09.0978] <lth>
+evilpie: is that patch ready for review or are there more updates coming?
+
+[00:49:37.0060] <evilpie>
+> <@lth:mozilla.org> evilpie: is that patch ready for review or are there more updates coming?
+
+Yes
+
+[02:16:29.0400] <lth>
+not a yes-or-no question but i'll take it ;-)
+
+[06:46:43.0556] <evilpie>
+lth: indexedDB caching for WASM was removed, right?
+
+[06:47:23.0189] <lth>
+evilpie: i believe so, we now use the http cache.  yury would however be authoritative on this.
+
+[06:47:46.0791] <evilpie>
+MDN still has a bunch of references to it
+
+[06:48:03.0485] <lth>
+/me is not surprised
+
+[06:49:08.0988] <evilpie>
+so for the instantiate Module overload, wouldn't that be unreachable because we disallow creating Modules?
+
+[06:49:21.0328] <yury>
+what is the difference between indexedDB and being serializable?
+
+[06:54:38.0640] <yury>
+MDN also points to https://github.com/WebAssembly/spec/issues/821
+
+[06:55:09.0541] <evilpie>
+Good question. There different scopes (at least that is what we call it) for serialization/de-serialization 
+
+[06:57:53.0199] <yury>
+Wasm HTTP caching is using serialization logic (from past indexedDB stuff afaik). The github issue above points that storing wasm module in indexedDB will be duplication of http caching functionality. 
+
+[06:58:33.0585] <evilpie>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1469395
+
+[06:59:44.0010] <evilpie>
+Seems like something went wrong "Caching article removed from MDN:" 
+
+[08:03:51.0164] <Gankra [she/they]>
+iain: if you would like to Go Down The CHERI Rabbithole, I *just* like (2 hours ago) landed this design to rust, and it comes with a lot of discussion of CHERI limitations, with lots of people who Actually Work On It chiming in: https://github.com/rust-lang/rust/issues/95228
+
+[08:04:21.0600] <Gankra [she/they]>
+the docs haven't hit nightly but i have them mirrored here: https://docs.rs/sptr/latest/sptr/index.html#strict-provenance
+
+[08:06:07.0006] <Gankra [she/they]>
+(gonna do a proper announcement of all this when it hits nightly)
+
+[08:10:46.0953] <Gankra [she/they]>
+one nice thing about Being A Jit is that it's a lot easier for you to adopt platform-specific idioms. part of why I'm so fuzzy about the special platform-specific ops like high-bit-tagging is that I am thinking "some random person writing some code that happens to get compiled for CHERI" and so it matters a lot more to me "where in the source code=>cpu stack does this trick get applied". i.e. what patterns can i tell people Automagically Work, and which do I need compiler-analysis/intrinsics/apis/tricks for
+
+[08:11:06.0414] <Gankra [she/they]>
+ * one nice thing about Being A Jit is that it's a lot easier for you to adopt platform-specific idioms. part of why I'm so fuzzy about the special platform-specific ops like high-bit-tagging is that I am thinking of "some random person writing some code that happens to get compiled for CHERI" and so it matters a lot more to me "where in the source code=>cpu stack does this trick get applied". i.e. what patterns can i tell people Automagically Work, and which do I need compiler-analysis/intrinsics/apis/tricks for
+
+[08:12:09.0038] <Gankra [she/they]>
+a fun one for you folks: the CHERI "intptr_t is just void*" trick partially relies on the compiler trying to guess which two values in a binary op (lhs + rhs) is the "real" pointer that provenance should derive from :x
+
+[08:30:38.0647] <iain>
+Gankra [she/they]: So pointers on CHERI are necessarily 128 bit? That is definitely an awkward fit with our value representation, which relies on the ability to hide a pointer inside a double
+
+[08:33:17.0821] <Gankra [she/they]>
+yes, but it's a 64-bit address space still.  one possible solution is to take the "it's all array indexing" solution to its logical limit and basically have all JIT memory in one big "allocation" that you logically subdivide (gee i wonder if spidermonkey implements its own allocator *eye roll*) and then have all "pointers" be offsets you apply to a pointer to the Big Allocation
+
+[08:36:04.0090] <iain>
+Right now we have the ability to hide arbitrary pointers in a Value: https://searchfox.org/mozilla-central/source/js/public/Value.h#1117
+
+[08:37:13.0329] <iain>
+They don't have to be managed by the GC; for example, if you're implementing Map, it might have a hidden slot containing a pointer to a malloc-allocated buffer
+
+[08:38:33.0095] <iain>
+(https://searchfox.org/mozilla-central/source/js/src/builtin/MapObject.cpp#695)
+
+[08:40:03.0943] <iain>
+ * They don't have to be managed by the GC; for example, if you're implementing Map, it might have a reserved (~hidden) slot containing a pointer to a malloc-allocated buffer
+
+[08:43:31.0437] <Gankra [she/they]>
+hmm, anything more fancy than what I suggested is definitely "ask the CHERI folks" for now.
+
+[08:43:49.0736] <iain>
+There's always the nuclear option of 16-byte Value on CHERI, which would be a lot of work (8-byte Value is pretty heavily baked into the engine) but is at least theoretically possible
+
+[08:45:51.0820] <iain>
+Slightly less nuclear would be to go with your earlier suggestion, and implement private values as a pointer to a GC allocation that stores the full pointer
+
+[08:47:15.0923] <Gankra [she/they]>
+I believe CHERI also has a "nuclear winter" option of extending that hack to the whole process
+
+[08:47:56.0505] <Gankra [she/they]>
+which is basically "why did you bother, but ok it runs"
+
+[08:49:10.0485] <iain>
+Basically my conclusion here is that CherryMonkey is probably possible, but would be Highly Non-Trivial
+
+[08:50:02.0891] <mgaudet>
+sfink: there's a GC API question for you to weigh in on in https://phabricator.services.mozilla.com/D142151 (I did @ you, but ISTR it's not always sufficient to generate an email) 
+
+[08:50:46.0774] <Gankra [she/they]>
+if i'm being honest i am 50% just using CHERI as a forcing function to make "systems" and "hardware" people concede that pointer provenance is real and to push everyone to write more code in a "of course it works, how could it not" way
+
+[08:53:13.0941] <Gankra [she/they]>
+JITs however have a defacto license to commit Crimes Most Foul
+
+[08:53:42.0989] <iain>
+I should put Crimes Most Foul on my business cards
+
+[08:56:45.0463] <sfink>
+mgaudet: ok. In a meeting now, will look after.
+
+[08:57:12.0784] <mgaudet>
+> <@sfink:mozilla.org> mgaudet: ok. In a meeting now, will look after.
+
+Thanks! No rush!
+
+[09:14:01.0261] <arai>
+is there a bug that tracks `for-in` with deleted/added properties?  the context is bug 1762188, that I think it's not the first time the behavior is reported.  the spec says it's implementation dependent, but the behavior is different against chrome/safari there
+
+[09:14:02.0781] <botzilla>
+https://bugzil.la/1762188 — UNCONFIRMED (nobody) — Behavior difference between SpiderMonkey and Chrome/Safari with object enumeration with deleted/added property
+
+[09:16:39.0441] <sfink>
+mgaudet: looking, but I'm going to have to rinse my eyes with habañero juice to make them feel better after reading this template code. Still working out what this stuff is doing.
+
+[09:17:37.0733] <mgaudet>
+sfink: Oh yeah; whole new (to me) kinds of template magic in there. At this point I think I can explain most of it, so if you have questions feel free to ask.
+
+[09:19:34.0966] <mgaudet>
+sfink: The real core of the question is: we would like to expand a parameter pack of a set of JS::Heap<T> into a set of Rooted<T> to be arguments to the call; but without changing this to recursive expansion, the best way is to do it in the arguments. However, JS::Rooted doesn't want to be an argument (argument evaluation order concern?)... JS::Persistent rooted doesn't care the same way though. 
+
+[09:20:57.0213] <iain>
+arai: I was just writing up the same comment! Yours was more detailed, though 
+
+[10:06:57.0691] <sfink>
+mgaudet: ok, I kind of get what's going on here, though I'm going to request some comments. The main thing I don't understand is whether there's a way to avoid re-rooting in the first place. I guess it's because it wants to pass in Rooted arguments and the template magic prevents the usual autoconversion to Handle or something?
+
+[10:08:24.0462] <mgaudet>
+Inside the object we've got `JS::Heap<T>`-- IIRC there's no auto-coversion from `JS::Heap` to `Rooted` 
+
+[10:08:43.0861] <mgaudet>
+sfink: though... is this maybe a place were `fromMarkedLocation` makes sense? 
+
+[10:09:06.0342] <sfink>
+you mean `JS::Heap` -> `JS::Handle`
+
+[10:09:15.0110] <mgaudet>
+(the object is being traced by the GCC) Erm, yes
+
+[10:09:17.0209] <mgaudet>
+thinko
+
+[10:11:42.0025] <sfink>
+hm... thinking aloud... if we wanted `JS::Heap<T>` to magically just work, then it would need to be passing pointers to those T on the stack. Which I guess is what's already happening, given that they're getting `Handle<T>` right now? I need to look to see what's receiving this stuff.
+
+[10:13:09.0862] <mgaudet>
+if you look at the next patch on the stack, you'll see an example use of this
+
+[10:13:20.0890] <mgaudet>
+it's getting passed to a callback lambda 
+
+[10:21:05.0874] <sfink>
+mgaudet: hrm. It still seems like it's already getting passed as a `Handle`. I don't see an example (in that patch, at least) of a `JS::Heap` being passed in.
+
+[10:21:43.0537] <sfink>
+what I'm getting at is that it seems like the usual rule when you want to pass in a `JS::Heap<T>` is that you stick it in a `Rooted` before passing it in, and I'm not seeing why that shouldn't be the same thing here.
+
+[10:22:10.0179] <sfink>
+*unless* the template trickery makes that harder than usual because `Rooted` can't autoconvert to `Handle` like it usually would.
+
+[10:22:13.0519] <sfink>
+which is believable
+
+[10:24:50.0466] <mgaudet>
+sfink: So the native handler stores it as a `JS::Heap` object  and traces it, holding it alive until the callback runs. Then, when the callback runs, it expects a handle. So we need the Heap to be exposed as Handle for calling the callback function. The problem is is that it's unclear how to unfold the compile time list of Heaps into a set of Rooteds and then pass those Rooteds (ideally, without doing recursive template expansion). The original stab at this is to expand that list into a set of Rooteds using the fold operator `...`  in the parameter list -- but that's blocked by MOZ_RAII 
+
+[10:25:38.0874] <mgaudet>
+the current patch does the same, but with PersistentRooted
+
+[10:26:00.0247] <mgaudet>
+I suppose we could use `::FromMarkedLocation` though, because these are already being traced by the handler though... 
+
+[10:26:02.0282] <mgaudet>
+right?
+
+[10:26:10.0213] <sfink>
+Oh! I understood the latter part, and I believe `PersistentRooted` is the right answer to that. The first part I guess I didn't follow. Lemme look again.
+
+[10:27:14.0481] <sfink>
+oh, via `StorageTypeHelper`. Ok.
+
+[10:27:41.0802] <mgaudet>
+(Clarifying slightly: Handler has a *list* of JS::Heaps, the list being compile time determined type wise and traced) 
+
+[10:29:46.0857] <sfink>
+right. Well, `std::tuple<StorageType<JSArgs>...>` which is `std::tuple<JS::Heap<T>...>` or whatever.
+
+[10:30:25.0859] <sfink>
+yeah, I'm ok with this using `PersistentRooted`, but conceptually it would make a little more sense to me if it used `fromMarkedLocation`.
+
+[10:30:51.0039] <sfink>
+Since it goes to the effort of marking those locations, in a way it's a weird form of documentation.
+
+[10:32:28.0802] <sfink>
+unless, that is, I'm still confusing myself and the `std::get` isn't just getting a `Handle` back. But I *think* that's all that's going on.
+
+[10:35:30.0772] <mgaudet>
+yeah, I think that's the right read. Ok. Thanks! 
+
+[10:36:46.0745] <sfink>
+I have it written up as a comment that I'll post in a minute, but one more question
+
+[10:37:30.0543] <sfink>
+do you understand why `std::index_sequence_for` is needed? As in, why there isn't a way to just pass the whole sequence? It might be because it gives some type conversion by extracting one at a time with `std::get`, but I'm not sure.
+
+[10:41:41.0393] <sfink>
+ok, posted
+
+[10:47:48.0321] <mgaudet>
+sfink: I thought I understood yesterday... but that was based on having a single list; now that I am not so sure.
+
+[10:49:40.0972] <mgaudet>
+Hmm. maybe it's not needed; I'll ask 
+
+[10:53:30.0424] <sfink>
+it probably is, I'm mostly just curious
+
+
+2022-03-31
+[08:26:05.0967] <nbp>
+Ryan Hunt: I will look at the patch for handling exception tomorrow.
+
+[11:36:06.0768] <sfink>
+iain: bug 1761947 is pretty awesome
+
+[11:36:09.0068] <botzilla>
+https://bugzil.la/1761947 — ASSIGNED (iain) — Differential testing: miscompute when GC during scalar-replaced applyArray
+
+[11:50:13.0516] <iain>
+Yeah, it took me a little while to figure out what was going on
+
+[11:50:37.0402] <iain>
+Thankfully most of our differential testing bugs these days involve bailing out with the wrong values, so they're only problems for correctness and not security
+

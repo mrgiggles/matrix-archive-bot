@@ -1,0 +1,4106 @@
+2022-01-03
+[11:15:45.0222] <tcampbell>
+sfink: Are you happy with the current patches on Bug 1746699 or was there more poking around you had planned?
+
+[11:15:46.0678] <botzilla>
+https://bugzil.la/1746699 — ASSIGNED (sfink) — Reduce UB when allocating GC things
+
+[11:15:54.0994] <tcampbell>
+I cannot remember where we left this discussion..
+
+[11:16:40.0711] <sfink>
+I think those are good, but I'd better quickly look at what I posted.
+
+[11:16:55.0900] <tcampbell>
+Alright, I'll take a look at them tomorrow
+
+[11:20:50.0846] <sfink>
+https://phabricator.services.mozilla.com/D134095 looks good, though I'll be curious what you think.
+
+[11:36:06.0911] <sfink>
+tcampbell: ok, I had to update the 3rd patch, but all 3 look like they're worth reviewing now.
+
+[13:01:10.0321] <Tim>
+sfink: I was hoping you could take a look at https://phabricator.services.mozilla.com/D134718 , or if there's a better person to do so, let me know
+
+[13:07:02.0922] <mccr8>
+Tim: jonco could also review that, though it looks like they are on PTO until tomorrow
+
+[13:41:57.0105] <mgaudet>
+confession: 👋 Hello 2022. Dealt with email and various back-from-vacation tasks. Have written some JSAPI tests, and am now being annoyed at `hg absorb` for having made a mistake in a stack. (Don't develop tall stacks people. It's a pain. ) 
+
+[13:41:59.0482] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:13:27.0850] <sfink>
+Tim: done, lgtm.
+
+[14:13:48.0253] <Tim>
+> <@sfink:mozilla.org> Tim: done, lgtm.
+
+thanks!
+
+
+2022-01-04
+[14:52:26.0987] <mgaudet>
+confession: Landed the patches on Bug 1741941 to get them out of my very tall stack; more work on Bug 1734873 is first order of business tomorrow I think. 
+
+[14:52:29.0453] <botzilla>
+https://bugzil.la/1741941 — ASSIGNED (mgaudet) — Add enough Byte stream implementation to support Fetch/Blob integration.
+
+[14:52:30.0296] <botzilla>
+https://bugzil.la/1734873 — NEW (mgaudet) — Implement DOM Streams powered Fetch / Blob support
+
+
+2022-01-05
+[01:35:17.0152] <l11d>
+for a jit perspective: is "const c = a + b; const d = c + 1" the same as "const d = a + b + 1", assuming "c" is not used anywhere else? I'm mostly wondering regarding bailouts, e.g. the former statements might require variable c to be recovered for baseline whereas in the compound computation the intermediate computation (a + b) is not stored anywhere and hence might not require recovery?
+
+[01:54:24.0058] <jandem>
+l11d: assuming you're talking about function scope.. yeah there could be differences when it comes to optimizations and bailouts
+
+[02:13:36.0696] <nbp>
+l11d: in terms of bailout,, if there is no side effect in the addition, then yes both are equivalent, both will resume before the constant declarations, even if the value were computed. Only a branch or side-effect will cause us to allocate a resume-point which might change this behaviour once returning to a lower tier of execution.
+
+[02:17:16.0287] <l11d>
+so while it might not make a difference in terms of bailouts, it still might make a difference in terms of optimization? interesting. thanks for your input
+
+[05:11:06.0576] <nbp>
+even for optimizations, I am not sure this would make a difference. The Dataflow graph would be the same and the constant does not matter in the data-flow graph.
+
+[09:28:40.0182] <sfink>
+jonco: I misread Bas's comment in the doc. He was saying the profiler was using a nonstandard feature (expansion of inline functions in the callstacks), not that the profile was of some new feature. Sorry, I think I introduced that confusion when I was talking about it in our meeting just now.
+
+[09:40:58.0181] <jonco>
+sfink: ah ok, well we'll find out from Bas what's going on in the next meeting
+
+[14:08:44.0393] <mgaudet>
+confession: Cleaned up stream ownership in DOM streams, which I think should be easier to reason about and understand. 
+
+
+2022-01-06
+[21:02:12.0320] <Caspy7>
+this win11 user is getting the same error on multiple browsers 
+https://www.reddit.com/r/firefox/comments/rw8igf/weird_message_on_firefox_when_playing_games/
+
+[21:02:31.0139] <Caspy7>
+I'm not super savvy for web tech, is that a JS related error?
+
+[21:02:52.0302] <Caspy7>
+> An error occurred running the Unity content on this webpage. Uncaught ReferenceError: $ is not defined
+
+[21:53:33.0749] <Caspy7>
+none of the other commenters, who I think weren't on win11, were able to reproduce
+
+[23:00:07.0045] <arai>
+the error usually means the website uses jQuery or variant, and the source is blocked
+
+[23:00:13.0158] <arai>
+I wonder if it comes from some anti-virus or something that blocks/modifies the network traffic
+
+[23:01:56.0605] <arai>
+I see there's request for `jquery.min.js`, it's hosted in the same server as the game itself, so it would be different thing than DNS spoofing
+
+[23:03:03.0066] <arai>
+Caspy7: it would be nice to check the [network monitor](https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor) to see how those requests are handled
+
+[23:04:19.0947] <Caspy7>
+ok thanks, I'll try passing some of this along
+
+[23:04:32.0912] <arai>
+also it might be nice to check proxy setting.  if they're using the same proxy across browsers, it might be related
+
+[23:11:10.0392] <arai>
+Also, it looks like they haven't tested with clean profile or safe mode?  if they're using same extension (like, ad-blocker), it could cause this kind of issue across browsers
+
+[06:32:07.0657] <stratan>
+Hello there! Can anyone explain to me what does it mean for an MIR/LIR instruction to be fallible?
+
+[06:32:19.0667] <stratan>
+* Hello there! Can someone explain to me what does it mean for an MIR/LIR instruction to be fallible?
+
+[06:32:49.0681] <stratan>
+* Hello there! Can someone explain to me what does it mean for an MIR/LIR instruction to be fallible? An example of such instruction and why would be appreciated :)
+
+[06:40:57.0824] <arai>
+I'm not an expert, but to my understanding it means that, the MIR/LIR works only for certain range (like, integer range) of input, and if the input isn't guaranteed to fit into the range, it's fallible
+
+[06:41:13.0561] <arai>
+example of abs https://searchfox.org/mozilla-central/rev/6b4e19ad33650fdf9cd8529cd68eeb98bff1b935/js/src/jit/CodeGenerator.cpp#8369-8386 https://searchfox.org/mozilla-central/rev/6b4e19ad33650fdf9cd8529cd68eeb98bff1b935/js/src/jit/MIR.cpp#2784-2786
+
+[06:42:52.0755] <arai>
+so, if fallible (not guaranteed), it needs extra check/branch and bailout path
+
+[06:54:07.0401] <stratan>
+arai: thank you! I’ll have a look :)
+
+[06:55:46.0937] <nbp>
+stratan: fallibe, in the MIR/LIR context means that there is a branch which exits prematurely the JIT code, via a snapshot/bailout.
+
+[06:56:18.0615] <nbp>
+Literaly, it can "fail"
+
+[06:58:25.0388] <stratan>
+I see. Understood!
+
+[07:02:04.0663] <stratan>
+I guess every M(L)Node have their dedicated `BailoutKind` as well?
+
+[07:02:25.0432] <stratan>
+which maps to some kind of bailout stub code?
+
+[07:04:57.0026] <stratan>
+ * I guess every M(L)Node has their dedicated `BailoutKind` as well?
+
+[07:09:56.0505] <nbp>
+The bailout kind describe the kind of failure, with enough granularity to prevent this error from happening in upcoming compilation of the same function.
+
+[07:10:15.0888] <nbp>
+Some bailout kind can be shared between nodes.
+
+[07:15:07.0512] <stratan>
+gotcha
+
+[08:52:33.0154] <iain>
+stratan: There's a comment about `BailoutKind` here: https://searchfox.org/mozilla-central/source/js/src/jit/IonTypes.h#61-100
+
+[10:44:44.0212] <sfink>
+jonco: thank you for being a rubber duck. I just wrote up a 2-page question, by the end of which I realized that the answer is clear. (Or at least, it is until I try implementing it.)
+
+[15:32:53.0609] <mgaudet>
+confession: Cleaned up a variety of knock-on patches that come after the majority of DOM Readable Streams are implemented. Reviewed a few small patches today too.
+
+[15:32:55.0524] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-01-07
+[03:34:49.0168] <stratan>
+iain: thank you for the link. I've noticed but I still don't quite understand how an instruction node maps to that enum. I guess what I'm trying to say is how should I translate/interpret `BailoutKind`
+
+[03:36:14.0954] <stratan>
+ * iain: thank you for the link. I've noticed but I still don't quite understand how an instruction node maps to that enum. I guess what I'm trying to say is how should I translate/interpret `BailoutKind`. i.e I don't understand what kind of `BailoutKind` abs as arai said or, add, sub should have based on that enum.
+
+[03:36:56.0022] <stratan>
+ * iain: thank you for the link. I've noticed but I still don't quite understand how an instruction node maps to that enum. I guess what I'm trying to say is how should I translate/interpret `BailoutKind`. i.e I don't understand what kind of `BailoutKind` abs as arai said or, add, sub should have based on that enum. Does every fallible instruction have a standard/default `BailoutKind` based on its fallible case?
+
+[03:37:17.0861] <stratan>
+ * iain: thank you for the link. I've noticed but I still don't quite understand how an instruction node maps to that enum. I guess what I'm trying to say is how should I translate/interpret `BailoutKind`?. i.e I don't understand what kind of `BailoutKind` abs as arai said or, add, sub should have based on that enum. Does every fallible instruction have a standard/default `BailoutKind` based on its fallible case?
+
+[03:42:57.0113] <nbp>
+stratan: The bailoutKind is selected based on the name of the error, and based on what is necessary to do to prevent this compilation path from being selected in future compilations.
+
+[03:44:01.0250] <nbp>
+^ Apparently this changed a lot since I last looked at it, and now it seems to be only focused on the compilation path.
+
+[03:45:33.0490] <nbp>
+So the question for selecting a BailoutKind would be, what is the latest optimization phases which had to be executed which allowed this fallible path to exists. 
+
+[03:51:39.0593] <stratan>
+Ok that makes a bit more sense now thank you! 
+
+[03:52:54.0119] <stratan>
+And why this latest optimization phase is important to know? To jump back to in case of the fallible scenario? Or to avoid that path on future occurrences when going through that phase?
+
+[04:00:46.0400] <nbp>
+This is important to know, to disable this optimization phase, such that the next time we compile this code, we do not generate this fallible path.
+
+[04:01:09.0702] <nbp>
+Thus, avoiding compilation & bailout loops.
+
+[04:04:05.0226] <nbp>
+compilation & bailout loop will cause the compiler to run, produce the same code as last time, and exit the compiled code with a bailout. Having loop of such kind can be a waste of CPU resources, as compilations are not free.
+
+[04:18:03.0235] <stratan>
+Thank you for the explanation :) I’ll come back with more questions 
+
+[04:40:08.0886] <smaug>
+In which case does JS_DefineProperty fail?
+
+[04:40:13.0090] <smaug>
+OOM ?
+
+[05:04:17.0972] <annevk>
+smaug: it looks like that maps to https://tc39.es/ecma262/#sec-ordinary-object-internal-methods-and-internal-slots-defineownproperty-p-desc so it would greatly depend on the type of object
+
+[05:33:37.0584] <nbp>
+smaug: OOM, (bad thread?), non-configurable, non=-extensible object, beyond array length of array with non-writable length
+
+[05:33:45.0151] <nbp>
+ * smaug: OOM, (bad thread?), non-configurable, non-extensible object, beyond array length of array with non-writable length
+
+[05:33:56.0866] <nbp>
+And probably more which are specific to JSClasses
+
+[05:34:31.0922] <smaug>
+The case I was thinking was related to defining properties on an interface object in bindings code
+
+[05:58:53.0392] <iain>
+stratan: Another way of thinking about it: BailoutKind doesn't describe what an instruction does, it describes where that node came from.
+
+[06:01:33.0632] <stratan>
+iain: and what does `BailoutKind::Unknown` mean in that case? You don't know where that node came from?
+
+[06:01:41.0671] <stratan>
+ * iain: and what does `BailoutKind::Unknown` mean in that context? You don't know where that node came from?
+
+[06:01:42.0111] <iain>
+Most fallible instructions come from transpiled CacheIR. When we hit an inline cache in baseline, we attach a stub that covers that case. When we compile in Warp, we look at the CacheIR instructions for the stub and generate the equivalent MIR. So if an instruction bails out in Warp, then it usually means that the equivalent CacheIR would have failed a guard.
+
+[06:02:01.0717] <iain>
+Unknown generally means that the node has never been given a bailout kind, and it shouldn't bail out.
+
+[06:02:50.0664] <iain>
+Any instructions generated in the Warp CacheIR transpiler will automatically have BailoutKind::TranspiledCacheIR (unless we gave them something more specific)
+
+[06:04:00.0340] <iain>
+So if it's unknown, it probably means that we generated it during an optimization
+
+[06:04:46.0033] <iain>
+If that optimization took a node that was already fallible and transforms it to a node that will fail in the same cases, then you can just copy the existing BailoutKind over
+
+[06:05:39.0006] <nbp>
+confession: Delazification off-main-thread started! Ok, it is still crashing … like the past 2 days, but at least the code is now getting executed!
+
+[06:05:40.0742] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[06:05:41.0659] <iain>
+If that optimization creates a new fallible node where we couldn't fail before, then we may want to add a new bailout kind that is specific to that optimization, so that we can turn it off for the next compilation of this script if we see that it's introducing unnecessary bailouts
+
+[06:07:38.0917] <iain>
+So for example GVN [copies the existing BailoutKind](https://searchfox.org/mozilla-central/source/js/src/jit/ValueNumbering.cpp#787-789), but InstructionReordering [uses a new BailoutKind](https://searchfox.org/mozilla-central/source/js/src/jit/InstructionReordering.cpp#232-237)
+
+[06:39:35.0189] <Redfire>
+Weird, Despite calling `IsPromiseObject` to check that an object is indeed a promise, `GetPromiseResult` is failing the `as<PromiseObject>` cast
+
+[06:40:39.0932] <Redfire>
+Failure is because of the `MOZ_ASSERT` in it
+
+[06:40:47.0967] <arai>
+are they exactly same pointer?
+
+[06:41:14.0539] <stratan>
+iain: thank you for elaborating further! 
+
+[06:41:20.0650] <arai>
+is there any `wrap` operation or something between them?
+
+[06:42:19.0859] <Redfire>
+I'm rooting it again, if that matters? (I should really stop passing around values and stuff instead of handles)
+
+[06:43:08.0249] <arai>
+can you provide the code?
+
+[06:43:48.0950] <Redfire>
+Give me a moment
+
+[06:54:07.0669] <Redfire>
+```rs
+// Pseudo
+fn IonPromise::is_promise_raw(cx: IonContext, obj: IonRawObject) -> bool {
+    rooted!(in(cx) let mut robj = obj);
+    IsPromiseObject(robj.handle().into())
+}
+fn IonPromise::from(cx, obj) -> Option<IonPromise> {
+    if IonPromise::is_promise_raw(cx, obj) {
+        Some(IonPromise { obj })
+    } else {
+        None
+    }
+}
+fn IonPromise::result(&self, cx: IonContext) -> Value {
+    rooted!(in(cx) let robj = self.obj);
+    GetPromiseResult(robj.handle().into())
+}
+
+// Call
+promise.result(cx);
+```
+
+[06:54:22.0218] <Redfire>
+Pseudocode, but you should get the idea
+
+[06:54:49.0598] <Redfire>
+* ```rs
+// Pseudo
+fn IonPromise::is_promise_raw(cx: *mut JSContext, obj: *mut JSObject) -> bool {
+    rooted!(in(cx) let mut robj = obj);
+    IsPromiseObject(robj.handle().into())
+}
+fn IonPromise::from(cx, obj) -> Option<IonPromise> {
+    if IonPromise::is_promise_raw(cx, obj) {
+        Some(IonPromise { obj })
+    } else {
+        None
+    }
+}
+fn IonPromise::result(&self, cx: IonContext) -> Value {
+    rooted!(in(cx) let robj = self.obj);
+    GetPromiseResult(robj.handle().into())
+}
+
+// Call
+promise.result(cx);
+```
+
+[06:55:14.0838] <Redfire>
+* ```rs
+// Pseudo
+fn IonPromise::is_promise_raw(cx: *mut JSContext, obj: *mut JSObject) -> bool {
+    rooted!(in(cx) let mut robj = obj);
+    IsPromiseObject(robj.handle().into())
+}
+fn IonPromise::from(cx: *mut IonContext, obj: *mut JSObject) -> Option<IonPromise> {
+    if IonPromise::is_promise_raw(cx, obj) {
+        Some(IonPromise { obj })
+    } else {
+        None
+    }
+}
+fn IonPromise::result(&self, cx: *mut IonContext) -> Value {
+    rooted!(in(cx) let robj = self.obj);
+    GetPromiseResult(robj.handle().into())
+}
+
+// Call
+promise.result(cx);
+```
+
+[06:55:47.0684] <arai>
+Redfire: what's the type of `IonPromise.obj` ?
+
+[06:55:58.0993] <Redfire>
+`*mut JSObject`
+
+[06:56:09.0496] <arai>
+is it rooted somewhere?
+
+[06:56:34.0609] <arai>
+I wonder if GC happens between them and the pointer becomes invalid
+
+[06:57:01.0798] <Redfire>
+As I said, I should definitely stop using raw values everywhere.
+
+[06:57:24.0512] <Redfire>
+It's worked till now, but now I have to deal with it
+
+[06:58:16.0755] <arai>
+GC timing depends on the other behavior, and this kind of issue happen only sometimes
+
+[06:58:22.0980] <arai>
+ * GC timing depends on the other code, and this kind of issue happen only sometimes
+
+[06:58:47.0090] <arai>
+anyway, I'd suggest checking if the raw pointer lives across GC
+
+[07:00:01.0947] <Redfire>
+I really didn't want to do wrapper structs using handles because i thought I'd need two types for each, one for mutable handles and one for regular handles
+
+[07:00:02.0786] <arai>
+in such case, you need to either make the field rooted, or add trace method to the struct and root the `IonPromise` from somewhere else
+
+[07:00:29.0183] <arai>
+why you need 2 types?
+
+[07:00:59.0614] <Redfire>
+I would need one thing to wrap handles and one to wrap mutable handles, no? 
+
+[07:01:41.0027] <arai>
+I don't understand the reasoning
+
+[07:04:42.0936] <arai>
+oh, to be clear, you don't need to make the field `handle`.  you can have raw pointer.  but you just need `trace` method on the struct and let the owner of the instance call it
+
+[07:05:13.0403] <arai>
+if the instance lives only on the stack, you can also use `Rooted` as field type
+
+[07:10:30.0292] <arai>
+I don't know rust's `rooted` macro tho. in C++, what you need is, to have raw pointer field, and `trace` method that traces the raw pointer field.  now the class can be stored in `Rooted`.
+
+[07:10:31.0405] <arai>
+something like:
+```
+class Foo {
+  JSObject* obj = nullptr;
+  void trace(JSTracer* trc);
+}
+
+void Foo::trace(tJSTracer* trc) {
+  TraceNullableRoot(trc, obj, "Foo.obj");
+}
+
+Rooted<Foo*> foo(cx, new Foo());
+```
+
+
+[07:10:43.0170] <arai>
+so that the raw pointer field is kept valid across GC
+
+[07:11:18.0296] <Redfire>
+There's a `Trace` trait in rust-mozjs, which might be what I want
+
+[07:11:20.0943] <arai>
+ * something like:
+```
+class Foo {
+  JSObject* obj = nullptr;
+  void trace(JSTracer* trc);
+}
+
+void Foo::trace(JSTracer* trc) {
+  TraceNullableRoot(trc, obj, "Foo.obj");
+}
+
+Rooted<Foo*> foo(cx, new Foo());
+```
+
+[07:44:12.0319] <stratan>
+iain: is there a definition of what a Warp snapshot represents?
+
+[07:45:08.0198] <stratan>
+ * iain: is there a definition of what a Warp snapshot represents? do you assign snapshots only on fallible nodes?
+
+[07:45:18.0353] <stratan>
+ * iain nbp : is there a definition of what a Warp snapshot represents? do you assign snapshots only on fallible nodes?
+
+[07:46:10.0170] <stratan>
+ * iain nbp : is there a definition of what a Warp snapshot represents? is it safe point to bailout to if an assumption is no longer valid? do you assign snapshots only on fallible nodes?
+
+[07:46:22.0308] <stratan>
+ * iain nbp : is there a definition of what a Warp snapshot represents? is it a safepoint to bailout to if an assumption is no longer valid? do you assign snapshots only on fallible nodes?
+
+[07:50:16.0303] <mgaudet>
+stratan: [This slide deck](https://nbp.github.io/slides/RInstruction/?full#cover) may be of interest to you (I seem to recall it helping me, but it's been a long time) 
+
+[07:54:43.0985] <stratan>
+mgaudet: I'll have a look thank you!
+
+[07:55:23.0490] <stratan>
+seems nbp is one of the go-to JIT gurus in here :) 
+
+[07:56:54.0453] <stratan>
+would've been lovely if there was a voice with each slide :)
+
+[07:59:05.0543] <stratan>
+iain nbp at the LIRGenerator::generate stage, all nodes should have a `BailoutKind` at that point right?
+
+[08:01:27.0378] <iain>
+stratan: There are actually two completely different things that we call snapshots
+
+[08:02:44.0520] <iain>
+Warp snapshots are the inputs to WarpBuilder: we take a snapshot of the information needed to compile a script, and bundle it up so that we can do off-thread compilation.
+
+[08:03:00.0002] <iain>
+The snapshots you're looking at are presumably the other kind, which I guess we just call snapshots
+
+[08:05:47.0581] <iain>
+And yeah, a snapshot contains the information necessary to rewind to the most recent safe point and resume execution after bailing out.
+
+[08:07:28.0193] <iain>
+So in Lowering.cpp, whenever we lower a fallible MIR node to LIR, we call `assignSnapshot` and pass in the bailoutKind, which can't be Unknown
+
+[08:09:01.0577] <stratan>
+why can't it be Unknown? If I understood correctly, optimization phases can create nodes of themselves according to `So if it's unknown, it probably means that we generated it during an optimization`
+
+[08:10:04.0305] <iain>
+Because we assert that it's not Unknown when we generate the snapshot: https://searchfox.org/mozilla-central/source/js/src/jit/shared/Lowering-shared.cpp#275
+
+[08:10:06.0323] <stratan>
+it can't be Unkown because Lowering.cpp is the last and final stage?
+
+[08:10:43.0961] <iain>
+You can have nodes with BailoutKind::Unknown iff they're infallible
+
+[08:11:05.0689] <stratan>
+understood, makes sense
+
+[08:14:43.0611] <iain>
+The other piece of this puzzle is resume points, which are basically the MIR equivalent of snapshots in LIR. After every effectful operation, we create a resume point, which represents the state of the VM stack after that operation 
+
+[08:14:57.0388] <iain>
+And that information is encoded in the snapshots
+
+[08:16:18.0317] <iain>
+Which means that at any point that we bail out, we can go back to the last safe point, and the snapshot can point us to a node for every local variable / value on the operand stack
+
+[08:18:27.0018] <stratan>
+Oh I see. So there are the Warp snapshots (first stage), MIR snapshots aka resume points (second stage) and finally LIR snapshots?
+
+[08:18:44.0335] <stratan>
+* Oh I see. So there are Warp snapshots (first stage), MIR snapshots aka resume points (second stage) and finally LIR snapshots?
+
+[08:18:53.0550] <iain>
+I'd say that Warp snapshots are a separate thing with a misleading name
+
+[08:19:39.0486] <iain>
+(Which I'm allowed to say because I was involved in naming them :P)
+
+[08:20:18.0838] <iain>
+But the rest of your sentence is roughly right: roughly speaking, resume points in MIR turn into snapshots in LIR
+
+[08:25:49.0923] <nbp>
+mgaudet: Warp snapshots are not the same as Ion snapshot. (see iain comment)
+
+[08:26:45.0444] <stratan>
+thank you for the clear answers iain 
+
+[08:28:21.0575] <nbp>
+stratan: MIR ResumePoint capture the equivalent interpreter stack. Instead of having Values on the stack, we have MIR instructions which are computing the values.
+
+[08:28:47.0385] <stratan>
+I'd appreciate it even further if you folks point me to some code that do what you're mentioning :D
+
+[08:29:08.0333] <stratan>
+ * I'd appreciate it even further if you folks point me to some code that does what you're mentioning :D
+
+[08:29:18.0213] <nbp>
+stratan: LIR snapshots are a list of all value allocations. These are used to reconstruct the interpreter frame described by the resume points.
+
+[08:32:09.0744] <nbp>
+stratan: https://searchfox.org/mozilla-central/source/js/src/jit/WarpCacheIRTranspiler.cpp#2337-2348 `pushResult` will set the top of the stack slot emulation with the Add instruction.
+
+[08:33:27.0482] <nbp>
+stratan: When resume points are created, they copy these slots. https://searchfox.org/mozilla-central/source/js/src/jit/MIR.cpp#3361-3363,3369-3374
+
+[08:33:30.0126] <stratan>
+nbp: I see! Shouldn't you at that point emit some info in case of bailout (of the overflow case let's say)?
+
+[08:34:09.0622] <iain>
+The resume point is exactly that information 
+
+[08:34:28.0308] <iain>
+We have checks that will bail out in case of overflow.
+
+[08:34:36.0061] <iain>
+If that happens, we will revert to the last known-good state
+
+[08:34:38.0286] <nbp>
+stratan: We do, this is what the RecoverInfo and Snapshot are for, they are written after the code, and describe how to get these information when we bailout.
+
+[08:35:32.0451] <iain>
+The resume point says "after the last effectful operation, this is the state of the VM stack". 
+
+[08:36:00.0280] <iain>
+So when we bail out, we effectively go back in time to just after the last effectful operation, and we recreate the state at that point
+
+[08:37:26.0807] <nbp>
+stratan: See [CodeGeneratorShared::encode(LSnapshot*)](https://searchfox.org/mozilla-central/source/js/src/jit/shared/CodeGenerator-shared.cpp#540)
+
+[08:38:53.0198] <iain>
+For example, here's a useless little function:
+```
+function foo() {
+  var x = 1;
+  var y = 2;
+  var z = 1 + bar(x,y);
+  return z;
+}
+```
+There are two resume points in this function: one at the beginning, and one after the call to bar. We can't rewind past the call, because it could have arbitrary side-effects.
+
+[08:39:34.0341] <stratan>
+you mean `bar` could modify what's after the caller calls it?
+
+[08:39:55.0626] <stratan>
+ * you mean `bar` could modify what's after the caller calls it? that's why you can't rewind?
+
+[08:40:25.0402] <iain>
+Let's say that bar always returns an integer
+
+[08:40:40.0083] <iain>
+So we have an MAdd that will add 1 to the result of bar(x,y)
+
+[08:40:53.0103] <iain>
+If that ever overflowed, we would have to bail out
+
+[08:41:41.0815] <iain>
+If so, we can't go all the way back to the beginning of foo(), because calling bar() could have a side effect (like printing a message, or incrementing a counter, etc...)
+
+[08:42:02.0255] <iain>
+So we need a resume point that captures the state of the world after calling bar
+
+[08:42:14.0471] <iain>
+In this case, it would look something like: `resumepoint 18 6 1 5 4 0 1 1`
+
+[08:42:28.0113] <nbp>
+Re-executing `bar` could have noticeable side-effect. Thus we cannot re-execute `bar`. We add a resume point to capture the state of the interpreter after `bar`, such that any failure such as an overflow in `z + …` would not re-execute `bar`, but would resume after the execution of `bar`, at the resume point.
+
+[08:43:47.0061] <iain>
+Here's a screenshot of my ionlog output, in case you want to follow along
+
+[08:43:51.0225] <nbp>
+A Snapshot, capture the allocations made by the register allocator, in order to reconstruct the interpreter stack described by the resume point.
+
+[08:44:02.0186] <nbp>
+ * A Snapshot captures the allocations made by the register allocator, in order to reconstruct the interpreter stack described by the resume point.
+
+[08:45:38.0998] <iain>
+18 is the result of the call, which is still on the stack waiting to be added. 6 is the constant 1, also on the stack. 1, 5, and 4 are the local variables z, y, and x respectively: y and x contain constant values, and z contains undefined because we haven't stored anything in it yet.
+
+[08:46:42.0613] <iain>
+The last `0 1 1` is `this`, the return value, and the environment chain, in an order I can never remember without looking it up. If this function used `arguments`, it would also have a slot here.
+
+[08:47:58.0805] <iain>
+So each resume point captures a set of definitions, which collectively can be used to recreate the state of the VM in the baseline interpreter after we bail out
+
+[08:48:40.0881] <iain>
+And then all the snapshot stuff, and anything you might see about recover instructions, is just a bunch of details about how we encode that information efficiently
+
+[08:49:54.0704] <iain>
+(For some value of "efficiently"; we have vague plans to use a more memory efficient delta encoding, but we haven't gotten around to implementing it.)
+
+[08:50:29.0413] <stratan>
+super cool, insightful and clear example!
+
+[08:50:37.0567] <iain>
+I would point to specific parts of the code here, but I'm not sure what the most relevant parts are. It's all kind of distributed.
+
+[08:51:22.0089] <stratan>
+I think both you and nbp shared enough code keywords to look around myself :) 
+
+[08:51:39.0339] <nbp>
+> <@iain:mozilla.org> (For some value of "efficiently"; we have vague plans to use a more memory efficient delta encoding, but we haven't gotten around to implementing it.)
+
+Noting that this has to be decoded without relying on allocated memory … (my 2 cents)
+
+[08:52:41.0571] <stratan>
+Seems like Friday is the day to pick your brains apart. Much appreciated :D
+
+[08:52:41.0610] <iain>
+Resume points are MResumePoint in MIR.h, snapshots are implemented in Snapshots.cpp, there's a whole additional mechanism for pushing computation into the bailout path in Recover.cpp, bailouts happen in Bailouts.cpp and BaselineBailouts.cpp
+
+[08:52:43.0783] <nbp>
+(or maybe used to have … :pending mistery to anyone who might dig too much in recover instructions:)
+
+[08:53:08.0076] <iain>
+nbp: Why no allocated memory?
+
+[08:53:56.0494] <nbp>
+iain: because we have/had no way to bubble up allocation issues.
+
+[08:54:04.0545] <iain>
+The delta encoding is something I've heard jandem mention, but I have never looked into the details myself
+
+[08:55:02.0030] <iain>
+Ah, in that case you know that my personal recommendation is, as always, that we should just crash on small OOMs :)
+
+[08:55:46.0205] <iain>
+(But also I think it should be possible to read a delta encoding without allocating memory)
+
+[08:57:22.0039] <stratan>
+thank you for your time and explanations iain nbp :)
+
+[08:57:41.0958] <stratan>
+I'll be back with more questions once I re-iterate and digest all this info dump
+
+[09:02:29.0529] <iain>
+You're welcome! I haven't been working on this code for so long that I don't still appreciate an opportunity to explain things and make sure my own mental models are in working order
+
+[10:56:54.0241] <dheitbrink>
+I am having an issue with a embedded SpiderMonkey 78, basically every time we use a regular expression where the result set exceeds 9, I get a  "too much recursion" error - for instance doing a match on "1,2,3,4,5,6,7,8,9,10" with /([0-9])+/g. This is working fine with an older version of SpiderMonkey
+
+[11:00:47.0932] <sfink>
+are you using `JS_SetNativeStackQuota`?
+
+[11:00:55.0084] <dheitbrink>
+let me check
+
+[11:01:37.0219] <dheitbrink>
+no it does not look like it
+
+[11:02:15.0628] <sfink>
+it's weird, I would expect [InitDefaultStackQuota](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#156) to give you reasonable values
+
+[11:04:13.0024] <sfink>
+maybe `js::GetNativeStackBaseImpl` isn't getting the right thing.
+
+[11:05:18.0451] <sfink>
+I guess I'm assuming it's the stack limit check, but maybe not.
+
+[11:05:21.0175] <sfink>
+ iain: ^
+
+[11:31:42.0617] <iain>
+Hmm, that's weird. Off the top of my head I can't think of a good explanation.
+
+[11:31:59.0055] <iain>
+The new regex engine landed in 78, but I don't think I've seen that problem before.
+
+[11:34:49.0405] <iain>
+Are you doing anything with interrupts?
+
+[11:35:15.0227] <iain>
+ * dheitbrink: Are you doing anything with interrupts?
+
+[11:35:51.0253] <mdashti>
+Hi, a newbie question. How do you run the linter on the code written in the Firefox codebase?
+
+[11:35:54.0299] <dheitbrink>
+Not that I can think of, I would have to look with the interrupts, Just playing around with it, it seems if I set JS_SetNativeStackQuota, to something unreasonably high, it solves the issue.
+
+[11:36:24.0300] <iain>
+Huh, okay, if setting the stack limit fixes it then the interrupt thing is a red herring
+
+[11:37:54.0415] <iain>
+Oh, one possibility: I think we've had a few bugs where somebody called into the engine to execute a regular expression from a position where we were already over a stack limit
+
+[11:38:30.0718] <iain>
+Is it possible that you've already used up your stack quota before calling into the engine?
+
+[11:39:11.0492] <dheitbrink>
+I tend to doubt it, the stack should be real shallow where this is being called
+
+[11:39:24.0424] <iain>
+mdashti: If you use `./mach help`, there are a variety of linting options in the "Development Environment" section, depending on what you want to lint
+
+[11:40:13.0521] <iain>
+I believe the default configuration also runs a variety of linters as commit hooks, although I can never keep track of which ones
+
+[11:41:53.0428] <iain>
+(By default configuration I mean the mercurial configuration wizard that optionally runs as part of ./mach bootstrap. I think clang-format= and js-format= are the .hgrc options that do it.)
+
+[11:52:00.0849] <iain>
+dheitbrink: It only happens with global matches? That seems weird. Nothing comes to mind as an explanation.
+
+[11:52:54.0149] <dheitbrink>
+Yeah, I do not seem to be having this issue with non-global matches. 
+
+[14:22:28.0076] <mtigley>
+Hello! I've been working on an issue where I need to load a script from a system addon into a .jsm file: https://phabricator.services.mozilla.com/D109073?id=525434#inline-744206
+
+But it's failing at this assertion here: https://searchfox.org/mozilla-central/rev/682e5a82d403974bacb779c1db515962d946be48/js/xpconnect/loader/mozJSSubScriptLoader.cpp#264 on debug builds.
+
+[14:23:16.0945] <mtigley>
+After some getting some help from #fx-desktop-dev:mozilla.org, it looks like the issue might be because we don't update the original content length if it's still -1: https://searchfox.org/mozilla-central/rev/682e5a82d403974bacb779c1db515962d946be48/js/xpconnect/loader/mozJSSubScriptLoader.cpp#252-254. Since this looks to be part of the JS engine, I wanted to confirm if we'd need to `SetContentLength` in that check as well.
+
+[14:52:07.0507] <arai>
+mtigley: I doubt the current code matches the comment
+
+[14:52:56.0199] <arai>
+I don't know the restriction about `GetContentLength()` mentioned there, but it would be better asking the author/reviewer of the patch that added the assertion
+
+[14:53:48.0032] <arai>
+to me, "that value" seems to point "correct value"
+
+[14:54:26.0326] <arai>
+and the comment sounds like `len` is overwritten by `NS_ReadInputStreamToString`
+
+[14:54:33.0799] <mdashti>
+> <@iain:mozilla.org> mdashti: If you use `./mach help`, there are a variety of linting options in the "Development Environment" section, depending on what you want to lint
+
+Thanks. I'm using VSCode, and get this error:
+```
+YAML:28:19: error: unknown key 'StatementMacros'
+StatementMacros: [MARKUPMAP, ASSERT_TRUE, ASSERT_FALSE, TEST, CHECK]
+                  ^
+Error reading /home/ubuntu/spidermonkey/.clang-format: Invalid argument
+```
+
+[14:54:51.0787] <mdashti>
+> <@iain:mozilla.org> mdashti: If you use `./mach help`, there are a variety of linting options in the "Development Environment" section, depending on what you want to lint
+
+ * Thanks. I'm using VSCode, and get this error:
+```
+YAML:28:19: error: unknown key 'StatementMacros'
+StatementMacros: [MARKUPMAP, ASSERT_TRUE, ASSERT_FALSE, TEST, CHECK]
+                  ^
+Error reading /home/ubuntu/spidermonkey/.clang-format: Invalid argument
+```
+
+when I use the default "Format on Save"
+
+[14:55:51.0998] <mdashti>
+ * Thanks. I'm using VSCode, and get this error:
+```
+YAML:28:19: error: unknown key 'StatementMacros'
+StatementMacros: [MARKUPMAP, ASSERT_TRUE, ASSERT_FALSE, TEST, CHECK]
+                  ^
+Error reading /home/ubuntu/spidermonkey/.clang-format: Invalid argument
+```
+
+when I use the default "Format on Save". Any suggestion?
+
+[14:59:08.0761] <arai>
+mdashti: what version of clang-format are you using?
+
+
+2022-01-08
+[16:43:12.0500] <sfink>
+tcampbell|ooo: note that you should probably glance at bug 1628014 before reviewing the other patches, since it undoes some of what bug 1746699 does. Two steps forward, one step back.
+
+[16:43:14.0388] <botzilla>
+https://bugzil.la/1628014 — ASSIGNED (sfink) — Make Allocate functions call constructors
+
+[16:43:15.0133] <botzilla>
+https://bugzil.la/1746699 — ASSIGNED (sfink) — Reduce UB when allocating GC things
+
+[16:43:25.0956] <sfink>
+one day I'll learn to do it the right way the first time, but probably not before I'm dead.
+
+[22:54:52.0536] <Redfire>
+> <@redfire75369:mozilla.org> There's a `Trace` trait in rust-mozjs, which might be what I want
+
+Interestingly, `RootedGuard` requires `GCMethods` and `RootKind`, not `Trace`
+
+[11:27:27.0187] <mdashti>
+> <@arai:mozilla.org> mdashti: what version of clang-format are you using?
+
+I'm using `clangd v0.1.13` VSCode extension and my `clang-format` version is:
+
+```clang-format --version                                                                                                                   ubuntu@ip-10-122-9-106 11:26:23
+clang-format version 12.0.0 (taskcluster-XvzyI6VNRoS3YDr9ff8B9g)```
+
+[11:28:06.0553] <mdashti>
+> <@arai:mozilla.org> mdashti: what version of clang-format are you using?
+
+ * I'm using `clangd v0.1.13` VSCode extension and my `clang-format` version is:
+```
+clang-format
+clang-format version 12.0.0 (taskcluster-XvzyI6VNRoS3YDr9ff8B9g)```
+```
+
+[11:28:17.0743] <mdashti>
+ * I'm using `clangd v0.1.13` VSCode extension and my `clang-format` version is:
+```
+$ clang-format
+clang-format version 12.0.0 (taskcluster-XvzyI6VNRoS3YDr9ff8B9g)```
+```
+
+[11:28:41.0579] <mdashti>
+ * I'm using `clangd v0.1.13` VSCode extension and my `clang-format` version is:
+```
+$ clang-format
+clang-format version 12.0.0 (taskcluster-XvzyI6VNRoS3YDr9ff8B9g)
+```
+
+
+2022-01-09
+[02:33:05.0930] <wraitii>
+Hello everyone, I'm currently upgrading 0 A.D. to SM ESR 91
+
+[02:33:24.0972] <wraitii>
+code changes have been trivial on our end, still need to do some perf comparison
+
+[02:34:24.0238] <wraitii>
+Two build-flags related questions: is trace-logging now working? And I assume "--enable-spidermonkey-telemetry" is not supposed to be used by embedders
+
+[02:35:46.0461] <wraitii>
+I also see a "--enable-arm64-fjcvtzs" flag, is that safe to use? I'm assuming it'd give a performance boost on the new ARM macs
+
+[02:41:10.0251] <wraitii>
+And by the way, I've upped https://bugzilla.mozilla.org/show_bug.cgi?id=1588340#c35, as there remains one issue with "JS Standalone, disable JS Shell" configuration
+
+[02:41:27.0157] <wraitii>
+(per-se it' snot related to the js-shared thing, but I think other issues have been fixed?)
+
+[04:00:49.0318] <wraitii>
+Early testing suggests the jump from ESR 78 to ESR91 indeed shows a substantial performance improvement, around 30-50% better performance overall on 0 A.D. so the JS itself must be at least 2x as fast
+
+[09:05:40.0066] <arai>
+mdashti: `StatementMacros` should be available from clang-format 8, according to https://clang.llvm.org/docs/ClangFormatStyleOptions.html .  how and where do you get the error message?
+
+
+2022-01-10
+[02:29:16.0245] <nbp>
+wraitii: Trace-logger was not updated in a long time, and I do not tihnk any of us are still using it.  `--enable-arm64-fjcvtzs` is safe iff you know for sure that the target implement this instruction. On ARM Mac it is safe to enable it by default.
+
+[02:34:58.0712] <nbp>
+decoder: https://pypi.org/project/FuzzManager/ I guess someone forgot to copy & paste the README.
+
+[02:56:27.0091] <decoder>
+nbp: thx, ill mention it to truber
+
+[02:56:29.0060] <decoder>
+truber: ^^
+
+[04:58:11.0071] <wraitii>
+> <@nbp:mozilla.org> wraitii: Trace-logger was not updated in a long time, and I do not tihnk any of us are still using it.  `--enable-arm64-fjcvtzs` is safe iff you know for sure that the target implement this instruction. On ARM Mac it is safe to enable it by default.
+
+Ok, makes sense. I indeed noted the trace-logger wasn't enabled still
+
+[04:58:49.0193] <wraitii>
+Is there any way for an embedder to profile the JS code in the engine? We're using some manual profiling (essentially calling C++ code that times stuff), but this is opt-in, somewhat inefficient, and doesn't give us that much information
+
+[04:59:03.0177] <wraitii>
+Ideally we'd have data on on things causing JIT bailouts
+
+[05:01:59.0413] <arai>
+JIT bailout can be logged by IONFLAGS environment variable https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/moz.configure#413-417 and https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/src/jit/JitSpewer.cpp#338-387
+
+[05:03:07.0755] <arai>
+ * JIT bailout can be logged by IONFLAGS environment variable. see https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/moz.configure#413-417 and https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/src/jit/JitSpewer.cpp#338-387
+
+[05:03:52.0988] <wraitii>
+does that just output to stdout ? I don't believe I've found any sort of documentation for these kind of functions unfortunately
+
+[05:04:42.0143] <arai>
+stderr I think
+
+[05:05:39.0958] <arai>
+https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/src/jit/JitSpewer.cpp#514-523
+
+[05:06:08.0899] <wraitii>
+Right, guess I'll experiment with that
+
+[05:06:25.0036] <wraitii>
+it does seem like with the right flag we can get some useful information
+
+[05:50:52.0652] <nbp>
+For profiling in general there is the perf command on Linux, and some configure flag to enable some instrumentation in SpiderMonkey. However, I do not tihnk it is easy to figure out the mapping with JS code.
+
+[05:51:41.0684] <nbp>
+I do not know how hard it would be to create a Gecko-profiler like, or if it can be embedded as well, probably really hard.
+
+[05:52:04.0351] <wraitii>
+I saw some stuff for Instruments on macOS but it seems Apple dropped support for the library at some point
+
+[05:53:02.0244] <wraitii>
+Running Instruments I see time spent in addresses (which are obviously JIT-ed code), but obviously can't really map those to JS files
+
+[05:53:24.0372] <wraitii>
+basically _some_ way to get a rough idea of "this function is slow" would be great
+
+[05:55:58.0141] <nbp>
+I've forwarded the question about embedding the Gecko profiler without Gecko to #profiler:mozilla.org room.
+
+[06:13:21.0254] <nbp>
+wraitii: From what I've been told it might be easier than I thought initialy. Also you might have a look at an old patch from jandem https://bugzilla.mozilla.org/show_bug.cgi?id=1511370
+
+[06:23:51.0519] <wraitii>
+for what it's worth I tried enabled MOZ_GECKO_PROFILER but ran into some issues - overall didn't get it to work, but I'm not sure what is needed to get data. Can look into that
+
+[06:23:57.0962] <wraitii>
+maybe IONFLAGS will provide some worthy data
+
+[06:29:32.0138] <wes>
+Sun at one point added dtrace probes for profiling the engine.  Code name "helper monkey".  Should work on Mac/Linux these days as dtrace has been ported outward.  Would be awesome to see that rejuvinated.
+
+[06:29:36.0795] <chaircrusher>
+Question: We ran into a situation where the old SpiderMonkey (1.8.5) ran to completion on a test but JS78 barfs trying to use simple regular expressions.
+
+We can 'fix' it by calling JS_SetNativeStackQuota and choosing **someNumber** but could use some guidance about what **somenumber** should be.
+And wondering about this code throwing this error: ```const str1 = "Check this sentence for non-whitespace characters";
+const patt1 = /\S/g; // too much recursion
+/```
+
+[06:30:12.0502] <chaircrusher>
+ * Question: We ran into a situation where the old SpiderMonkey (1.8.5) ran to completion on a test but JS78 barfs trying to use simple regular expressions.
+
+We can 'fix' it by calling JS_SetNativeStackQuota and choosing **someNumber** but could use some guidance about what **somenumber** should be.
+And wondering about this code throwing this error: ```const str1 = "Check this sentence for non-whitespace characters";
+const patt1 = /\S/g; // too much recursion /```
+
+[06:31:07.0412] <chaircrusher>
+ * Question: We ran into a situation where the old SpiderMonkey (1.8.5) ran to completion on a test but JS78 barfs trying to use simple regular expressions.
+
+We can 'fix' it by calling JS_SetNativeStackQuota and choosing **someNumber** but could use some guidance about what **somenumber** should be.
+And wondering about this code throwing this error: 
+
+const str1 = "Check this sentence for non-whitespace characters";
+const patt1 = /\S/g; // too much recursion
+
+[06:34:25.0212] <arai>
+chaircrusher: here's example consumer of the API in Firefox https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/xpconnect/src/XPCJSContext.cpp#1154-1287
+
+[06:35:19.0248] <wraitii>
+I recall we used the trace profiler at some point in the past, but that generated so much data it wasn't even that usable. But yeah our target is mostly getting an idea of what gets jit-compiled, what causes bailouts, stuff like that. For the high-level stuff, our own tracing profiler is generally good enough, but low-level optimisation is harder to do
+
+[06:35:26.0522] <arai>
+chaircrusher: also, about the latter part, is that the entire code?  or you have some more code after it that performs RegExp execution?
+
+[06:39:40.0041] <chaircrusher>
+@arai It barfs actualy on str1.match(patt1) 
+
+[06:41:02.0068] <chaircrusher>
+const str1 = "Check this sentence for non-whitespace characters";
+const patt1 = /\S/g; // too much recursion
+var result1 = str1.match(patt1); // this is the line that provokes the error
+print_stdout('Done!\n');
+
+
+[06:42:58.0446] <arai>
+which OS and architecture are you using?
+
+[06:43:12.0175] <chaircrusher>
+x86_64/RHEL8
+
+[06:44:47.0697] <arai>
+I don't think it's normal.  with the [default stack quota](https://searchfox.org/mozilla-central/rev/b3933df6e119bd6caf5d9e5868670348ec26dee3/js/src/vm/JSContext.cpp#156-169), it doesn't hit too much recursion
+
+[06:45:15.0939] <chaircrusher>
+This is in a CGI that embeds SpiderMonkey. We're currently on JS78
+
+[06:47:14.0713] <arai>
+have you modified JIT compiler option for RegExp ?
+
+[06:47:52.0791] <arai>
+`JS_SetGlobalJitCompilerOption` with `JSJITCOMPILER_NATIVE_REGEXP_ENABLE`
+
+[06:48:11.0409] <chaircrusher>
+So I don't know what's normal, or default for stack allocation, or why regex handling barfs the stack. 
+
+[06:48:43.0415] <chaircrusher>
+Well that sounds like a better solution than picking a number out of the air to use for the stack quota
+
+[06:48:50.0789] <arai>
+might be nice to add breakpoint to the too much recursion error and see the backtrace
+
+[06:49:06.0892] <chaircrusher>
+And we don't set any Jit compilation options
+
+[06:53:17.0886] <arai>
+oh, about the regexp on 78, there are 2 engines and I think it can be selectable with build flag `--disable-new-regexp`
+
+[06:54:28.0871] <arai>
+so, unless you've added the configure parameter, it uses the new one in `js/src/new-regexp`
+
+[06:55:16.0040] <arai>
+and the "too much recursion" would happen here https://searchfox.org/mozilla-esr78/rev/3c633b1a0994f380032a616eced632398354d83e/js/src/new-regexp/regexp-parser.cc#76
+
+[06:56:03.0215] <chaircrusher>
+Thanks
+
+[06:56:28.0708] <arai>
+if that line hits, looking into `StackLimitCheck` and internal will tell you how it hits the limit
+
+[06:57:13.0384] <chaircrusher>
+Fun fact: I used find to search the Mozilla source and it didn't find that preprocessor constant:
+
+ /develop/pagewiz/build/js $ find . -type f -print0 | xargs -0 grep JSJITCOMPILER_NATIVE_REGEXP_ENABLE
+./js/src/jsapi.cpp:    case JSJITCOMPILER_NATIVE_REGEXP_ENABLE:
+./js/src/jsapi.cpp:    case JSJITCOMPILER_NATIVE_REGEXP_ENABLE:
+./js/xpconnect/src/XPCJSContext.cpp:  JS_SetGlobalJitCompilerOption(cx, JSJITCOMPILER_NATIVE_REGEXP_ENABLE,
+
+
+[06:58:46.0157] <chaircrusher>
+other fun fact, no comments or documentation in jsapi on the options or what they mean
+
+[07:04:22.0895] <chaircrusher>
+OK figured that out, it's defined in a macro
+
+[07:08:50.0102] <wraitii>
+we're trying to compile ESR91 with VS17, it seems to think that JS::Error isn't trivially copyable/destructible. Any clue where that would be defined ? 
+
+[07:10:04.0214] <evilpie>
+https://searchfox.org/mozilla-central/search?q=JS%3A%3AError
+
+[07:42:13.0679] <denschub>
+Hey everyone! I've just been looking into a very interesting WebCompat issue... caused by `Array.prototype.sort`. As it turns out, the parameters for the compare function are swapped in Chrome vs. Firefox, see this screenshot (Firefox left, Chrome right)
+
+[07:42:24.0436] <denschub>
+... is this even part of any spec?
+
+[07:49:03.0009] <arai>
+the sort algorithm and the parameter order is totally implementation dependent
+
+[07:49:29.0408] <arai>
+https://tc39.es/ecma262/#sec-array.prototype.sort
+
+[07:49:41.0199] <arai>
+> 8. Sort items using an implementation-defined sequence of calls to SortCompare. 
+
+[07:50:21.0652] <denschub>
+fun. :)
+
+[07:51:18.0383] <denschub>
+well, okay then, I'll write a nice email to that site's developers. thanks for the info!
+
+[08:01:06.0123] <annevk>
+denschub: FWIW, it's worth keeping track of how often we run into this as sometimes implementation-defined just needs to be standardized one way or another
+
+[08:02:04.0251] <denschub>
+this is the first time in my career that I've ever seen this issue (unfortunately in a medium-traffic application), so it's certainly not widespread. and from reading their code, this is clearly just a bug in their code that just so happened not to fail in Chrome, but oh well
+
+[08:02:18.0938] <denschub>
+we'll certainly make some more noise if things happen to come up more than once :)
+
+[08:27:02.0132] <yulia>
+> <@denschub:mozilla.org> we'll certainly make some more noise if things happen to come up more than once :)
+
+While this is implementation defined, if we find that it is causing issues then this can be adjusted in the spec as well
+
+[08:27:24.0456] <yulia>
+Sort is a bit tricky though
+
+[08:27:48.0097] <yulia>
+but we updated it recently to make it a constant sort
+
+[08:27:59.0850] <denschub>
+I'm happy to file an issue if you want one filed, but given this is only affecting one application, I'm not sure if it's worth spending that much time on it.
+
+[08:28:34.0791] <yulia>
+i would say for now lets follow it but not file an issue -- if it crops up more, we may want to open an issue to investigate on the spec
+
+[08:29:41.0166] <iain>
+I'm not sure you can fix this without mandating a specific sorting algorithm, and I'm not convinced that would be a good thing
+
+[08:29:49.0471] <iain>
+But maybe there's an intermediate guarantee we could make
+
+[08:30:33.0569] <yulia>
+> <@iain:mozilla.org> I'm not sure you can fix this without mandating a specific sorting algorithm, and I'm not convinced that would be a good thing
+
+yeah, this is what makes it tricky
+
+[08:30:54.0964] <nbp>
+This is amazing that the sort algorithm is not specified as the order of evaluation can clearly be defined by the implementation.
+
+[08:31:40.0646] <nbp>
+Maybe we should create a fuzzy JS engine mode, which goes and evaluate everything differently where JS is unspecified.
+
+[08:32:25.0775] <yulia>
+immediate reaction to that: sounds like a lot of work ;)
+
+[08:32:30.0310] <yulia>
+but also could be funny
+
+[08:32:53.0988] <yulia>
+but you can also identify it where the spec says implementation defined so
+
+[08:32:55.0430] <nbp>
+A quick-sort, insert-sort, merge-sort and heap-sort all have different evaluation orders …
+
+[08:34:05.0135] <nbp>
+Maybe this could be a fuzzy.js library … which is defined with the spec, to make sure that users who want to make cross-platform code can test what the spec claims.
+
+[08:36:08.0192] <yulia>
+that is basically test262 -- this would fall outside of that
+
+[08:36:12.0327] <yulia>
+as it is implementation defined
+
+[08:37:02.0473] <yulia>
+test262 only tests what the spec asserts, but explicitly doesn't test behavior that is implementation defined or results from certain types of incorrect readings of the spec
+
+[08:37:41.0376] <yulia>
+i need to find a better way to put this... i was playing around with "the test262 is a complete but unsound test of js" but it isn't quite right because its not about soundness
+
+[08:38:40.0703] <yulia>
+maybe someone came up with a better characterization, i was trying to explain it to students (and that language doesn't really work there)
+
+[08:39:30.0718] <yulia>
+for example, you don't test in test262 if someone incorrectly exposed behavior that shouldn't be exposed
+
+[08:46:27.0943] <yulia>
+ * that is kind of what test262 guarantees 
+
+[08:46:40.0464] <yulia>
+ * but this would fall outside of that (sorting) as it is implementation defined
+
+[08:49:33.0257] <nbp>
+"test262 is complete within the boundary defined by the spec" ?
+
+[08:49:53.0884] <yulia>
+yeah that works actually...
+
+[08:50:03.0352] <yulia>
+how would you communicated "but it doesn't test all this weird stuff"
+
+[08:50:08.0575] <nbp>
+"[…] within the well specified boundaries of […]"
+
+[08:51:04.0136] <yulia>
+test 262 will accept all approximations of js...
+
+[08:52:55.0824] <nbp>
+"test262 should valide all variants of ECMAScript modulo the variability induced by part which are specific to each implementation"
+
+[08:56:03.0096] <yulia>
+" plus monkey patching"
+
+[09:04:58.0335] <yury>
+Looking for ideas with settings/configuring SM. We currently have static [avxEnabled](https://searchfox.org/mozilla-central/source/js/src/jit/x86-shared/Assembler-x86-shared.cpp#206) . With jsshell it was easy: just add `--enable-avx` and it will tweak the static var via `SetAvxEnable`
+
+[09:07:06.0918] <yury>
+Now looking for something, I hope temporary, for the browser. What will be the right place to stick this `SetAvxEnable` call? Or, perhaps, refactor all `HasAvx` to cary some state to the masm?
+
+[09:44:14.0919] <nbp>
+yury: https://searchfox.org/mozilla-central/source/js/src/vm/Initialization.cpp#212 maybe?
+
+[09:46:17.0769] <yury>
+/me checking if StaticPrefs are available there
+
+[09:47:03.0068] <evilpie>
+krosylight: mgaudet I just uploaded my signal handling patch for pipeTo. We seem to be passing all pipeTo related tests except one under WPT streams/piping.
+
+[09:48:12.0511] <nbp>
+> * <@yury:mozilla.org> checking if StaticPrefs are available there
+
+probably not, tcampbell might know better about static prefs and JS_Init.
+
+[10:14:25.0331] <krosylight>
+I guess this is probably spidermonkey question: How can I run a sandbox in https context where [SecureContext] things are available, for an xpcshell test?
+
+[10:29:13.0318] <nbp>
+jonco: Do you recall [PinnedUnits](https://searchfox.org/mozilla-central/source/js/src/vm/JSScript.h#421-455), would it be ok, to add a second one for concurrent off-thread delazification uses?
+
+[10:29:24.0417] <nbp>
+ * jonco: Do you recall [PinnedUnits](https://searchfox.org/mozilla-central/source/js/src/vm/JSScript.h#421-455), would it be ok to add a second one for concurrent off-thread delazification uses?
+
+[10:29:58.0705] <krosylight>
+> <@krosylight:mozilla.org> I guess this is probably spidermonkey question: How can I run a sandbox in https context where [SecureContext] things are available, for an xpcshell test?
+
+Got it, `forceSecureContext: true`,
+
+[10:33:00.0792] <jonco>
+nbp: I do not remember that, I'll take a look....
+
+[10:36:18.0399] <DerekNonGeneric>
+nbp (or anyone who may know), we have an interesting problem in Node.js of not knowing what error to throw for `structuredClone()`, `atob()`, and `bota()` w/o any arguments and would like to align w/ browsers, but are unsure where this is specified. Am wondering what we should do if there is no specification for this.. https://github.com/nodejs/node/issues/41450
+
+[10:37:32.0719] <DerekNonGeneric>
+ * nbp (or anyone who may know), we have an interesting problem in Node.js of not knowing what error to throw for `structuredClone()`, `atob()`, and `btoa()` w/o any arguments and would like to align w/ browsers, but are unsure where this is specified. Am wondering what we should do if there is no specification for this.. https://github.com/nodejs/node/issues/41450
+
+[10:38:01.0151] <ryzokuken>
+There must be some spec text in whatwg? 
+
+[10:38:08.0826] <evilpie>
+DerekNonGeneric: it's specified by WebIDL as the last comment points out correctly
+
+[10:39:44.0545] <jonco>
+nbp: So it wouldn't be LIFO any more if there are two threads, right?  I guess why you said 'add a second one'.  If we don't need the stack of pinned uses for anything maybe this could be done more simply with a counter.
+
+[10:39:47.0611] <DerekNonGeneric>
+evilpie: does Web IDL specify behavior for those utility methods? I don't think those are governed by that spec
+
+[10:40:20.0123] <evilpie>
+It's specified in WebIDL here: https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope
+
+[10:50:06.0369] <DerekNonGeneric>
+evilpie, thanks for that link (had not seen that yet); it looks like Deno's implementation is wrong then since they are throwing DOMException then, huh?
+
+[10:50:52.0693] <nbp>
+DerekNonGeneric: There is no standardization on the error content, at best this would be the error type.
+
+[10:51:42.0939] <nbp>
+jonco: Right, it would be multiple Lifo.
+
+[10:53:17.0680] <nbp>
+jonco: The comment suggested that the GC might change the underlying pointer to the script source and that the PinnedUnits were used to abstract over this possibly-mutated pointer.
+
+[10:53:49.0823] <nbp>
+So, we probably need some references to these PinnedUnit, to patch them, I would expect.
+
+[10:54:29.0229] <jonco>
+ScriptSource isn't a GC thing so the GC will not move it 
+
+[10:55:28.0599] <jonco>
+I can't see a use of the stack other than to check whether it's empty, although I am not familiar with this at all
+
+[10:56:25.0278] <DerekNonGeneric>
+ * evilpie, thanks for that link (had not seen that yet); it looks like Deno's implementation is wrong then since they are throwing `DOMException` then, huh?
+
+[10:58:59.0245] <DerekNonGeneric>
+ * evilpie, thanks for that link (had not seen that yet); it looks like Deno's implementation is wrong then since they are throwing `DOMException`, huh?
+
+[10:59:12.0774] <DerekNonGeneric>
+ * evilpie, thanks for that link (had not seen that yet); it looks like Deno's implementation is wrong then since they are throwing `DOMException`, eh?
+
+[10:59:49.0178] <nbp>
+So far the searchfox only show case the source compression, which trigger on the last PinnedUnit destruction.
+
+[11:00:29.0125] <nbp>
+In which case the atomic counter will do fine. Thanks
+
+[11:47:30.0806] <dheitbrink>
+If I set 
+JSJITCOMPILER_NATIVE_REGEXP_ENABLE, to false, does any one know what this falls back on exactly for regex? 
+
+[11:49:08.0826] <iain>
+dheitbrink: It will still use the same regexp engine, but it won't compile any code. It will use the interpreter instead.
+
+[11:51:13.0853] <iain>
+For reasonably sized inputs (<1000 characters), the first 10 executions of a given regexp are done in the interpreter before we decide to JIT compile it, so if you're seeing a problem the first time you execute a regexp, it's unlikely that turning off the compiler will do anything
+
+[11:52:16.0126] <dheitbrink>
+ok thanks. 
+
+[11:59:23.0351] <iain>
+If you want to try out the old engine, there's a `--disable-new-regexp` [configure option](https://searchfox.org/mozilla-esr78/source/js/moz.configure#622) in esr78
+
+[11:59:49.0236] <iain>
+But that isn't available for anything past esr78.
+
+[14:28:08.0231] <stan>
+Hey there
+
+[14:30:28.0154] <stan>
+We're having some troubles compiling  0 A.D. with ESR31 on windows, did the minimum version of Visual Studio change? We're using v141_xp (2017)
+
+[14:31:51.0618] <stan>
+Also created this ticket because it prevented from building from a tarball at all on windows https://bugzilla.mozilla.org/show_bug.cgi?id=1749306
+
+[14:34:31.0891] <stan>
+My bad *91
+
+[14:35:21.0835] <iain>
+stan: There's a note here: https://firefox-source-docs.mozilla.org/setup/windows_build.html
+
+[14:35:42.0929] <iain>
+Although it looks like that was added in the 96 timeframe: https://bugzilla.mozilla.org/show_bug.cgi?id=1740167
+
+[14:37:05.0612] <stan>
+Right so VS2022 or nothing ^^ That's gonna be fun 
+
+[14:38:43.0795] <iain>
+Reading the comments on the bug, it looks like 2019 should still work for now, it's just harder to find the download. I would be a little surprised if anything that requires 2022 was backported to esr.
+
+[14:38:57.0452] <iain>
+But this is very much not my area of expertise.
+
+[14:39:26.0060] <stan>
+Thanks anyway, even updating to 2019 will require some changes on our side
+
+[14:39:57.0526] <stan>
+There was some weird compilation failure on linux too https://code.wildfiregames.com/D4428#188935 
+
+[14:40:12.0231] <stan>
+But might be just noise
+
+[14:46:38.0520] <iain>
+I should add: we dropped support for MSVC at some point, so now you have to use clang to compile on Windows. I might be able to dig up the timeframe, if that's relevant for you.
+
+[14:47:58.0202] <stan>
+Should have mentioned it's after a build of spidermonkey the game fails with the headers
+
+[14:48:34.0259] <stan>
+https://pastebin.com/eLXQKS70
+
+[14:48:46.0169] <iain>
+This is the bug where we removed MSVC support: https://bugzilla.mozilla.org/show_bug.cgi?id=1512504
+
+[14:50:48.0932] <sfink>
+and yet, there are things like bug 1700585. I was under the impression that we were no longer supporting building with MSVC, but we were still trying to maintain header compatibility with MSVC so you could compile with MSVC and link with a clang-built library. But I could be wrong.
+
+[14:50:50.0736] <botzilla>
+https://bugzil.la/1700585 — NEW (nobody) — Suggestion: Add tier 2 latest-MSVC/gcc/clang build tasks
+
+[14:52:45.0466] <stan>
+If that's the case that's good news for us ^^
+
+[14:54:49.0677] <iain>
+stan: Are you updating from an older ESR?
+
+[14:54:58.0242] <stan>
+Yeah 78.4
+
+[14:56:17.0547] <iain>
+Looking at the error messages, it seems like you're hitting this assertion: https://searchfox.org/mozilla-esr91/source/mfbt/Result.h#206-207
+
+[14:56:41.0038] <stan>
+That's correct
+
+[14:56:42.0584] <iain>
+Which was added in 83 as part of this bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1665927
+
+[14:56:53.0547] <iain>
+Not sure what that means in practice
+
+[14:59:12.0593] <iain>
+Maybe MSVC is having problems with this: https://searchfox.org/mozilla-esr78/source/mfbt/Result.h#265-281
+
+[15:06:37.0180] <stan>
+Could be because I didn't pass  `--with-visual-studio-version`
+
+[15:07:14.0407] <stan>
+Usually we use `--with-visual-studio-version=2017` But I only had 2022 installed with the 2017 toolset and that does not work.
+
+[15:08:11.0828] <stan>
+https://github.com/0ad/0ad/blob/master/libraries/source/spidermonkey/build.sh#L45
+
+
+2022-01-11
+[00:27:23.0177] <wraitii>
+> <@sfink:mozilla.org> and yet, there are things like bug 1700585. I was under the impression that we were no longer supporting building with MSVC, but we were still trying to maintain header compatibility with MSVC so you could compile with MSVC and link with a clang-built library. But I could be wrong.
+
+As far as I understand, clang on windows tries to be ABI-compatible with MSVC
+
+[00:27:40.0041] <wraitii>
+So header-compatibility with MSVC-compiled projects seems easily attainable if you mostly target C++ compatibility
+
+[00:28:19.0360] <wraitii>
+ * So header-compatibility with MSVC-compiled projects seems easily attainable if you mostly target C++ standards compatibility
+
+[00:32:57.0181] <wraitii>
+There is still some code for the `--with-visual-studio-version` option, but I'm not certain that does anything following 1512504
+
+[00:46:50.0864] <wraitii>
+Think I found why: it appears MSVC17 doesn't like the default member initialiser in JS::Error https://godbolt.org/z/PKrxWxoKf
+
+[00:47:25.0451] <wraitii>
+This appears to be a MSVC-specific issue and also one that's fixed by VS2019.27 (though I can't find much online about it)
+
+[00:55:13.0844] <wraitii>
+mmh, in fact it seems weird that the LowbitTagIsError code checks for trivially copyable/destructuble but SelectResultImpl doesn't
+
+[00:56:02.0292] <wraitii>
+Especially given that JS::Error specialises UnusedZero, suggesting this was intended to be used
+
+[00:56:20.0113] <wraitii>
+I would call the diff in https://bugzilla.mozilla.org/show_bug.cgi?id=1665927 potentially problematic
+
+[02:03:51.0859] <wraitii>
+mmh, no, the above analysis is wrong, the LSB should be available
+
+[02:22:31.0926] <wraitii>
+I'm pretty sure we can get away with just removing the std::is_trivially_copyable check
+
+[02:24:01.0702] <wraitii>
+since the type is memcpy-able regardless of what the compiler thinks of its trivial-copyability
+
+[02:59:03.0551] <nbp>
+Maybe this code should be rewritten such that assertion are no different than the filtering conditions …
+
+[03:01:29.0962] <nbp>
+such as:
+```c++
+template <typename V, typename E>
+class Conditional<V, E, PackingStrategy::LowBitTagIsError> { const bool value = …; };
+```
+
+
+[03:04:43.0975] <wraitii>
+This wouldn't actually solve the VS2017 issue which is definitely just a compiler bug, but yes there seems to be some opportunity for some slightly tyding
+
+[03:05:00.0049] <wraitii>
+Anyways stan managed to compile & run by just removing the failing static_assert, which I think is what we'll go for at the moment
+
+[03:06:41.0632] <nbp>
+I am responsible for adding this code, to select the best packing strategy. This is my way to push more meta programmation in Firefox code base. :P
+
+[05:37:26.0412] <stan>
+Well at least now it works. I was hoping for more perf improvements with Warp, but it seems it doesn't apply in our case
+
+[05:50:13.0898] <wraitii>
+> <@stan:mozilla.org> Well at least now it works. I was hoping for more perf improvements with Warp, but it seems it doesn't apply in our case
+
+Yeah as it turned out, my 2x performance improvement was from compiling for native ARM, not spider monkey itself...
+
+[06:00:23.0404] <nbp>
+Warp should provide stable improvement over what IonMonkey did with Type Inference. With a lot of effort from iain to tackle all sources of recompilations which would yield to identical recompilations.
+
+[07:23:36.0997] <chaircrusher>
+OK so this was our bit of fun: We're sticking with ESR78 for embedding for now, but it looks like the new regexp code breaks without calling InitDefaultStackAllocation.  In JS78 InitDefaultStackAllocation never gets called during context initialization, and regex call fail in JIT as a result.
+
+That's apparently fixed in whatever the current ESR version is according to SMDOC.
+
+
+[07:24:46.0798] <chaircrusher>
+By the way we're using the TypeScript compiler in a SpiderMonkey embed app, and got that to work.  I had to double the memory size for the interpreter to get it to work ;-)
+
+[07:25:49.0460] <arai>
+oh, just realized that `JS_SetNativeStackQuota` needs to be explicitly called on ESR78
+
+[07:26:32.0773] <arai>
+it's changed in 91 (bug 1716324)
+
+[07:26:34.0082] <botzilla>
+https://bugzil.la/1716324 — RESOLVED (jandem) — Call JS_SetNativeStackQuota when creating the JSContext
+
+[07:30:37.0962] <chaircrusher>
+We can't go to a newer SpiderMonkey version in the near term, are there any other ESR78 gotchas we should look out for?
+
+[07:31:58.0804] <chaircrusher>
+It seems to work in our testing - modulo the regexp thing - it even runs the TypeScript compiler.  But it would be good to know if there's anything else to watch out for, without trying to go through bugziilla looking for gotchas.
+
+[07:32:54.0597] <arai>
+I'm not aware of any.  if you hit any issue, feel free to ask here
+
+[07:45:03.0799] <chaircrusher>
+Thanks
+
+[07:45:20.0617] <chaircrusher>
+maybe the JS78 embedding example needs that added!
+
+[07:52:34.0208] <Redfire>
+I have decided to switch to wrapping `RootedGuard<*mut JSObject>` (which itself wraps `Rooted<*mut JSObject>`) instead of wrapping `*mut JSObject` directly 
+
+[10:19:34.0797] <mgaudet>
+I know we can trigger uncatchable exceptions with the debugger API -- how else can they get generated? 
+
+[10:21:41.0862] <iain>
+IIRC, slow script interrupts trigger uncatchable exceptions
+
+[10:22:23.0192] <mgaudet>
+Ooh that's a good suggestion too. ( krosylight perhaps relevant to your try server issues )
+
+[10:23:08.0093] <krosylight>
+Oh wow, thanks! My old mystery is now solved
+
+[14:43:09.0815] <mgaudet>
+confession: Putting ReadableStreams and Cu.nukeSandbox in a blender, and coming up with a whole bunch of hangs... forward progress in the web in the face of cross-origin stuff????
+
+[14:43:11.0944] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-01-12
+[04:08:30.0891] <nbp>
+confession: Concurrent delazification is working! :tada: Time to clean-up the diffs and create a few patches to push these changes to the CI and later for review.
+
+[07:15:13.0378] <l11d>
+when a LIR instruction performs an oolCallVM and the called native function happens to gc, may this cause the code to be deoptimized?
+
+[07:15:48.0496] <jandem>
+it's possible yeah
+
+[07:20:40.0085] <l11d>
+is it possible to prevent this, at least for testing?
+
+[08:04:04.0488] <nbp>
+l11d: callVM basically have the possibility to re-enter JS code, so this would be hard to garantee that we can prevent it in all cases.
+
+[08:04:42.0805] <nbp>
+We have a way to prevent GC in limited set of scopes, but this is at your own risk when using it.
+
+[08:05:08.0445] <sfink>
+I don't think we've ever used it in a scope that can run JS.
+
+[08:06:12.0716] <nbp>
+You can find some of these in our GCAPI: https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#950,975,989
+
+[08:07:06.0036] <sfink>
+https://searchfox.org/mozilla-central/search?q=symbol:T_js%3A%3Agc%3A%3AAutoSuppressGC&redirect=false gives a good list
+
+[08:15:13.0319] <l11d>
+thanks for these pointers; I'm afraid my question was a bit too ambiguous. I'm not looking for a way to prevent the gc but a way to prevent the code from being deoptimized. I suppose this is somehow baked into the engine, at least that's what I understand from this assert: https://searchfox.org/mozilla-central/source/js/src/gc/Compacting.cpp#413 
+
+[08:23:07.0727] <iain>
+l11d: The problem is that a compacting GC can move objects, and Ion bakes pointers into the code. So it's not safe to do a compacting GC without invalidating Ion code.
+
+[08:24:37.0724] <l11d>
+this makes sense. the engine seems to give up after a certain number of recompiles, correct? something like 90?
+
+[08:28:18.0808] <iain>
+There are some cases where we decide not to recompile afterwards. In non-pathological code, the main reason that would happen is if we are repeatedly bailing out to catch an exception.
+
+[08:29:00.0392] <iain>
+I believe that will happen if we catch an exception 50 times.
+
+[08:30:22.0363] <nbp>
+iain: we do patch pointers which are in Ion.
+
+[08:32:20.0766] <iain>
+nbp: Oh, yeah, you're right. But I also remember looking into this a little when we were doing Warp, and concluding that there was something we can't update
+
+[08:33:26.0806] <iain>
+l11d: I'm not aware of a mechanism that would prevent us from recompiling a script based purely on the number of GCs.
+
+[08:39:15.0659] <l11d>
+considering that a GC "counts" as bailing out => at some point the script will no longer be recompiled, correct?
+
+[08:42:28.0836] <iain>
+l11d: I would hope not. It would be bad if a long-lived page got slower as we ran GCs and pessimized various scripts. If we run a GC and invalidate scripts that are currently on the stack, then we hit this line during the bailout, which deliberately doesn't do anything to prevent recompilation: https://searchfox.org/mozilla-central/source/js/src/jit/BaselineBailouts.cpp#2080
+
+[08:44:17.0531] <iain>
+I guess in pathological cases we could GC often enough that we don't have time to get back into Ion
+
+[08:48:17.0293] <nbp>
+`BailoutAction::PreventGC` :P
+
+[08:49:28.0871] <iain>
+It would have to be `BailoutAction::RetroactivelyPreventGCWithTimeMachine`: we only get there because we've already done the GC and invalidated the script
+
+[08:50:16.0819] <iain>
+I'm having a hard time remembering why patching pointers isn't sufficient. We cancel off-thread Ion compiles, so it's not untraced off-thread pointers to GC things.
+
+[08:50:53.0142] <iain>
+Maybe it's possible now?
+
+[08:56:00.0535] <nbp>
+My understanding is that we cannot patch locations which are moving nursery pointer to tenured space.
+
+[08:56:37.0492] <nbp>
+because of the way to handle barrier (IIRC, do not take that for granted)
+
+[08:57:32.0172] <nbp>
+So, if we compile some Ion code with Nursery pointers, we have to invalidate the generated code to recompile with the equivalent tenured pointer.
+
+[08:59:59.0300] <wraitii>
+Is there somewhere a list of supported compilers for ESR 91 ? IIRC you now only support clang (and not gcc) ? Which version is the minimum ?
+
+[09:01:18.0868] <nbp>
+iain: https://searchfox.org/mozilla-central/source/js/src/jit/MIROps.yaml#1488-1497
+
+[09:04:10.0544] <iain>
+nbp: IIRC, that's the solution to nursery pointers that jandem added for Warp: if we want to bake in a nursery pointer, we instead add a level of indirection through a side-table, and update that side-table when we do a minor GC.
+
+[09:04:28.0417] <iain>
+So it's slightly less efficient, but doesn't require invalidating.
+
+[09:04:51.0953] <nbp>
+ok, so that fixes what I recalled being a problem.
+
+[10:03:48.0856] <sfink>
+wraitii: I'm not sure where to find the officially supported version info, but we do still support both clang and gcc. I know gcc goes back to 9.3.0 since that's what the hazard analysis uses. Looking at treeherder, it looks like it's using clang 12.0.0. Though there are toolchain jobs for clang 5.0.2 and gcc 7.5.0. I'm not sure what those are about.
+
+[10:03:54.0677] <sfink>
+maybe a question for #build:mozilla.org 
+
+[10:40:53.0120] <chaircrusher>
+Here's a question, and a "here's how you'd look for a solution" recommendation is fine.
+
+[10:43:12.0138] <chaircrusher>
+I create an instance of the interpreter, execcute a script, and it segfaults in js::jit::ReprotectRegion when I call JS_DestroyContext on the context the interpreter is using.
+
+[10:46:17.0493] <arai>
+what's the local variables and parameters there?
+
+[10:47:09.0208] <arai>
+and what line or what operation crashes?
+
+[10:48:12.0905] <nbp>
+chaircrusher: Socket process? Do you have the right to map pages as executable?
+
+[10:48:30.0454] <nbp>
+^ cc jandem 
+
+[10:49:08.0930] <iain>
+If it's happening during JS_DestroyContext, it's presumably happening when we poison the jitcode here: https://searchfox.org/mozilla-central/source/js/src/vm/Runtime.cpp#570
+
+[10:49:22.0408] <chaircrusher>
+that's right
+
+[10:49:50.0576] <iain>
+So I would expect that you've already successfully mapped pages as executable
+
+[10:50:00.0461] <iain>
+And executed code in those pages
+
+[10:50:08.0839] <iain>
+And it's something about the teardown process going wrong
+
+[10:50:44.0044] <chaircrusher>
+it's in js::jit::ReprotectRegion, last line (in GDB) but I think it must be barfing on an assert or something
+
+[10:51:00.0255] <nbp>
+iain: it is possible that the policy to forbid mapping pages as executable got setup after starting the JitRuntime?
+
+[10:51:04.0983] <chaircrusher>
+In my version ProcessExecutableMemory.cpp:730
+
+[10:51:20.0442] <chaircrusher>
+that's ESR78
+
+[10:51:38.0727] <arai>
+https://searchfox.org/mozilla-esr78/rev/3c633b1a0994f380032a616eced632398354d83e/js/src/jit/ProcessExecutableMemory.cpp#730 this line?  or different line?
+
+[10:52:19.0606] <chaircrusher>
+yup
+
+[10:52:58.0749] <chaircrusher>
+but 730 is the closing brace for ReprotectRegion and it's compiled optimized so the function parameters are optimized out.
+
+[10:53:10.0585] <arai>
+can you get disassembly for the function? it might tell more about what the operation is
+
+[10:53:52.0710] <nbp>
+chaircrusher: Linux / Mac / Windows?
+
+[10:54:04.0851] <chaircrusher>
+CENTOS8
+
+[10:54:31.0050] <arai>
+(might be nice to check if the same crash happens with debug+non-optimized build
+
+[10:54:41.0265] <nbp>
+ok, Linux properly handles OOM on mprotect. (as opposed to all others)
+
+[10:56:23.0851] <arai>
+debug build might also catch something before reaching the crash
+
+[10:59:12.0767] <mgaudet>
+anyone have any good guides, or pointers to good mochitests that use iframes to test cross compartment wrappers 
+
+[10:59:38.0442] <chaircrusher>
+rebuild in progress
+
+[10:59:40.0489] <mgaudet>
+I am apparently bad at web stuff, and so I keep getting either access denied issues, or references that don't seem to be CCWs, 
+
+[11:01:02.0479] <mgaudet>
+(I want to write a mochitest that involves readable streams with the source from another page, and what happens when the source disappears; which i'm pretty sure is possible, but how this looks on the web is apparently still mysterious to me) 
+
+[11:01:16.0695] <mgaudet>
+(be back in an hour so; lunch time here) 
+
+[11:03:20.0315] <nbp>
+mgaudet: I used iframe in the past, but for checking the XDR encoding status, if this helps.
+
+[11:03:25.0207] <arai>
+I thought iframe with same domain works for that case.  haven't thought much about when it becomes CCW tho
+
+[11:03:36.0867] <arai>
+isn't it "always" ?
+
+[11:05:44.0901] <nbp>
+mgaudet: https://searchfox.org/mozilla-central/source/dom/base/test/test_script_loader_js_cache.html#51-52 I know iframes have a `sandbox` attribute or similar which allow faking some of the properties which are expected. Maybe this could be used for testing CCW.
+
+[11:10:28.0149] <evilpie>
+The sandbox attribute is not related to CCW, I think it might actually make some CCW impossible
+
+[11:10:44.0941] <arai>
+oh, iframe and toplevel are in the same compartment with simple case
+
+[11:11:41.0755] <arai>
+btw, what's the purpose of the iframe test?  is it with promise job + dying global?  if so, CCW isn't necessary but you just need to remove iframe from the DOM tree
+
+[11:19:20.0973] <arai>
+looks like, you can use `window.open` to create 2 compartments accessible each other
+
+[11:24:15.0034] <chaircrusher>
+Well I did recompile SpiderMonkey ESR78 with debug on and now I'm getting assertion failures in JS_Init
+
+[11:25:49.0149] <chaircrusher>
+Assertion failure: !aOther.IsNull() (Cannot compute with aOther null value), at /home/develop/pagewiz/build/js-build/dist/include/mozilla/TimeStamp.h:557
+
+
+[11:26:04.0095] <chaircrusher>
+it doesn't fail if I compile SpiderMonkey optimized.
+
+[11:26:15.0651] <chaircrusher>
+Is there something I'm supposed to do BEFORE calling JS_Init?
+
+[11:26:20.0911] <arai>
+what's the backtrace?
+
+[11:28:33.0543] <chaircrusher>
+**#0  0x000000000136b9ad in mozilla::TimeStamp::operator> (this=0x7fffffffdc98, aOther=...) at /home/develop/pagewiz/build/js-build/dist/include/mozilla/TimeStamp.h:557
+#1  0x0000000001ccbb22 in mozilla::TimeStamp::ProcessCreation (aIsInconsistent=0x0) at /home/develop/pagewiz/build/js/mozglue/misc/TimeStamp.cpp:91
+#2  0x0000000000ac2e7a in JS::detail::InitWithFailureDiagnostic (isDebugBuild=true) at /home/develop/pagewiz/build/js/js/src/vm/Initialization.cpp:142
+#3  0x0000000000719159 in JS_Init () at /develop/pagewiz/build/js-build/dist/include/js/Initialization.h:63
+#4  0x00000000007048c8 in ScriptData::ScriptData (this=0x4590a20) at /develop/pagewiz/pagewiz/ScriptEngine.cpp:610
+#5  0x0000000000705196 in ScriptEngine::ScriptEngine (this=0x454cd30 <_ZL8jsEngine>) at /develop/pagewiz/pagewiz/ScriptEngine.cpp:705
+#6  0x00000000007896ad in __static_initialization_and_destruction_0 (__initialize_p=1, __priority=65535) at /develop/pagewiz/pagewiz/TSCompile.cpp:68
+#7  0x00000000007896d7 in _GLOBAL__sub_I_FromTSCompiler () at /develop/pagewiz/pagewiz/TSCompile.cpp:159
+#8  0x000000000250746d in __libc_csu_init ()
+#9  0x00007ffff260b41e in __libc_start_main () from /lib64/libc.so.6
+#10 0x00000000006eb04e in _start ()
+**
+
+[11:31:05.0298] <chaircrusher>
+how are you supposed to bracket included text? `like this`
+
+[11:31:12.0185] <chaircrusher>
+or...
+
+[11:31:34.0964] <arai>
+triple backticks?
+
+[11:31:55.0922] <chaircrusher>
+ * ```#0  0x000000000136b9ad in mozilla::TimeStamp::operator> (this=0x7fffffffdc98, aOther=...) at /home/develop/pagewiz/build/js-build/dist/include/mozilla/TimeStamp.h:557
+#1  0x0000000001ccbb22 in mozilla::TimeStamp::ProcessCreation (aIsInconsistent=0x0) at /home/develop/pagewiz/build/js/mozglue/misc/TimeStamp.cpp:91
+#2  0x0000000000ac2e7a in JS::detail::InitWithFailureDiagnostic (isDebugBuild=true) at /home/develop/pagewiz/build/js/js/src/vm/Initialization.cpp:142
+#3  0x0000000000719159 in JS_Init () at /develop/pagewiz/build/js-build/dist/include/js/Initialization.h:63
+#4  0x00000000007048c8 in ScriptData::ScriptData (this=0x4590a20) at /develop/pagewiz/pagewiz/ScriptEngine.cpp:610
+#5  0x0000000000705196 in ScriptEngine::ScriptEngine (this=0x454cd30 <_ZL8jsEngine>) at /develop/pagewiz/pagewiz/ScriptEngine.cpp:705
+#6  0x00000000007896ad in __static_initialization_and_destruction_0 (__initialize_p=1, __priority=65535) at /develop/pagewiz/pagewiz/TSCompile.cpp:68
+#7  0x00000000007896d7 in _GLOBAL__sub_I_FromTSCompiler () at /develop/pagewiz/pagewiz/TSCompile.cpp:159
+#8  0x000000000250746d in __libc_csu_init ()
+#9  0x00007ffff260b41e in __libc_start_main () from /lib64/libc.so.6
+#10 0x00000000006eb04e in _start ()
+
+[11:32:04.0109] <chaircrusher>
+`wikkid
+
+[11:33:21.0389] <arai>
+I cannot think of the case that hits the assertion.  I think it's `mozilla::TimeStampInitialization::mFirstTimeStamp` field, that gets initialized in constructor
+
+[11:33:51.0166] <arai>
+https://searchfox.org/mozilla-esr78/rev/3c633b1a0994f380032a616eced632398354d83e/mozglue/misc/TimeStamp.cpp#38
+
+[11:34:46.0190] <evilpie>
+Are you calling JS_Init from a static constructor?
+
+[11:34:54.0010] <evilpie>
+maybe that is causing the issues
+
+[11:34:57.0045] <arai>
+oh
+
+[11:34:58.0866] <chaircrusher>
+it looks like sInitOnce.timestamp is zeros
+
+[11:35:01.0654] <chaircrusher>
+no
+
+[11:35:27.0619] <arai>
+`__static_initialization_and_destruction_` in the backtrace
+
+[11:36:02.0779] <arai>
+so, it's constructed before `sInitOnce`
+
+[11:36:15.0611] <chaircrusher>
+That's called before the first time I create a context and global object.
+
+[11:36:33.0804] <chaircrusher>
+ok so no static initialization of interpreters is what you're telling me.
+
+[11:36:52.0169] <chaircrusher>
+because of static initialization in SpiderMonkey
+
+[11:37:23.0028] <arai>
+yeah, you cannot call JSAPI from static constructor
+
+[11:37:43.0164] <chaircrusher>
+Is that written down somewhere I forgot to read?
+
+[11:39:01.0257] <arai>
+uh, I'm not aware of any doc, but in general, it's better avoid calling any API within static constructor that you cannot guarantee the order
+
+[11:39:03.0074] <evilpie>
+I don't think that has occurred to anyone before, it's certainly impossible in Gecko
+
+[11:40:46.0634] <arai>
+anyway, I think that could be the cause of the above crash, that the internal state is broken due to the unexpected order of initialization
+
+[11:48:09.0698] <chaircrusher>
+You were correct sir!
+
+[11:48:46.0974] <chaircrusher>
+but that just moves me to my next assertion failure: ```Assertion failure: mStatementDone (Guard object should not be used as a temporary.), at /develop/pagewiz/build/js-build/dist/include/mozilla/GuardObjects.h:11```
+
+[11:51:48.0506] <chaircrusher>
+This is where I'm going to call JS_Execute Script.
+
+```			JS::RootedValue result(context);
+			JSAutoRealm(context,code);
+			bool successfulExecute = JS_ExecuteScript(context, code, &result);
+```
+
+[11:52:37.0342] <iain>
+Comment on [that assertion](https://searchfox.org/mozilla-esr78/source/mfbt/GuardObjects.h#109-111)
+
+[11:53:25.0355] <iain>
+```
+     * Assert that the guard object was not used as a temporary.  (Note that
+     * this assert might also fire if init is not called because the guard
+     * object's implementation is not using the above macros correctly.)
+```
+
+[11:55:11.0250] <iain>
+Oh, but you're calling it via JSAutoRealm, which presumably should use the macros properly. Huh.
+
+[11:55:26.0660] <chaircrusher>
+weird
+
+[11:55:41.0125] <chaircrusher>
+looking at the ESR78 js shell to see what it does
+
+[11:55:53.0064] <arai>
+`JSAuto*` must be allocated on stack
+
+[11:56:05.0868] <arai>
+so, `JSautoRealm ar(context, code);`
+
+[11:56:50.0770] <arai>
+ * so, `JSAutoRealm ar(context, code);`
+
+[11:57:01.0727] <iain>
+Oh, good eye
+
+[11:57:31.0789] <arai>
+the code above discards the instance immediately, and your remaining code doesn't enter the realm
+
+[11:58:14.0435] <chaircrusher>
+shit that's a typo and very weird, isn't it?
+
+[11:59:58.0838] <chaircrusher>
+Moral of the story I was doing stuff I shouldn't because I never compiled ESR78 in debug mode.
+
+[12:02:28.0128] <chaircrusher>
+OK finally I get down to it my original problem (crash on JS_DestroyContext:
+
+```Hit MOZ_CRASH(There should not be any roots during runtime shutdown) at /home/develop/pagewiz/build/js/js/src/gc/RootMarking.cpp:455
+```
+
+[12:03:06.0283] <chaircrusher>
+ * OK finally I get down to it my original problem (crash on JS_DestroyContext:
+```Hit MOZ_CRASH(There should not be any roots during runtime shutdown) at /home/develop/pagewiz/build/js/js/src/gc/RootMarking.cpp:455
+```
+
+[12:03:11.0271] <chaircrusher>
+Hit MOZ_CRASH(There should not be any roots during runtime shutdown) at /home/develop/pagewiz/build/js/js/src/gc/RootMarking.cpp:455
+
+[12:03:53.0972] <mgaudet>
+> <@arai:mozilla.org> btw, what's the purpose of the iframe test?  is it with promise job + dying global?  if so, CCW isn't necessary but you just need to remove iframe from the DOM tree
+
+I'd like to cover that case too -- so that's good to hear; but right now I'm sort of interested in what happens when the source object becomes a DeadObjectProxy 
+
+[12:05:13.0849] <mgaudet>
+I've got a test written using nukeSandbox, but I'd sort of like to see what other browsers do, so I'm trying to figure out first what happens for us in a similar case. 
+
+[12:09:01.0132] <arai>
+chaircrusher: if you have `JS::Rooted` on the stack, you must leave the scope before calling `JS_DestroyContext`
+
+[12:09:44.0638] <chaircrusher>
+I suspect it's because I keep a global around in a persistentrooted
+
+[12:09:53.0661] <sfink>
+that would do it
+
+[12:09:59.0883] <chaircrusher>
+There are no rooted on the stack at this point iirc
+
+[12:10:49.0682] <sfink>
+reset the PersistentRooted before desetroying
+
+[12:10:54.0799] <sfink>
+ * reset the PersistentRooted before destroying
+
+[12:11:17.0672] <sfink>
+`reset()` removes from the root lists
+
+[12:11:39.0058] <sfink>
+(as opposed to just emptying out the stored value)
+
+[12:16:28.0798] <chaircrusher>
+yup
+
+[12:20:25.0932] <arai>
+mgaudet: then I think you can use the `window.open` with same domain
+
+[12:21:37.0571] <arai>
+not sure how to generate `DeadObjectProxy` tho.  maybe you can use privileged API or something?
+
+[12:22:13.0754] <arai>
+just closing the opened window doesn't do that
+
+[12:22:55.0900] <mgaudet>
+Hrm. Ok. 
+
+[12:22:58.0053] <arai>
+```
+var w = window.open("other.html");
+w.addEventListener("load", () => {
+  var foo = w.foo;
+  w.close();
+  ...
+});
+```
+
+
+[12:24:27.0044] <arai>
+(this will also hit the dying global case tho
+
+[12:26:52.0491] <mgaudet>
+Ok. This is more complicated than I thought! My mental model seems to be wrong, as I'd assumed that any time you had a reference into another iframe, you'd get a CCW which would then be nuked when you navigated the iframe the old page contents would be lost, and all wrappers replaced with DeadObjectProxies 
+
+[12:31:07.0446] <arai>
+I guess something around this?  https://searchfox.org/mozilla-central/rev/5ce782034b736293836a2850ab698e149ca04657/dom/base/WindowDestroyedEvent.cpp#101-143  I don't know much about the code around that
+
+[12:31:17.0913] <chaircrusher>
+effing gdb
+
+[12:32:02.0758] <chaircrusher>
+every so often when debugging issues in SpiderMonkey gdb gets hung up in a thread and I have to break it out and continue to keep going
+
+[12:48:43.0103] <chaircrusher>
+Well resetting the only persistentRooted in my app still barfs in JS_DestroyContext
+
+[12:49:07.0922] <arai>
+same assertion?
+
+[12:49:16.0867] <chaircrusher>
+yeah
+
+[12:49:23.0535] <chaircrusher>
+trying to track it down
+
+[12:54:52.0241] <chaircrusher>
+just figured out something not to do: don't call init on a PersisitentRooted twice 
+
+[12:55:23.0043] <sfink>
+in the past, I've stepped through `GCRuntime::traceRuntimeCommon` (might be a little different in your version), stepping over each statement and seeing which one pushes to the mark stack.
+
+[12:56:04.0380] <sfink>
+(maybe by setting a hw watchpoint on `&((GCMarker*)trc)->currentStackPtr.value`, in which case you can let it continue until it hits)
+
+[13:00:10.0903] <sfink>
+actually, that would just show when you switch stacks. Maybe put a breakpoint in GCMarker::pushTaggedPtr (by line number)?
+
+[13:19:52.0709] <mgaudet>
+confession: Discovering yet new ways JavaScript syntax can surprise me: 
+
+```
+js> var cursed = {async "foo.bar"() { print("what") } }
+js> Object.getOwnPropertyNames(cursed)                  
+["foo.bar"]
+```
+
+[13:19:54.0464] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:04:15.0773] <arai>
+this testcase creates dead wrapper https://searchfox.org/mozilla-central/source/js/xpconnect/tests/browser/browser_dead_object.js
+
+[14:04:28.0476] <arai>
+but I cannot replicate the same thing with content priv code
+
+[14:07:11.0697] <arai>
+so I guess it happens only for CCW between chrome and content?
+
+[14:07:41.0028] <arai>
+https://searchfox.org/mozilla-central/rev/5ce782034b736293836a2850ab698e149ca04657/dom/base/WindowDestroyedEvent.cpp#134
+
+[14:10:57.0801] <mgaudet>
+hrm. 
+
+[14:11:10.0067] <mgaudet>
+That would sort of be fantastic, as it means my testing requirements drop
+
+[14:12:04.0943] <mgaudet>
+but I was reading this https://mdn-archive.mossop.dev/en-US/docs/Mozilla/Gecko/Script_security and while it is archived, it fairly clearly says I should expect a wrapper between same origin parges... do we just never clean up a same-origin global if wrappers are still live?
+
+[14:12:32.0867] <mgaudet>
+so the existence of the wrapper actually prevents the cleanup, so we should never see a dead object proxy in content? 
+
+[14:13:19.0286] <arai>
+yeah, I confirmed that I get CCW with `window.open` case, but that CCW is not nuked on navigation or `window.close`
+
+[14:13:33.0964] <mgaudet>
+Ok! That's something for sure! 
+
+[14:13:38.0403] <arai>
+and the reference keeps working
+
+[14:14:03.0350] <mgaudet>
+MDN for JSMSG_DEAD actually says it's only for addons: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Dead_object
+
+[14:14:13.0085] <mgaudet>
+which is also good news
+
+[14:15:05.0318] <mgaudet>
+Well. Actually no; I guess an Add-on could, hypothetically, create a readable stream from a content object and use it as a source... which is the test case I was trying to write.
+
+[14:16:42.0505] <arai>
+yeah, add-on, or chrome-priv code
+
+[14:16:53.0746] <arai>
+like the above dead object testcase
+
+[14:23:09.0592] <mgaudet>
+Ok. Sweet. I will have to figure out how all that works, but it helps that I'm in a better place now. 
+
+I still have no idea how cross global referencing works but progress. Thanks arai! 
+
+you tested window.open -- what did that test case look like? I'm really confused by how all this is supposed to work so it keeps going wrong for me
+
+[14:28:04.0790] <arai>
+what I was using is something like:
+```
+var w = window.open("other.html");
+w.addEventListener("load", () => {
+  var foo = w.foo;
+  w.close();
+  setInterval(() => {
+    foo();
+  }, 1000);
+});
+```
+
+
+[14:28:46.0906] <arai>
+with call for modified built-in to print whether a value is CCW or not
+
+[14:29:11.0176] <arai>
+(not much specific to Promise/Stream)
+
+[14:29:47.0074] <mgaudet>
+OK; thank you. I'll continue playing 
+
+[14:35:48.0801] <arai>
+oh, if you meant an automated testcase, I wasn't using it. I was using standalone HTML file hosted on local HTTP server, with above script, and manually operating on it
+
+[14:39:08.0382] <mgaudet>
+ah. Fair enough. 
+
+
+[14:41:31.0787] <mgaudet>
+so, in other.html, how do you define 'foo'? I've got 
+
+```
+<html>
+    <body>
+        <script>
+        function hi() { console.log("uhm"); return 10; }
+        </script>
+    </body>
+</html>
+```
+
+and my test case body looks like this: 
+
+```
+    SimpleTest.waitForExplicitFinish()
+
+    var w = window.open("test_iframe_helper.html");
+    w.addEventListener("load", () => {
+    var hi = w.hi;
+    info(hi)
+    w.close();
+    setInterval(() => {
+        is(hi(), 10);
+
+        SimpleTest.finish()
+    }, 1000);
+    });
+```
+
+
+[14:41:43.0224] <mgaudet>
+but in my case, w.hi is coming out as undefined 
+
+[14:42:38.0681] <arai>
+is the opener chrome-priv code?
+
+[14:42:58.0156] <arai>
+if so, I guess there's Xray interacting
+
+[14:43:57.0727] <mgaudet>
+😬 I have no idea... this is just a mochitest (are mochitests a lot more special than I thought?)
+
+[14:44:31.0988] <mgaudet>
+https://paste.mozilla.org/HGdNE9bR
+
+[14:45:01.0913] <arai>
+and I think you can do `var hi = w.eval("(function f() { ... })");` in the opener's side to get the actual function object, with CCW?
+
+[14:50:57.0580] <arai>
+mgaudet: is it mochitest plain?  I've copy-pasted the same thing and I get `hi` as function with your code
+
+[14:51:14.0839] <arai>
+err, no, slightly different
+
+[14:51:32.0841] <mgaudet>
+How would I tell if plain or not? This was me just trying to create a new set of mochitests in dom/streams
+
+[14:51:48.0207] <mgaudet>
+so I have a `mochitest.ini` that looks like 
+
+```
+[DEFAULT]
+support-files =
+  test_iframe_helper.html
+
+[test_iframes.html]
+```
+
+[14:52:00.0415] <arai>
+`mochitest.ini` = plain
+
+[14:52:33.0476] <arai>
+`browser.ini` = mochitest browser, `chrome.ini` = mochitest browser chrome
+
+[14:53:18.0433] <mgaudet>
+So... plain? I guess? 
+
+[14:53:22.0630] <arai>
+yes
+
+[14:54:16.0362] <arai>
+copy-pasted the exactly same thing and still getting right function
+
+[14:55:42.0650] <arai>
+I'm testing in `js/xpconnect/tests/mochitest/`, but I guess not much difference?
+
+[14:56:00.0218] <mgaudet>
+Allllright. i am at end of day, so I will try figuring this out more tomorrow
+
+[14:56:51.0271] <arai>
+okay.  feel free to ping me whenever
+
+[14:57:00.0455] <mgaudet>
+confession: Spent a lot of the day trying to write tests for things that don't happen -- but now I know what can happen, so hopefully I can write tests for things that *do* happen tomorrow 
+
+[14:57:02.0171] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:58:31.0881] <mgaudet>
+(Thanks for the help Arai; you've been great) 
+
+
+2022-01-13
+[21:33:01.0583] <calebjasik>
+mochitest is a good name :) 🧋
+
+[21:33:30.0231] <calebjasik>
+> <@botzilla:mozilla.org> Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+what does this mean?
+
+[21:34:08.0236] <calebjasik>
+I've been lurking in here to pay attention to stuff... but I don't really understand how to track issues in bugzilla 😅
+
+[21:54:42.0184] <iain>
+calebjasik: It's not a bugzilla thing. The bot is watching for people who start a message with "confession:", and then capturing that message and saving it for posterity.
+
+[22:11:15.0711] <sfink>
+the usual way of tracking issues in bugzilla is to make yourself an account and CC yourself on bugs you're interested in. (Or subscribe to whole components, but even just the JS engine has a lot of bugs and bug updates.)
+
+[22:14:51.0301] <ptomato>
+who'd be interested to review https://bugzilla.mozilla.org/show_bug.cgi?id=1735200?
+
+[23:17:02.0651] <jandem>
+ptomato: happy to take a look
+
+[04:05:09.0979] <yulia>
+Debugging question: I know I can get the addresses mapped to locations in the source for crash dumps. for example libxul.so + 0x6b4ae5a -> to some address. I could just never figure out how to get it to work and can't find it in the firefox source docs. where should I look for setting this up?
+
+[04:07:46.0653] <arai>
+yulia: do you want to get a function name from address?
+
+[04:07:54.0078] <yulia>
+yes
+
+[04:08:53.0637] <arai>
+maybe not optimal, but what I usually do is to download a debug symbol, and extract the file and find the address there
+
+[04:09:01.0227] <arai>
+let me find example
+
+[04:11:34.0087] <arai>
+https://treeherder.mozilla.org/jobs?repo=mozilla-central&revision=08d254139525017ceb5f98be59d3a5864adbf331&selectedTaskRun=FxPdaFraRo66IW8q67ef6g.0
+
+[04:11:54.0602] <arai>
+"Artifacts and Debugging Tools" pane for the build job has `target.crashreporter-symbols.zip` file
+
+[04:12:12.0949] <arai>
+and the file contains `libxul.so` directory
+
+[04:12:36.0667] <arai>
+there's `libxul.so.sym` file that contains the map from address to function and line
+
+[04:13:20.0203] <arai>
+(I guess this can be automated by [some way](https://firefox-source-docs.mozilla.org/toolkit/crashreporter/crashreporter/Using_the_Mozilla_symbol_server.html), but haven't tried
+
+[04:15:49.0299] <arai>
+ * (I guess this can be automated by [some way](https://firefox-source-docs.mozilla.org/toolkit/crashreporter/crashreporter/Using_the_Mozilla_symbol_server.html), but haven't tried on macOS/linux
+
+[04:16:26.0403] <yulia>
+ok, thanks -- I will try that
+
+[04:16:54.0966] <yulia>
+being able to do it manually helps a lot in any case
+
+[07:06:24.0772] <Ryan Hunt>
+nbp iain would either of you be interested in reviewing a wasm MIR building bug? I can provide background and assistance if need be
+
+[07:07:50.0500] <nbp>
+Ryan Hunt: I can, caroline | sick probably have a more up to date idea of the state of our MIR than I do.
+
+[07:12:07.0578] <Ryan Hunt>
+Okay, thanks! I will assign the patch to you and write some extra information on it. Feel free to ask questions
+
+[07:45:13.0008] <chaircrusher>
+OK SpiderMonkeys, some of you may recall yesterday I was chasing crashes in ESR78 embedding where JS_DestroyContext was crashing.
+
+It turns out it's a very bad no good idea to try to call JS_DestroyContext after the main program exits.
+
+I have to assume it's because SpiderMonkey has static global data that gets initialized before main executes, and after main returns or exit is called, you can't depend on the order of execution of static global object destructors.
+
+Sound about right?
+
+
+
+[07:52:15.0284] <nbp>
+ * Ryan Hunt: I can, caroline | sick probably has a more up to date idea of the state of our MIR than I do.
+
+[08:38:12.0787] <evilpie>
+chaircrusher: I would very strongly assume the answer is yes
+
+[10:40:26.0378] <nbp>
+Every time I read the function named `toPhi`, this makes me think that this sounds like a good dog name.
+
+[12:07:21.0748] <evilpie>
+Would it be a lot of work to support `JS::Heap<mozilla::Maybe<JS::Value>>>` ?
+
+[13:20:56.0504] <sfink>
+I *think* it would be fairly straightforward, but I'm not sure. If you did .reset() on the Maybe, you'd need to fire the write barrier.
+
+[13:57:26.0629] <mgaudet>
+(Following up from yesterday... I have no idea what was going on, but maybe my browser build was just broken? A test case that didn't work yesterday works today on functionally the same code, but with a fresh build and I'm super baffled but happy) 
+
+[14:02:15.0928] <arai>
+any chance that the helper file wasn't staged?
+
+[14:03:05.0925] <arai>
+(I don't remember whether build command or test command stages tho...
+
+[14:08:09.0512] <mgaudet>
+Hrm. I thought I rebuilt which would stage it. 
+
+[14:08:20.0504] <mgaudet>
+but as I say: deeply baffled. Happy it works now 
+
+
+2022-01-14
+[10:29:03.0968] <mgaudet>
+confession: Learning how to write a web extension to explore the possibility for things to go horribly wrong with streams; learning that it's harder to get something problematic than I expected (which is good I guess!) 
+
+[10:29:06.0442] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[11:17:58.0020] <yury>
+If one needs a test that will check if some property is not available in regular browser context (avaiable with jsshell or chrome), where this (mochi?) test will go?
+
+[13:11:44.0181] <mgaudet>
+confession: Succeeded in creating a hand-rolled test case for addons and readable streams. DOM Streams has a regression... though I am not too concerned; it's a sequence of un-natural patterns woven together that only make sense if a site and an addon collaborate to make thing terrible. 
+
+[13:32:29.0584] <mgaudet>
+confession: [Bug 1734873](https://bugzilla.mozilla.org/show_bug.cgi?id=1734873) is on autoland now, which is one of the most important patches for DOM Streams. This marks the point at which the in-tree version of DOM streams is approximately at feature parity with the JS streams implementation. 
+
+[13:32:31.0858] <botzilla>
+https://bugzil.la/1734873 — NEW (mgaudet) — Implement DOM Streams powered Fetch / Blob support
+
+[13:34:00.0652] <evilpie>
+\o/
+
+[13:43:44.0664] <mgaudet>
+(let's hope it sticks... but if it doesn't, it's friday. I'm definitely not fixing today :P) 
+
+[13:53:29.0365] <sfink>
+I had almost no effects from my first two Pfizer vaccine shots. This (again Pfizer) booster is kicking my butt.
+
+[13:55:33.0290] <evilpie>
+haha now I am curious, so far I've had J&J and Moderna. Pfizer in two weeks
+
+[13:56:51.0071] <sfink>
+the other 3 people in my family had fairly large side effects from their initial Pfizer doses, and the 2 of 3 who just got the booster are again feeling it.
+
+[13:56:59.0838] <sfink>
+not to scare you or anything... ;-)
+
+[13:58:04.0729] <sfink>
+Moderna halved their dose for the booster, to try to reduce side effects. I don't actually know how they compared to Pfizer in the first place.
+
+[13:59:21.0332] <evilpie>
+J&J was terrible for me, headache & relatively high fever. Moderna I almost didn't notice
+
+[14:20:44.0601] <mdashti>
+Hi, Is it expected for the SpiderMonkey code-base to be built with C++20?
+
+[14:26:04.0290] <arai>
+mdashti: do you mean whether you can use C++20 feature?
+
+[14:26:26.0285] <arai>
+the detail about the C++ features is written in this document https://firefox-source-docs.mozilla.org/code-quality/coding-style/using_cxx_in_firefox_code.html
+
+[14:27:06.0865] <iain>
+It looks like C++17, which matches what I see in my build output
+
+[14:29:15.0818] <mdashti>
+Thanks arai  and iain . Then, there's no effort done for making the code-base work with C++20, right?
+
+[14:31:10.0414] <mgaudet>
+Almost certainly not -- though we'd likely take patches in anticipation 
+
+[14:31:15.0850] <mdashti>
+ * Thanks arai  and iain . Then, there's no effort done for making the code-base work with C++20 (i.e., clang 12), right?
+
+[14:31:28.0719] <arai>
+I see some bugs for c++20 https://bugzilla.mozilla.org/buglist.cgi?quicksearch=c%2B%2B20
+
+[14:32:10.0144] <arai>
+do you see any issue with compiling with c++20 option, or newer version of clang?
+
+[14:34:40.0256] <mdashti>
+> <@arai:mozilla.org> do you see any issue with compiling with c++20 option, or newer version of clang?
+
+Here is my first try: https://pastebin.com/pCSvFAxF
+
+Does it ring a bell for you on how to fix these issues (which seems to be in two places)?
+
+[14:36:53.0509] <arai>
+what version or revision of the tree are you using?
+
+[14:37:22.0457] <mdashti>
+> <@arai:mozilla.org> what version or revision of the tree are you using?
+
+ESR 91.3
+
+[14:38:24.0087] <mdashti>
+And I've stripped away all non-SpiderMonkey files from the repo. So, only working on SpiderMonkey, not the whole mozilla-unified repo.
+
+[14:41:35.0503] <arai>
+what's the build configuration?
+
+[14:42:04.0838] <arai>
+have you added any extra compiler option, or just used newer version of clang?
+
+[14:44:36.0588] <mdashti>
+I can gather full information and share with you in a few hours. I'm just using the usual build configuration, with only changing clang version and passing x
+
+[14:44:53.0461] <mdashti>
+ * I can gather full information and share with you in a few hours. I'm just using the usual build configuration, with only changing clang version and passing c++20 compilation flags.
+
+[14:45:04.0371] <mdashti>
+ * I can gather full information and share it with you in a few hours. I'm just using the usual build configuration, with only changing clang version and passing c++20 compilation flags. 
+
+[14:45:17.0685] <arai>
+so far I don't see the error with `-std=c++20` with similar code structure
+
+[14:45:26.0334] <arai>
+what's the clang version?
+
+[14:45:53.0640] <mdashti>
+```
+clang --version                      Py python3-venv ubuntu@ip-10-122-9-106 14:29:51
+MongoDB clang version 12.0.1
+```
+
+[14:46:02.0708] <mdashti>
+ * ```
+clang --version
+MongoDB clang version 12.0.1
+```
+
+[14:46:25.0014] <arai>
+let me try
+
+[14:51:36.0691] <arai>
+(I'll upgrade my debian box and install clang 12 there, it will take some time
+
+[14:51:53.0856] <arai>
+meanwhile, can you test if you see the similar error with minimal code?
+
+[14:52:17.0350] <arai>
+something like this https://paste.mozilla.org/Naued2wa
+
+[15:43:12.0470] <arai>
+with clang-12 without c++20 option, I don't get any error
+
+[15:44:38.0460] <arai>
+with clang-12 with c++20 option, I get [different error](https://paste.mozilla.org/1hkzu34C)
+
+[15:45:13.0391] <arai>
+sounds like template instantiation/specialization goes wrong somewhere
+
+[15:54:54.0022] <arai>
+and so many error about u8"" string
+
+[15:55:18.0798] <arai>
+so, yeah, the code indeed doesn't work with c++20 option
+
+[15:59:28.0716] <arai>
+but haven't hit the same error yet
+
+
+2022-01-15
+[16:27:57.0224] <mdashti>
+Thanks arai for looking into it.
+
+[16:30:43.0798] <arai>
+applied temporary fix for each error, and successfully build with clang-12 + c++20 option, but I haven't seen the "expected ‘)’ before ‘kind’" error
+
+[16:30:55.0938] <arai>
+maybe version-dependent ?
+
+[16:31:01.0881] <arai>
+```
+$ clang++-12 --version
+Debian clang version 12.0.1-17+b1
+Target: x86_64-pc-linux-gnu
+Thread model: posix
+InstalledDir: /usr/bin
+```
+
+
+[16:31:15.0591] <arai>
+I used the following mozconfig
+```
+ac_add_options --enable-project=js
+export CC="/usr/bin/clang-12"
+export CXX="/usr/bin/clang++-12 -std=c++20"
+```
+on revision 0568371e8077958b2d3ef3c6d84c7ee920448d6b on esr91 branch
+
+
+[16:31:56.0435] <arai>
+with [this patch](https://paste.mozilla.org/mHkLdBmF)
+
+
+2022-01-16
+[02:12:09.0286] <wraitii>
+I'm trying to use IONPERF to correlate macOS instruments samples & JS code, however I'm getting samples at memory addresses that seem to be 'between' compiled scripts
+
+[02:12:36.0908] <wraitii>
+Am I missing something or is it a difference between perf & Instruments way of sampling that might cause this ?
+
+[03:50:57.0401] <arai>
+wraitii: do you get any matching address, or none of them match?
+
+[04:00:31.0999] <arai>
+I've tried locally with macOS instruments, and I see matching addresses in samples, for Tranpolines, and Func code
+
+[04:00:44.0648] <arai>
+ * I've tried locally with macOS instruments, and I see matching addresses in samples, for Trampolines, and Func code
+
+
+2022-01-17
+[05:10:51.0097] <mdashti>
+> <@arai:mozilla.org> with [this patch](https://paste.mozilla.org/mHkLdBmF)
+
+Thanks arai . This patch is not accessible. Can you send it again please?
+
+[05:14:30.0221] <arai>
+https://paste.mozilla.org/aXX5CVF0
+
+[07:24:22.0821] <nbp>
+arai: just a random idea while reviewing the patches, would the following sounds like a good starting point:
+```c++
+template <AllowGC allowGC, typename CharT, DelfateMode = MaybeDeflate, IsStaticStatus = MaybeStatic, LengthValidity = LengthNotChecked> String* new_(...);
+
+template <AllowGC allowGC, typename CharT, DelfateMode deflateMode, IsStaticStatus isStatic>
+String* new_<allowGC, CharT, deflateMode, isStatic, LengthNotChecked>(...) {
+  if (!validateLength(cx, n)) {
+    return nullptr;
+  }
+  return new_<allowGC, CharT, deflateMode, isStatic, LengthChecked>(...);
+}
+```
+
+This might not be easy, as a `validLength`/`lengthFits` can have multiple value based on the string type, and we might want to fallback on other string types.
+But using templates this way allows cascading the different checks until all are specialized.
+
+This would have the benefit of making explicit that each property is checked, and if the flag is not set as expected, there is a template specialization to refine the non checked flag.
+
+[07:25:45.0040] <nbp>
+Maybe the specialized string type should be part of the template arguments to provide a way to fallback to a larger string type.
+
+[07:28:50.0774] <arai>
+yeah, that looks interesting
+
+[07:30:49.0720] <nbp>
+Another option is to use constexpr with a single function.
+
+[07:32:37.0269] <arai>
+I guess I should check how many functions are inlined or shared with the current patch.  `constexpr` branch would make the code easy to read, but I guess it will definitely duplicate the code
+
+[07:33:11.0178] <arai>
+for each template parameters combination
+
+[07:34:16.0673] <nbp>
+I am not sure constexpr would be easy to read either, knowing the combinatorial space of targets.
+
+[07:36:06.0207] <nbp>
+unless we do a mix of both, where the shared code is called with a return, and the small dispatching code is using constexpr.
+
+[07:38:13.0988] <arai>
+do you think we should go that way instead of current patch?  or can we investigate that way after the current patch?
+
+[07:44:45.0511] <nbp>
+I will finish the review of the current patch.
+
+[07:44:53.0663] <nbp>
+I think the current patches make sense.
+
+[07:45:07.0464] <arai>
+thank you :)
+
+[07:45:47.0559] <nbp>
+I do not think we have to go that way, but this is something which might make the code more readable, from my point of view … then I am not the one visiting this code the most frequently.
+
+[07:47:06.0367] <nbp>
+https://searchfox.org/mozilla-central/source/js/src/vm/JSAtomState.h#37-41 This got me confused for a moment …
+
+[07:48:04.0644] <nbp>
+I am even surprised that ASan let you do these kind of stuff.
+
+[07:49:14.0766] <arai>
+what's the problem with the code around ASan ?
+
+[07:50:14.0587] <arai>
+oh
+
+[07:51:30.0648] <arai>
+the macro invocation is indeed confusing
+
+[07:55:14.0456] <mdashti>
+> <@arai:mozilla.org> https://paste.mozilla.org/aXX5CVF0
+
+Thanks arai . That was really helpful. It works like a charm.
+
+[07:55:56.0795] <arai>
+oh, does it *fix* all errors?
+
+[08:59:58.0097] <mdashti>
+> <@arai:mozilla.org> oh, does it *fix* all errors?
+
+I used the following command and works on the `mozilla-unified` repo.
+```
+cd ~/spidermonkey/js/src && autoconf2.13 && mkdir -p _build && cd _build && export CC="/usr/bin/clang-12" && export CXX="/usr/bin/clang++-12 -std=c++20" &&  ../configure --disable-jemalloc --with-system-zlib --with-intl-api --enable-optimize --enable-js-shell --enable-tests && make
+```
+
+However, when I embed SpiderMonkey (inside MongoDB), I need to apply changes on two additional files. Here's the patch:
+
+```
+From d78d0e76d6d2a94d8654646a268d1688876118eb Mon Sep 17 00:00:00 2001
+From: Mohammad Dashti <mdashti@gmail.com>
+Date: Mon, 17 Jan 2022 06:30:31 -0800
+Subject: [PATCH 1/2] SERVER-61008 Fixed some C++20 issues with MozJS
+
+---
+ src/third_party/mozjs/extract/js/src/jit/InlineList.h       | 4 ++--
+ src/third_party/mozjs/extract/js/src/vm/Scope.h             | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/third_party/mozjs/extract/js/src/jit/InlineList.h b/src/third_party/mozjs/extract/js/src/jit/InlineList.h
+index 2b4412286c1..16300c130d9 100644
+--- a/src/third_party/mozjs/extract/js/src/jit/InlineList.h
++++ b/src/third_party/mozjs/extract/js/src/jit/InlineList.h
+@@ -146,7 +146,7 @@ class InlineForwardListIterator {
+ 
+   using Node = InlineForwardListNode<T>;
+ 
+-  explicit InlineForwardListIterator<T>(const InlineForwardList<T>* owner)
++  explicit InlineForwardListIterator(const InlineForwardList<T>* owner)
+       : prev(const_cast<Node*>(static_cast<const Node*>(owner))),
+         iter(owner ? owner->next : nullptr)
+ #ifdef DEBUG
+@@ -157,7 +157,7 @@ class InlineForwardListIterator {
+   {
+   }
+ 
+-  InlineForwardListIterator<T>(const InlineForwardList<T>* owner, Node* node)
++  InlineForwardListIterator(const InlineForwardList<T>* owner, Node* node)
+       : prev(nullptr),
+         iter(node)
+ #ifdef DEBUG
+diff --git a/src/third_party/mozjs/extract/js/src/vm/Scope.h b/src/third_party/mozjs/extract/js/src/vm/Scope.h
+index f59a2d365e8..edfe85a1705 100644
+--- a/src/third_party/mozjs/extract/js/src/vm/Scope.h
++++ b/src/third_party/mozjs/extract/js/src/vm/Scope.h
+@@ -1649,11 +1649,11 @@ class AbstractBindingIter<JSAtom> : public BaseAbstractBindingIter<JSAtom> {
+   using Base = BaseAbstractBindingIter<JSAtom>;
+ 
+  public:
+-  AbstractBindingIter<JSAtom>(ScopeKind kind, BaseScopeData* data,
++  AbstractBindingIter(ScopeKind kind, BaseScopeData* data,
+                               uint32_t firstFrameSlot);
+ 
+-  explicit AbstractBindingIter<JSAtom>(Scope* scope);
+-  explicit AbstractBindingIter<JSAtom>(JSScript* script);
++  explicit AbstractBindingIter(Scope* scope);
++  explicit AbstractBindingIter(JSScript* script);
+ 
+   using Base::Base;
+ 
+-- 
+2.17.1
+
+
+```
+
+It's related to the errors I mentioned in the first place. Though, I don't understand why it's not giving me these errors on the SpiderMonkey repo (even though I'm using the same compiler). Maybe, it's related to the compiler flags.
+
+[09:00:23.0235] <mdashti>
+> <@arai:mozilla.org> oh, does it *fix* all errors?
+
+ * I used the following command and works on the `mozilla-unified` repo (with your patch).
+```
+cd ~/spidermonkey/js/src && autoconf2.13 && mkdir -p _build && cd _build && export CC="/usr/bin/clang-12" && export CXX="/usr/bin/clang++-12 -std=c++20" &&  ../configure --disable-jemalloc --with-system-zlib --with-intl-api --enable-optimize --enable-js-shell --enable-tests && make
+```
+
+However, when I embed SpiderMonkey (inside MongoDB), I need to apply changes on two additional files. Here's the patch:
+```
+From d78d0e76d6d2a94d8654646a268d1688876118eb Mon Sep 17 00:00:00 2001
+From: Mohammad Dashti <mdashti@gmail.com>
+Date: Mon, 17 Jan 2022 06:30:31 -0800
+Subject: [PATCH 1/2] SERVER-61008 Fixed some C++20 issues with MozJS
+
+---
+ src/third_party/mozjs/extract/js/src/jit/InlineList.h       | 4 ++--
+ src/third_party/mozjs/extract/js/src/vm/Scope.h             | 6 +++---
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/third_party/mozjs/extract/js/src/jit/InlineList.h b/src/third_party/mozjs/extract/js/src/jit/InlineList.h
+index 2b4412286c1..16300c130d9 100644
+--- a/src/third_party/mozjs/extract/js/src/jit/InlineList.h
++++ b/src/third_party/mozjs/extract/js/src/jit/InlineList.h
+@@ -146,7 +146,7 @@ class InlineForwardListIterator {
+ 
+   using Node = InlineForwardListNode<T>;
+ 
+-  explicit InlineForwardListIterator<T>(const InlineForwardList<T>* owner)
++  explicit InlineForwardListIterator(const InlineForwardList<T>* owner)
+       : prev(const_cast<Node*>(static_cast<const Node*>(owner))),
+         iter(owner ? owner->next : nullptr)
+ #ifdef DEBUG
+@@ -157,7 +157,7 @@ class InlineForwardListIterator {
+   {
+   }
+ 
+-  InlineForwardListIterator<T>(const InlineForwardList<T>* owner, Node* node)
++  InlineForwardListIterator(const InlineForwardList<T>* owner, Node* node)
+       : prev(nullptr),
+         iter(node)
+ #ifdef DEBUG
+diff --git a/src/third_party/mozjs/extract/js/src/vm/Scope.h b/src/third_party/mozjs/extract/js/src/vm/Scope.h
+index f59a2d365e8..edfe85a1705 100644
+--- a/src/third_party/mozjs/extract/js/src/vm/Scope.h
++++ b/src/third_party/mozjs/extract/js/src/vm/Scope.h
+@@ -1649,11 +1649,11 @@ class AbstractBindingIter<JSAtom> : public BaseAbstractBindingIter<JSAtom> {
+   using Base = BaseAbstractBindingIter<JSAtom>;
+ 
+  public:
+-  AbstractBindingIter<JSAtom>(ScopeKind kind, BaseScopeData* data,
++  AbstractBindingIter(ScopeKind kind, BaseScopeData* data,
+                               uint32_t firstFrameSlot);
+ 
+-  explicit AbstractBindingIter<JSAtom>(Scope* scope);
+-  explicit AbstractBindingIter<JSAtom>(JSScript* script);
++  explicit AbstractBindingIter(Scope* scope);
++  explicit AbstractBindingIter(JSScript* script);
+ 
+   using Base::Base;
+ 
+-- 
+2.17.1
+
+
+```
+
+It's related to the errors I mentioned in the first place. Though, I don't understand why it's not giving me these errors on the SpiderMonkey repo (even though I'm using the same compiler). Maybe, it's related to the compiler flags.
+
+[09:03:36.0979] <arai>
+by "embed", what's actually happening?  is the SpiderMonkey source compiled as library in the separate command, or is the SpiderMonkey source compiled as part of your application?
+
+[09:05:47.0178] <arai>
+anyway, I think it would be better checking the actual command used for compiling those files
+
+[09:05:55.0903] <arai>
+ * anyway, I think it would be better checking the actual command and parameters used for compiling those files
+
+[09:08:53.0082] <arai>
+then, those 2 fixes both look related to constructor of specialized template class
+
+[09:09:10.0106] <arai>
+I'll check if there's any tips around that
+
+[09:12:27.0537] <arai>
+it looks like we don't need the template parameter for constructor definition at all?
+
+[09:14:59.0579] <arai>
+if just removing the parameter there works on all case, we can just remove it
+
+[09:19:16.0882] <arai>
+mdashti:  in your build log, it says `/opt/mongodbtoolchain/v4/bin/g++`.  is it an alias for clang, or is it really g++ ?
+
+[09:19:46.0223] <arai>
+maybe we should test the minimal case with certain g++ version with c++20 option ?
+
+[09:26:19.0582] <arai>
+oh, indeed. I get the error with minimal testcase, with g++-11 with c++20 option
+
+[09:27:11.0138] <arai>
+it works if I don't pass `-std=c++20`
+
+[09:28:06.0844] <arai>
+found this https://stackoverflow.com/questions/63513984/can-class-template-constructors-have-a-redundant-template-parameter-list-in-c2
+
+[09:32:20.0829] <arai>
+filed bug 1750610
+
+[09:32:22.0025] <botzilla>
+https://bugzil.la/1750610 — NEW (nobody) — Remove redundant template parameter from template class constructor
+
+[13:12:19.0303] <mdashti>
+arai: Apologies. Didn't check here for a while. 
+
+> by "embed", what's actually happening?  is the SpiderMonkey source compiled as library in the separate command, or is the SpiderMonkey source compiled as part of your application?
+
+"SpiderMonkey source compiled as library in the separate command". Similar to how you have embedded `icu` inside your repo. Here is the script used for compiling ESR 60.3.0: https://github.com/mongodb/mongo/blob/master/src/third_party/mozjs/SConscript
+
+> in your build log, it says /opt/mongodbtoolchain/v4/bin/g++. is it an alias for clang, or is it really g++ ?
+
+It's actually `g++`:
+```
+❯ /opt/mongodbtoolchain/v4/bin/g++ --version
+g++ (GCC) 11.2.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+```
+
+> filed bug 1750610
+
+Thanks for filing it. It's definitely a good improvement.
+
+[13:13:54.0086] <arai>
+thanks :)  that explains why I didn't hit the issue with clang
+
+[15:32:44.0883] <mgaudet>
+ confession: Spent a lot of the day handling fallout from MOZ_CAN_RUN_SCRIPT annotation changes that happened between development of patch and landing. Tracked down a tracing bug thanks to Tom. Mailed a new build to fuzzing for fuzzing. 
+
+[15:32:47.0143] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[15:33:26.0825] <mgaudet>
+(Oh, and dealt with a huge amount of snow causing house problems. 🙄0
+
+[15:33:29.0335] <mgaudet>
+ * (Oh, and dealt with a huge amount of snow causing house problems. 🙄)
+
+
+2022-01-18
+[21:33:32.0724] <DerekNonGeneric>
+glad you're alright, it has been a difficult time here too (so far so good, and glad you know how to make things happen)
+
+[15:01:20.0803] <mgaudet>
+confession: Landing a series of cleanup patches for DOM streams; reviews, and work on test cases. 
+
+[15:11:49.0059] <evilpie>
+sfink: Okay, seems like Maybe<Value> isn't worth it. I can work around it.
+
+[15:12:07.0702] <sfink>
+yeah, sorry about that. Maybe if it comes up more.
+
+[15:14:33.0643] <evilpie>
+sfink: I am also resurrecting my error cloning patch, hopefully in a way that is actually landable this time
+
+[15:14:46.0189] <sfink>
+should I be looking at it yet?
+
+[15:15:35.0797] <evilpie>
+I think it's ready, but I haven't changed much on the JS side
+
+[15:16:01.0943] <evilpie>
+the counting of properties is of course not so amazing
+
+
+2022-01-19
+[01:33:24.0859] <gkw>
+arai: https://bugzilla.mozilla.org/show_bug.cgi?id=1750935
+
+[04:21:23.0123] <jandem>
+yulia: that `groupBy` regression is giving me flashbacks to the smoosh thing...
+
+[04:22:31.0501] <yulia>
+i am hoping it won't be too bad... but hard to tell, the library is popula
+
+[04:22:34.0898] <yulia>
+ * i am hoping it won't be too bad... but hard to tell, the library is popular
+
+[04:23:05.0708] <yulia>
+we managed to escape a rename with `at()`
+
+[04:23:59.0902] <jandem>
+yeah, could go either way..
+
+[04:24:00.0141] <yulia>
+in that case i think it was a single site breakage.. i am less confident in this case
+
+[04:25:47.0290] <jandem>
+it has been more than a week already, that's a good sign
+
+[04:26:09.0156] <arai>
+gkw: thank you!
+
+[08:19:49.0912] <yulia>
+Do we have anyone here who knows how/when the debugger uses this hook? https://searchfox.org/mozilla-central/source/dom/script/ScriptSettings.cpp#54-83
+
+[08:20:16.0798] <yulia>
+I assume it is used for inline scripts for example, but is it used for dynamic imports?
+
+[08:29:42.0239] <nbp>
+yulia: https://searchfox.org/mozilla-central/source/js/src/debugger/Source.cpp#392
+
+[08:48:16.0984] <l11d>
+I'd like insert profiling counters into code emitted by ion. the counters should be stack-allocated, so they automatically vanish after each function call (+ recursive calls get separate counters). how do I tackle this in general? my current guess is that individual counters should be LAllocation's generated at the end of OptimizeMIR, but I might be entirely wrong. any hints would be much appreciate
+
+[08:53:25.0701] <nbp>
+l11d: The stack space is handled by the register allocator, it might be easier to create a MIR which is lower to something which require a stack allocation, and add it in the prologue of the function.
+
+[08:54:23.0994] <nbp>
+Otherwise, if you were to have a global vector, you could bake in the address of the vector and increment the last element of it.
+
+[08:54:59.0849] <nbp>
+In which case you will only need to change the assembly produced by the prologue of Ion.
+
+[09:03:35.0203] <l11d>
+nbp: thanks, I'll give it a try
+
+[09:05:39.0570] <nbp>
+l11d: A third option, is that we already have some code-coverage counters, which are used by the interpreter and baseline. Maybe adding them to Ion as MIR instructions which are lowered like baseline compile them would work.
+
+[09:05:51.0309] <nbp>
+And you might get an LCov output as well.
+
+[11:24:18.0343] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+kinda sick but want to shoot off this before i forget:
+
+last month we deployed the new native crash processing backend for crash-stats (rust-minidump). have y'all noticed any particular quality changes in backtraces involving JS frames? It's not something I put any specific thought into, but I tried to mirror the old implementation pretty close.
+
+also if you have any thoughts on how backtraces through JS could be improved, I'd love to hear
+
+also also if there are any docs on the spidermonkey JS <-> JS and JS <-> native ABIs, I would love to see them
+
+[11:26:38.0734] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+specifically I am looking at heuristics to improve stack scanning (the worst unwinding scheme, which we use when CFI and frame pointers are missing/seemingly-corrupt), but the big ??? for me is unwinding through JITed code, because presumably heuristics like
+
+* require the return address to point into a linked in module
+* require the return address to be preceeded by a native CALL instruction
+
+could easily be messed up by JITed code, depending on how it's implemented
+
+[14:20:23.0400] <iain>
+Aria (Gankra) [she/they] | sick part 2: revenge of the sick: There's a little bit of information in [this SMDOC](https://searchfox.org/mozilla-central/source/js/src/jit/JitFrames.h#383)
+
+[14:21:28.0172] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+is the JS <-> native boundary always forced to go into ion (as opposed to interpretter stuff?)
+
+[14:22:03.0648] <iain>
+No, JS <-> native transitions happen in every tier
+
+[14:23:01.0764] <iain>
+Roughly speaking, there's an entry frame whenever we go from C++ into jit code, and an exit frame whenever we go from jit code back into C++
+
+[14:23:50.0183] <iain>
+This comment might also be helpful: https://searchfox.org/mozilla-central/source/js/src/jit/JSJitFrameIter.h#26
+
+[14:25:12.0108] <iain>
+I think in general return addresses will be preceded by call instructions
+
+[14:25:25.0206] <iain>
+But of the top of my head I can't guarantee that there are no exceptions
+
+[14:29:47.0731] <iain>
+There are definitely places where we monkey around with returns
+
+[14:30:33.0728] <iain>
+For example when we resume into a generator, we push a fake return address and then keep going: https://searchfox.org/mozilla-central/source/js/src/jit/BaselineCodeGen.cpp#5982-5998
+
+[14:30:47.0736] <iain>
+But that uses a real call, and we really return there, so maybe that works out
+
+[14:31:00.0190] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+i think even with TCO it still holds, in my naive mental model of how TCO would be implemented
+
+[14:31:15.0961] <iain>
+(We don't do TCO)
+
+[14:31:41.0459] <iain>
+(It's part of the JS spec, but that is generally held to be a mistake by everybody except JSC, who incidentally are the only people who've implemented it.)
+
+[14:32:10.0954] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+haha
+
+[14:32:27.0240] <iain>
+The other example that came to mind was invalidating Ion scripts on the stack, where we have to go in and fix things up so that things don't break when we return there
+
+[14:32:47.0414] <iain>
+But it looks like we do that by overwriting the code following the return, so the return address itself is fine
+
+[14:33:24.0486] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+TCO is kinda a mental short-hand i have for "weird tricks that mess with the return pointers" i.e. when objc_messageSend removes itself from the stack, that's basically just TCO
+
+[14:34:38.0371] <iain>
+There are some places where we make calls using trampolines where we call directly to an unconditional jump, but those shouldn't be visible to stack scanning
+
+[14:35:16.0885] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+shouldn't be visible in what sense? (trampoline is on of those pieces of terminology i can never get to stick in my head)
+
+[14:35:41.0669] <iain>
+Trampoline might not even be the right word here
+
+[14:35:43.0320] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * shouldn't be visible in what sense? (trampoline is one of those pieces of terminology i can never get to stick in my head)
+
+[14:36:13.0341] <iain>
+It's literally just a call instruction that calls to a single jmp instruction
+
+[14:36:52.0997] <iain>
+So the call instruction at point A will push a return address on the stack and jump to point B, which immediately jumps to point C, which will eventually return to point A without revisiting point B
+
+[14:37:07.0224] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ok, so, basically a TCO
+
+[14:37:24.0968] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+see, it's a good heuristic :)
+
+[14:38:40.0609] <iain>
+In the same spirit of calling that TCO, you can probably interpret "trampoline" in SM as "well, we use it to bounce from one place to another" and not go far wrong
+
+[14:39:36.0497] <iain>
+Example: https://searchfox.org/mozilla-central/source/js/src/jit/x64/Trampoline-x64.cpp#74-77
+
+[14:39:59.0667] <iain>
+C++ code calls this to call into jit code
+
+[14:41:07.0771] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+quick sanity check: in minidumps we can have the rwx bits for all the mapped pages of the crashing process. is there *any* situation where a JIT page would end up as a return address while the page *isn't* marked as executable?
+
+[14:41:25.0737] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * quick sanity check: in minidumps we can have the rwx bits for all the mapped pages of the crashing process. is there _any_ situation where a JIT page would end up as a return address stored on the stack while the page _isn't_ marked as executable?
+
+[14:41:58.0927] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+(i can potentially replace "address must be part of a linked in module" with "linked module or known-executable page")
+
+[14:43:10.0271] <iain>
+The only case I can think of is if we crashed while writing new executable code to the same page, because we enforce W^X
+
+[14:43:32.0374] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+oh interesting, hmm
+
+[14:43:44.0908] <iain>
+So we would mark the page as W but not X, memcpy in some new code, and then swap the bits back
+
+[14:44:15.0823] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+and there's no Very Clever system that prevents mutating a page that's part of a current stack?
+
+[14:45:08.0774] <iain>
+No, and in fact it can be necessary for correctness: see my example above about overwriting the code in invalidated ion scripts
+
+[14:45:18.0335] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ah, dang
+
+[14:46:17.0574] <iain>
+https://searchfox.org/mozilla-central/source/js/src/jit/Ion.cpp#2438-2462
+
+[14:46:55.0116] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+would it be useful/interesting to have that kind of metadata show up in crash-stats? like, hey this instruction pointer was pointing into a freed pag, or in a non-executable page, any time an instruction pointer doesn't point into a module?
+
+[14:47:09.0786] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * would it be useful/interesting to have that kind of metadata show up in crash-stats? like, hey this instruction pointer was pointing into a freed page, or in a non-executable page, any time an instruction pointer doesn't point into a module?
+
+[14:48:19.0175] <iain>
+My instinct is that if we crash while we're writing new executable code, we should be able to tell by looking at the top of the stack, and the details of what jit code is on the stack aren't likely to be all that interesting
+
+[14:49:03.0996] <iain>
+Hypothetically we could track whether we were currently writing jit code, and only enforce the invariant if we weren't
+
+[14:49:22.0056] <iain>
+And then I think violations would be noteworthy (although it's still possible I'm forgetting something)
+
+[14:50:26.0530] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+the page being marked as freed would be a huge red flag though, right?
+
+[14:50:42.0947] <iain>
+Yeah, true
+
+[14:50:52.0859] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+(although I have a feeling you probably pool the pages so don't actually free them much...)
+
+[14:51:08.0152] <iain>
+That sounds right, although I would have to go look to verify
+
+[14:52:33.0748] <iain>
+Memory for jitcode is allocated here: https://searchfox.org/mozilla-central/source/js/src/jit/ExecutableAllocator.h#54
+
+[14:52:53.0724] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+you have given me a lot of useful links which i'll try to look over later, but can I get a tl;dr yes/no/sometimes on whether spidermonkey frames properly use frame pointers?
+
+[14:54:31.0640] <iain>
+I think "sometimes"
+
+[14:54:42.0647] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+brutal, reading time it is
+
+[14:55:50.0771] <iain>
+IIRC (but there is a good chance I do not) Ion does not use a frame pointer, but baseline does
+
+[14:56:21.0553] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+if only some JS was one of those languages where try/catch is abused as normal path control flow so runtimes need to make it hyper fast to unwind
+
+[14:56:33.0423] <iain>
+We don't even optimize catch in Ion
+
+[14:56:38.0838] <iain>
+You have to bail out to do a catch
+
+[14:57:06.0187] <iain>
+Please please we already suffer enough
+
+[14:57:12.0169] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * if only JS was one of those languages where try/catch is abused as normal path control flow so runtimes need to make it hyper fast to unwind
+
+[14:57:33.0498] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+frame pointers make everything *simpler* they remove the suffering iain
+
+[14:57:45.0403] <iain>
+Yeah but then you don't have enough registers
+
+[14:57:51.0170] <iain>
+Don't blame me, blame x86
+
+[14:58:09.0136] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+fair but also x64/arm could be Happiness
+
+[14:59:10.0395] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+i don't know if the apple mandate that you properly use frame pointers applies to M1, probably not
+
+[14:59:29.0537] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * i don't know if the apple mandate that you properly use frame pointers on arm targets applies to M1, probably not
+
+[15:00:28.0487] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
+
+> The frame pointer register (x29) must always address a valid frame record. Some functions — such as leaf functions or tail calls — may opt not to create an entry in this list As a result, stack traces are always meaningful, even without debug information.
+
+[15:01:07.0978] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+say it ain't so that spidermonkey isn't totally compliant with apple's standards 😈
+
+[15:01:55.0575] <iain>
+Pretty confident we don't, given that we use r23 as our frame pointer in baseline: https://searchfox.org/mozilla-central/source/js/src/jit/arm64/SharedICRegisters-arm64.h#18
+
+[15:02:06.0830] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+;-;
+
+[15:03:54.0902] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+~~if you're not careful firefox could be banned from the app store~~
+
+[15:04:06.0768] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+ * if you're not careful firefox could be banned from the app store </s>
+
+[15:08:04.0082] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+is there a reason to avoid the "conventional" frame pointer register?
+
+[15:20:31.0030] <iain>
+No, I think we just picked an arbitrary callee-saved register
+
+[15:25:15.0226] <iain>
+Skimmed through the review comments on the patch that added arm64 support, and if we talked about the decision at all it wasn't on bugzilla
+
+[15:27:02.0547] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+well if it's not too hard to change, it would probably be Better to have it be the one the platform natively prefers
+
+[15:34:39.0404] <iain>
+It might be as easy as just updating the header. I'll run a quick smoke test
+
+
+2022-01-20
+[22:20:06.0202] <sudipto64>
+hi .I need to build spidermonkey in windows, which esr version I should consider to build..can anyone suggest me.
+
+[22:26:20.0085] <iain>
+sudipto64: Use esr91. It's the most recent.
+
+[22:27:00.0085] <sudipto64>
+iain: thanks
+
+[22:29:29.0384] <sudipto64>
+in the MozillaBuild shell I need to follow any specific steps to download esr91 ?
+
+[23:10:18.0041] <iain>
+If you clone mozilla-unified, which I believe should be the default, it will include esr91. Just make sure to check out esr91 before building.
+
+[23:11:42.0161] <sudipto64>
+how I can check out the version ?
+
+[23:13:02.0026] <iain>
+`hg up esr91`
+
+[23:13:30.0807] <sudipto64>
+ok thanks
+
+[02:28:36.0492] <nbp>
+Aria (Gankra) [she/they] | sick part 2: revenge of the sick: Hi, if you are interested, we are going to some kind of brainstorming between a few members of the team on how we could improve the quality of JS crashes. Ping me if you are interested.
+
+[02:33:58.0894] <Ms2ger 💉💉>
+I would love higher quality crashes
+
+[05:08:35.0830] <yulia>
+arai: I saw you picked up the module cache bug -- I will be landing a substantial change to how we represent scripts, but it won't touch caching, caching will stay where it is, but a lot of other stuff will move around
+
+[05:08:48.0688] <yulia>
+ * arai: I saw you picked up the module cache bug -- I will be landing a substantial change to how we represent script requests, but it won't touch caching, caching will stay where it is, but a lot of other stuff will move around
+
+[05:09:08.0938] <yulia>
+It should go ahead in a few days
+
+[05:09:33.0303] <arai>
+did I pick up something?
+
+[05:10:22.0709] <Ms2ger 💉💉>
+Now you did
+
+[05:12:49.0796] <yulia>
+> <@arai:mozilla.org> did I pick up something?
+
+Oh, i saw you edit this one: https://bugzilla.mozilla.org/show_bug.cgi?id=1745512 Sorry my mistake!
+
+[05:13:04.0556] <yulia>
+you just cleared the needinfo
+
+[05:13:05.0716] <yulia>
+mybad
+
+[05:15:01.0884] <arai>
+sorry for being late, I cleared the ni? because denispal already took a look
+
+[06:38:25.0995] <Aria (Gankra) [she/they] | sick part 2: revenge of the sick>
+> <@nbp:mozilla.org> Aria (Gankra) [she/they] | sick part 2: revenge of the sick: Hi, if you are interested, we are going to some kind of brainstorming between a few members of the team on how we could improve the quality of JS crashes. Ping me if you are interested.
+
+potentially yes, depending on when/how
+
+[07:14:41.0440] <nbp>
+ok, I'll CC you to the meeting when I schedule it
+
+[11:33:31.0482] <mdashti>
+Hi, Has anyone ever tried building the code-base (at least for its SpiderMonkey portion) using MSVC? I'm getting a lot of compiler errors.
+
+[11:35:01.0307] <iain>
+mdashti: We dropped support for MSVC a few years ago. You have to use clang to build on windows.
+
+[11:37:16.0909] <iain>
+This is the bug where we removed MSVC support: https://bugzilla.mozilla.org/show_bug.cgi?id=1512504
+
+[11:58:35.0789] <sfink>
+The headers should still work with MSVC, though there have been a few issues. We have no intention of making the code MSVC-compatible again.
+
+[14:01:43.0806] <mdashti>
+Thanks iain and sfink. 
+
+[14:18:36.0860] <mgaudet>
+confession: My phabricator dashboard is finally short enough that I no longer have to scroll it, after months of being huge. Landed a few DOM streams changes and blocking changes. Morning and some of the afternoon was eaten by a challenging to reproduce bug, made worse by a weird interaction between [`rr` and startup of fuzzing enabled builds.](https://bugzilla.mozilla.org/show_bug.cgi?id=1751238). 
+
+[14:18:38.0856] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-01-21
+[22:58:50.0618] <sudipto64>
+I'm getting below error at time of build spidermonkey in windows 
+
+[22:58:57.0830] <sudipto64>
+error: mozboot.mozconfig.MozconfigFindException: MOZCONFIG environment variable refers to a non-file
+
+[22:59:18.0705] <sudipto64>
+can anyone help me on this ..what I'm doing wrong here
+
+[22:59:28.0623] <arai>
+what's the value of MOZCONFIG variable?
+
+[23:00:03.0105] <sudipto64>
+its a path where mozconfig is kept 
+
+[23:00:16.0844] <arai>
+yeah, can you tell me the exact value?
+
+[23:00:43.0535] <sudipto64>
+D:\mozilla-source\mozilla-unified\build
+
+[23:00:50.0496] <sudipto64>
+this one
+
+[23:01:32.0511] <arai>
+`build` is a directory, right?
+
+[23:01:40.0466] <sudipto64>
+yes
+
+[23:01:41.0894] <arai>
+did you put `mozconfig` file there?
+
+[23:01:59.0490] <sudipto64>
+yes mozconfig file is there 
+
+[23:02:16.0727] <arai>
+I mean, have you created a file there?
+
+[23:02:50.0604] <sudipto64>
+yes ..with named as mozconfig 
+
+[23:03:18.0135] <arai>
+okay, there are 2 issues.  first, MOZCONFIG should be the path of the file, not the directory contains it
+
+[23:04:41.0943] <arai>
+second, I think it's not common to put mozconfig file inside build directory inside source tree.  usually it's put at the top-level, with some different name than `mozconfig`, or outside of the tree
+
+[23:05:26.0023] <arai>
+are you following https://firefox-source-docs.mozilla.org/js/build.html ?
+
+[23:06:12.0020] <arai>
+the document takes the latter way.  it uses directory outside of the source tree
+
+[23:06:36.0290] <sudipto64>
+yes i'm following this documentation 
+
+[23:07:07.0586] <sudipto64>
+let me try with MOZCONFIG as file path ..
+
+[23:14:40.0229] <sudipto64>
+arai: thanks ..it worked ..
+
+[00:21:29.0028] <annevk>
+What do you all make of https://github.com/tc39/proposal-shadowrealm/pull/336? My inclination would be to ask/demand for structured serializing/deserializing to be sorted first before adding such an API.
+
+[00:24:25.0730] <yulia>
+Isn't this being done separately fro Shadow Realm?
+
+[00:25:08.0856] <yulia>
+I think this is a reasonable requirement. Without this being sorted out, either by expanding the existing algorithm or having  consensus driven in tc39, it would be risky to just land this
+
+[00:25:24.0609] <yulia>
+ * Isn't this being done separately from Shadow Realm now?
+
+[00:26:30.0278] <yulia>
+My expectation was that this would be introduced as a follow on proposal
+
+[02:42:39.0664] <annevk>
+yulia: I think that's still the case, but even then I think we should require it. I'll add a comment later unless you'd prefer to discuss it later today first.
+
+[03:10:08.0623] <yulia>
+I guess there is no rush on this yet, we can discuss it. Also I don't see any issue with you commenting the above before the meeting
+
+[15:06:01.0344] <mgaudet>
+confession: a morning of meetings and review, an afternoon of trying to [make heads or tails of globals and streams](https://bugzilla.mozilla.org/show_bug.cgi?id=1750634) (it also doesn't help Chrome and Safari disagree, with JS streams agreeing with Safari and DOM streams agreeing with Chrome) 
+
+[15:06:04.0622] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[15:06:16.0107] <mgaudet>
+(All the more a problem for Monday Matthew. See Y'all) 
+
+
+2022-01-22
+[02:37:26.0754] <sudipto64>
+after building of spidermonkey[esr91] when I'm trying to use js_static.lib it giving js_static.lib : fatal error LNK1136: invalid or corrupt file
+
+[02:38:01.0021] <sudipto64>
+can anyone help me on this ,what wrong I did here 
+
+[03:24:53.0549] <arai>
+sudipto64: can you check the size of the file?
+
+[03:26:00.0361] <sudipto64>
+11.1mb
+
+[03:26:29.0406] <arai>
+also, it might be better checking the architecture
+
+[03:27:27.0548] <sudipto64>
+you mean to say 64 bit or 32 bit ?
+
+[03:27:42.0104] <arai>
+yeah
+
+[03:28:03.0226] <arai>
+and intel or arm, if any
+
+[03:28:08.0910] <arai>
+(not sure if it's possible tho
+
+[03:28:11.0335] <sudipto64>
+then its 32bit 
+
+[03:28:18.0689] <sudipto64>
+& intel 
+
+[03:28:34.0980] <arai>
+you're on 32 bit OS ?
+
+[03:28:44.0576] <arai>
+or you've specified 32bit build on 64bit OS ?
+
+[03:28:49.0822] <sudipto64>
+no ..OS is 64bit 
+
+[03:29:33.0892] <arai>
+I found that you can use dumpbin command to investigate lib file https://docs.microsoft.com/en-us/cpp/build/reference/dumpbin-reference
+
+[03:30:10.0216] <arai>
+maybe checking the content with it will give you some hint
+
+[03:30:44.0061] <sudipto64>
+ok ..let me try out this 
+
+[03:31:18.0937] <sudipto64>
+also I'm using this mozconfig to build spidermonkey https://paste.mozilla.org/0PaDGQN6
+
+[03:31:37.0613] <sudipto64>
+is it fine ?
+
+[03:49:03.0962] <arai>
+yeah, it looks fine, as long as you're linking it from 32-bit application
+
+[03:52:06.0689] <sudipto64>
+arai: with dumpbin unable to get any info for js_staic.lib file
+
+[03:52:23.0449] <sudipto64>
+its giving warning LNK4048: Invalid format file; ignored
+
+[03:53:03.0853] <arai>
+maybe better checking the actual content?
+
+[03:53:56.0543] <sudipto64>
+you mean to mozjs-91.dll & its lib ?
+
+[03:54:14.0660] <arai>
+the lib file
+
+[03:58:21.0043] <arai>
+I'll try to reproduce it locally
+
+[04:03:36.0777] <sudipto64>
+mozjs-91.lib : this seems fine ..able to gets function info out of it
+
+[04:03:50.0501] <sudipto64>
+ * mozjs-91.lib : this seems fine ..able to get function info out of it
+
+[04:07:37.0227] <arai>
+oh, `js_static.lib` seems to be a thin archive
+
+[04:11:21.0139] <sudipto64>
+using this mozjs-91.dll & mozjs-91.lib my test program getting crashed at moz_arena_malloc 
+
+[04:13:47.0166] <arai>
+how does it crash?
+
+[04:14:12.0918] <arai>
+I thought there's something around link, but I don't remember the details
+
+[04:14:37.0438] <sudipto64>
+oh ..
+
+[04:14:49.0540] <sudipto64>
+it crashing at JS_EncodeStringToASCII(cx, rval.toString()).get()
+
+[04:15:09.0483] <sudipto64>
+ * it crashing at JS_EncodeStringToASCII(cx, rval.toString()).get())
+
+[04:15:45.0826] <sudipto64>
+might be possible I'm following wrong way ..
+
+[04:23:14.0864] <evilpie>
+You might need to disable jemalloc? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md
+
+[04:25:38.0584] <arai>
+jemalloc is disabled, according to the above mozconfig
+
+[04:25:59.0484] <arai>
+hmm, I'm hitting different error on central that there are 2 DllMain... :/
+
+[04:26:00.0592] <sudipto64>
+yes ..jemalloc is disabled 
+
+[04:26:26.0097] <arai>
+possibly from https://hg.mozilla.org/mozilla-central/rev/63faa0dca4627f57608b88839757727462a18fcb
+
+[04:28:43.0488] <arai>
+sudipto64: anyway, if you hit any crash, I'd suggest building with `--enable-debug` and run it again.  some assertion might catch the bug and tells what's wrong
+
+[04:32:46.0273] <sudipto64>
+ok let me try this out
+
+[04:47:15.0026] <sudipto64>
+with debug build also same thing happening 
+
+[04:47:35.0359] <arai>
+how does it crash?
+
+[04:49:18.0585] <arai>
+or, what's the test program?
+
+[04:49:50.0714] <sudipto64>
+it crashing at 'moz_arena_malloc' 
+
+[04:50:01.0781] <sudipto64>
+let me share the test program 
+
+[04:50:23.0736] <arai>
+what's the crash reason?  null pointer dereference?
+
+[05:03:20.0567] <sudipto64>
+this is my test program https://paste.mozilla.org/19AmLsy5
+
+[05:09:36.0041] <arai>
+sudipto64: one thing I notice is that, you're calling `UniqueChars.get()` there, but `UniqueChars` instance is discarded before consuming the return value
+
+[05:10:38.0833] <arai>
+`JS_EncodeStringToASCII` returns `JS::UniqueChars`.  that instance must be kept alive during the pointer returned by `get()` is used
+
+[05:10:53.0531] <arai>
+(I don't hit immediate crash with it tho)
+
+[05:11:43.0499] <arai>
+so, try replacing it with:
+```
+  auto s = JS_EncodeStringToASCII(cx, rval.toString());
+  printf("%s\n", s.get());
+```
+
+
+[05:11:48.0430] <arai>
+if it doesn't fix, can you share the backtrace of the crash?
+
+[05:12:28.0763] <sudipto64>
+ok let me try this way once
+
+[05:25:43.0064] <sudipto64>
+arai: sorry..one correction with debug build both are working ..that crash is happening with release build .
+
+[05:26:09.0608] <arai>
+okay, can you share the backtrace with release build?
+
+[05:26:20.0444] <sudipto64>
+yeah sure
+
+[05:29:20.0192] <sudipto64>
+https://paste.mozilla.org/B1z6DM63
+
+[05:29:23.0456] <sudipto64>
+this one
+
+[05:30:59.0837] <arai>
+and what's the crash reason?
+
+[05:31:30.0456] <arai>
+does it point any pointer or register?
+
+[05:34:40.0938] <arai>
+also, can you check what the argument `arg1` for `SystemMalloc::malloc` is ?
+
+[05:36:24.0179] <sudipto64>
+it seems pointer ..as it giving.. Debug Assertion Failed: _CrtIsValidHeapPointer(block)
+
+[05:37:44.0983] <arai>
+it's inside `malloc` in `ntdll.dll`, right?
+
+[05:37:59.0441] <arai>
+can you check what argument is passed there?
+
+[05:38:13.0063] <arai>
+I wonder if it's some random value
+
+[05:38:20.0704] <arai>
+that it cannot allocate
+
+[05:39:12.0959] <sudipto64>
+> <@arai:mozilla.org> it's inside `malloc` in `ntdll.dll`, right?
+
+this i can't sure ..as I unable to see this part ..
+
+[05:40:13.0882] <sudipto64>
+upto js_arena_malloc call I can see all values
+
+[05:40:29.0517] <sudipto64>
+is it help us ?
+
+[05:40:37.0042] <arai>
+okay, what's `bytes` ?
+
+[05:40:50.0245] <sudipto64>
+42 bytes
+
+[05:41:04.0260] <arai>
+hm, then it should be allocateable
+
+[05:42:50.0384] <arai>
+let me build the test application locally
+
+[05:43:01.0511] <sudipto64>
+okay ..
+
+[05:47:39.0089] <arai>
+sudipto64: you're building the test application with visual studio?
+
+[05:47:58.0491] <sudipto64>
+yes ..in VS2022
+
+[05:48:03.0578] <arai>
+okay
+
+[06:08:13.0786] <arai>
+strange. I don't get the crash on Release build
+
+[06:08:20.0509] <arai>
+I'm using VS2019 tho
+
+[06:17:28.0969] <arai>
+on Debug build, I get similar crash inside ntdll.dll, in js_free for the UniqueChars
+
+[06:17:50.0374] <arai>
+so, indeed there seems to be something inconsistent around alloc vs free
+
+[06:20:17.0718] <arai>
+https://searchfox.org/mozilla-central/rev/edd7216defa35b4f64ff6d4332c8dad35fe7b86f/js/public/Utility.h#408-411
+
+[06:20:37.0100] <arai>
+so, there's a comment about `free` vs `moz_arena_free`
+
+[06:20:47.0494] <arai>
+and if I replace the call with `moz_arena_free`, it doesn't hit any issue
+
+[06:21:20.0560] <arai>
+but still, it's different error than yours, given it's at free, not malloc
+
+[06:33:10.0059] <sudipto64>
+> <@arai:mozilla.org> strange. I don't get the crash on Release build
+
+oh ..can it possible due to c++ std i'm using ? 
+
+[06:34:07.0631] <arai>
+i'm not sure what's going on here.  maybe it's reproducible with VS2022, or maybe it depends on the build configuration, or something else
+
+[06:34:32.0594] <arai>
+so far I cannot investigate further
+
+
+2022-01-24
+[00:44:37.0380] <Aditi>
+Hi everyone! I was working on implementing [Array.fromAsync()](https://bugzilla.mozilla.org/show_bug.cgi?id=1746209). Can someone please assign it to me? 
+
+[03:13:13.0380] <yulia>
+arai: would you be able to take a look at https://github.com/tc39/ecma262/pull/2600 in case you notice any issues? It seems reasonable but you know this part of the code better than I
+
+[03:14:31.0888] <arai>
+sure. will look into it tonight 
+
+[08:58:07.0195] <mgaudet>
+Trying to investigate an incorrect-global issue in DOM streams; from JSAPI, is there a good way to ask a JSContext what the active global is? 
+
+[09:01:20.0976] <arai>
+for debug-print purpose?
+
+[09:02:30.0410] <arai>
+you're looking for something more helpful than `cx->global()` pointer, right?
+
+[09:03:11.0835] <mgaudet>
+arai: So for full context see bug https://bugzilla.mozilla.org/show_bug.cgi?id=1750634 
+
+[09:04:26.0985] <arai>
+yulia: so far I don't see any issue. just a question why `IteratorClose` return value is used even if it returns the same thing as the passed parameter for `ThrowCompletion` case
+
+[09:04:31.0947] <mgaudet>
+essentially, if I do `anotherGlobal.ReadableStream.prototype.getReader.call(stream)`, the reader is being created in the incorrect global (my reading of the specification at least; Chrome already does what our DOM streams implementation does) 
+
+[09:05:28.0626] <mgaudet>
+erm; sorry, I edited that on the fly; that should be `aReadableStreamFromAnotherGlobal` 
+
+[09:06:06.0738] <mgaudet>
+(We don't expose `ReadableStreamDefaultReader` as an interface right now, hence the prototype walk) 
+
+[09:07:34.0252] <mgaudet>
+My end goal is to figure out how to get the correct `nsIGlobalObject` for creating an object; but along my investigation I was thinking abut the global on the JSContext, which AIUI should reflect what I want
+
+[09:08:37.0414] <mgaudet>
+`JS::CurrentGlobalOrNull` is what I was hoping for :) 
+
+[09:09:16.0982] <arai>
+ah, so you're looking for public API?
+
+[09:10:13.0245] <arai>
+or maybe I'm still misunderstanding
+
+[09:11:14.0318] <arai>
+the current global is `cx->global()`, that's exposed to public API as `JS::CurrentGlobalOrNull(cx)`
+
+[09:11:20.0657] <arai>
+maybe "active" means different thing?
+
+[09:11:54.0822] <mgaudet>
+(See, this is all fuzzy for me because I've not totally internalized realms/globals) 
+
+[09:13:13.0532] <mgaudet>
+As I understand it, if you call a function from another realm, you should should switch to that realm for the duration of execution in that realm; doing that switch also changes the active global object, I think
+
+[09:13:28.0159] <evilpie>
+not for WebIDL I think
+
+[09:13:34.0099] <evilpie>
+https://streams.spec.whatwg.org/#acquire-readable-stream-reader
+
+[09:13:38.0484] <evilpie>
+Let Reader be a new reader
+
+[09:13:42.0166] <evilpie>
+https://webidl.spec.whatwg.org/#new
+
+[09:13:52.0390] <evilpie>
+> Every platform object is associated with a Realm, just as the initial objects are. This Realm is stored in the platform object's [[Realm]] slot. It is the responsibility of specifications using Web IDL to state which Realm (or, by proxy, which global object) each platform object is associated with. In particular, the algorithms below associate the new platform object with the Realm given as an argument.
+
+[09:13:59.0363] <evilpie>
+>  To create a new object implementing the interface interface, with a Realm realm, perform the following steps: 
+
+[09:16:10.0576] <mgaudet>
+evilpie: So the way I read that is that if realm isn't specified, you shouldn't assume a realm? 
+
+[09:16:34.0157] <nbp>
+I recall some trickery used in the past to get the initial `toString` functions, which involved creating a new iframe to get the function from it. And at the time we used to have a compartment wrapper even for the same domain.
+
+[09:17:00.0886] <nbp>
+So the function of the iframe could be copied or called with the object of the other compartment.
+
+[09:17:50.0059] <nbp>
+Without this trickery, I would long have advocate to do even more optimization when there is no `toString` reference in the code.
+
+[09:17:55.0673] <evilpie>
+mgaudet: In some corner cases we don't have a known global, but I think what we implemented is totally standard for DOM
+
+[09:18:02.0514] <mgaudet>
+(I can redirect this to the WHATWG channel if we're not clear here, because I'm confused now) 
+
+[09:18:38.0531] <mgaudet>
+Hrmmmmmm 
+
+[09:19:09.0688] <mgaudet>
+Ok. I think I should definitely ask in the WHATWG channel; it'd be nice to know our existing test case is just overly constrained
+
+[09:19:32.0330] <mgaudet>
+and if the divergence of behaviour between Safari and Chrome is expected
+
+[09:19:39.0452] <arai>
+where's "new Foo" (without realm) defined in the spec?
+
+[09:26:25.0228] <mgaudet>
+(Redirecting this question to the WHATWG room; I'm out of my depth :P 
+
+[09:26:28.0835] <mgaudet>
+ * (Redirecting this question to the WHATWG room; I'm out of my depth :P) 
+
+[10:16:03.0313] <evilpie>
+sfink: I recently realized that the approach we use for setting up SavedFrames to the error object isn't going to work when trying to the same outside the JS engine
+
+[10:17:29.0981] <evilpie>
+DOMExceptions also want to clone SavedFrames, so it would be nice if I we could just have something that writes/reads the whole stack
+
+[10:51:18.0327] <sfink>
+oh hey, I'm an idiot. I recently discovered the nested clone thing as a result of a fuzzbug, but didn't connect that it was cloning the same thing as I was reviewing in your patch. :-(
+
+[10:51:21.0169] <sfink>
+(I did some grepping to find all uses of nested clones, once I uncovered that it was a Thing, but didn't really pay attention to *what* was being cloned since it wasn't relevant to what I was fixing.)
+
+[10:56:19.0724] <sfink>
+I'm reading through bug 1588839 right now
+
+[10:56:21.0290] <botzilla>
+https://bugzil.la/1588839 — RESOLVED (kmag) — SpecialPowers.spawn (and potentially other SpecialPowers APIs?) like to throw "OperationError: The operation failed for an operation-specific reason" which is unhelpful for narrowing down what's actually going wrong
+
+[10:56:34.0618] <evilpie>
+To be fair I had seen this ClonedErrorHolder thing before as well, but I didn't look at it too closely either
+
+[11:04:04.0047] <yulia>
+this is so beautiful: 
+
+[11:04:36.0928] <yulia>
+ecma262 now shows user code call sites inline
+
+[11:07:57.0720] <yulia>
+ * this is so great: 
+
+[11:30:24.0352] <sfink>
+whoa, that's awesome
+
+[11:30:28.0485] <sfink>
+we need that in searchfox
+
+[11:31:07.0009] <sfink>
+come to think of it, I guess I was intending to be working towards that with something simpler
+
+[13:14:30.0416] <evilpie>
+@sfink https://phabricator.services.mozilla.com/D136788 I think this should let us clone SavedFrames from Gecko easily. However I don't really like how we know have two completely different ways of handling SavedFrames. And we have to keep both working for reads ...
+
+[13:15:15.0382] <evilpie>
+ * @sfink https://phabricator.services.mozilla.com/D136788 I think this should let us clone SavedFrames from Gecko easily. However I don't really like how we now have two completely different ways of handling SavedFrames. And we have to keep both working for reads ...
+
+[15:02:36.0451] <mgaudet>
+confession: Partially reviewed pipeTo, clarified realm semantics, and now am troubled by [intermittent wpt test failures](https://bugzilla.mozilla.org/show_bug.cgi?id=1751790) 
+
+[15:02:38.0283] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2022-01-25
+[00:34:18.0040] <Ms2ger 💉💉>
+> <@arai:mozilla.org> where's "new Foo" (without realm) defined in the spec?
+
+It's not - at this point, that's a bug in the streams spec for not specifying the realm. (But I see Domenic replied in #whatwg:matrix.org )
+
+[00:35:00.0538] <arai>
+thanks!
+
+
+2022-01-26
+[06:48:18.0944] <l11d>
+when jitted code calls into the VM, does this always pass through the code generated by MacroAssembler::callWithABIPre? I'm trying to modify some TLS variables before actually hitting C++ code and am wondering whether this is the correct place. second questions: are bailouts similar to a return, when it comes to the native stack or are the also a call into C++ code?
+
+[07:05:29.0234] <jandem>
+l11d: can you clarify the second question more? a bailout does (1) a call into C++ where we prepare a buffer with the new stack contents (the baseline frames), (2) a return to trampoline code where we overwrite the old stack frames with what's in the buffer (3) a final call into C++ (FinishBailoutToBaseline) before we jump to the baseline interpreter code
+
+[07:06:15.0465] <jandem>
+as for the first question, I think that's correct but I'm not 100% sure
+
+[07:11:41.0227] <l11d>
+the second question was sort-of assuming that bailouts are different from VM calls when in comes to parameters crossing the jit-C++ boundary. eventually I'd like to also modify the TLS variables when bailing out
+
+[07:14:04.0525] <jandem>
+bailouts also use `callWithABI` calls
+
+[07:15:28.0759] <l11d>
+neat, so I'll proceed by adapting MacroAssembler::callWithABIPre. no day passing without learning something new about the engine :D
+
+[07:15:31.0821] <l11d>
+thanks alot
+
+[08:34:26.0250] <nbp>
+l11d: what are you trying to achieve?
+
+[08:42:58.0588] <l11d>
+nbp: I'm trying to run spidermonkey with msan. building works (with some changes to the build-system) but most of the jit-tests failed. the issue is/was that the TLS region tracks whether function call arguments are (un)poisoned. when jitted code calls into a C++ function this function verifies whether the args are unpoisoned. however, because the jitted code never unpoisoned the arguments (by updating the corresponding TLS area) a spurious msan violation terminates execution. by modifying MacroAssembler::callWithABIPre I got this to work. next issue (in what is probably going to be a longer journey) is building and linking a msan-instrumented libc++
+
+[08:44:40.0836] <l11d>
+the unpoisoning is rather hacky, as in "just unpoison the first 8 arguments" but I hope this can be refined later
+
+[08:45:28.0611] <nbp>
+l11d: Sounds Awesome! `callWithABI*` are definitely wrappers for everything which is calling into C++, except maybe for a few primitive calls which are called from WASM.
+
+[08:48:25.0397] <l11d>
+I modified (read "botched") Assembler-x64.h/Assembler-x86-shared.h to unpoison memory for push/store/... Next step is passing the jit-tests and eventually implementing sanitization for jit-instructions loading from memory 
+
+[08:48:44.0284] <nbp>
+For wasm calls into C++: https://searchfox.org/mozilla-central/source/js/src/jit/MacroAssembler-inl.h#116
+
+[08:59:19.0838] <l11d>
+thanks, this will probably become handy
+
+[09:02:06.0171] <nbp>
+sfink: Would you know if there is a simple way to skip a test case for `cgc` builds on treeherder?
+
+[09:03:33.0989] <sfink>
+nbp: I thought there was, but I was thinking of `cgc-jstests-slow.txt`. Sorry, in a meeting, can look later.
+
+[09:04:39.0199] <nbp>
+This is not a slow test but one which might interact badly with the gc, as it checks a cache which might be emptied.
+
+[09:11:34.0673] <jandem>
+such tests often use `gczeal(0)`
+
+[09:11:45.0575] <nbp>
+hum … I will try.
+
+[09:26:06.0790] <sfink>
+oh, right. Yes, that's the right answer.
+
+
+2022-01-27
+[21:01:30.0404] <sudipto64>
+I'm getting many warnings for C4251 in visual studio, anyone faced the same ?
+
+[21:06:41.0449] <arai>
+Can you provide some example warning message?
+
+[21:07:04.0089] <arai>
+I think I saw something before, but don't remember exactly
+
+[21:07:55.0433] <arai>
+I guess it's related to `JS_PUBLIC_API` macro
+
+[21:10:37.0217] <sudipto64>
+https://paste.mozilla.org/6UoMZV6X
+
+[21:10:51.0600] <sudipto64>
+this is the warnings list 
+
+[21:39:54.0929] <sudipto64>
+https://discourse.mozilla.org/t/sm-91-compatibility-with-msvc/83338
+
+[21:40:19.0199] <sudipto64>
+same issue reported in this post also 
+
+[21:42:27.0256] <arai>
+some of those warnings seems valid. at least for classes/structs in public `JS::` namespace
+
+[21:43:04.0629] <arai>
+I think they need `JS_PUBLIC_API` macro
+
+[21:43:17.0820] <arai>
+not sure for private `js::` namespace classes/structs
+
+[21:49:16.0086] <sudipto64>
+I'm using JS_PUBLIC_API macro as MOZ_IMPORT_API
+
+[21:49:24.0077] <sudipto64>
+is this fine ?
+
+[21:50:24.0831] <arai>
+what do you mean by "using" ?
+
+[21:50:43.0971] <arai>
+are you modifying the code?
+
+[21:51:08.0802] <arai>
+or is it about the macro's condition?
+
+[21:51:14.0075] <arai>
+https://searchfox.org/mozilla-central/rev/2e0ceee0158293a37466aaf9495dbeffef744b7c/js/src/jstypes.h#40-49
+
+[21:51:20.0105] <sudipto64>
+i mean to say I'm not defined STATIC_JS_API
+
+[21:51:51.0119] <sudipto64>
+so that JS_PUBLIC_API mapped with MOZ_IMPORT_API
+
+[21:52:06.0582] <sudipto64>
+> <@arai:mozilla.org> or is it about the macro's condition?
+
+correct
+
+[21:52:07.0125] <arai>
+yeah, that should be fine
+
+[21:52:31.0011] <arai>
+I mean, the code pointed by warnings would need `JS_PUBLIC_API`
+
+[21:54:17.0961] <sudipto64>
+oh ..but in that case we need to use STATIC_JS_API .
+
+[21:54:56.0685] <arai>
+I'm not sure if the warning is something really needs attention tho
+
+[21:55:25.0746] <arai>
+my understanding is that, adding `JS_PUBLIC_API` to them will suppress the warning
+
+[21:55:31.0578] <sudipto64>
+that's my question also
+
+[21:55:55.0142] <arai>
+if you don't hit any issue with using the DLL, I guess you can ignore them for now
+
+[21:56:00.0569] <sudipto64>
+need to fix these warnings or not ..
+
+[21:56:33.0235] <sudipto64>
+> <@arai:mozilla.org> if you don't hit any issue with using the DLL, I guess you can ignore them for now
+
+till now its working fine with dll ..
+
+[21:57:12.0715] <arai>
+sounds good
+
+[22:01:39.0622] <arai>
+for `JS::` things, we'd need to apply `JS_PUBLIC_API`, and that will fix some of the warnings.  if the warning also applies to `js::` things recursively, it would be hard to keep zero warnings, given we don't use MSVC on automation.  we might need clang plugin to verify that
+
+[22:13:19.0431] <sudipto64>
+oh ok ..
+
+[04:34:46.0364] <sudipto64>
+I'm upgrading 1.6 to esr91, in 1.6 i'm using JS_SetErrorReporter to set a callback for exception handling. in esr91 which function should I consider for the same ?
+
+[04:34:55.0034] <sudipto64>
+any suggestions ?
+
+[04:44:42.0195] <DerekNonGeneric>
+> <@dereknongeneric:mozilla.org> evilpie, thanks for that link (had not seen that yet); it looks like Deno's implementation is wrong then since they are throwing DOMException then, huh?
+
+evilpie: looks like a confirmed bug
+
+[04:49:27.0059] <DerekNonGeneric>
+what i don't understand is why throw that if you don't have the proper error reporter, it's just going to do a core dump
+
+[04:52:47.0514] <DerekNonGeneric>
+it's silly to me, that's all -- ive neither ever used that runtime nor worked on it so i dunno what lead to that impl
+
+[04:59:59.0012] <DerekNonGeneric>
+the Firefox crash reporter is amazingly beautiful tho
+
+[05:06:33.0526] <ptomato>
+> <@sudipto64:mozilla.org> I'm upgrading 1.6 to esr91, in 1.6 i'm using JS_SetErrorReporter to set a callback for exception handling. in esr91 which function should I consider for the same ?
+
+there is not one anymore, only `JS::SetWarningReporter`. recent spidermonkey works as if you were using what used to be called the `DontReportUncaught` option
+
+[05:07:24.0007] <ptomato>
+so, after returning into C++ from every call into JS, you have to check the exception state and handle the exception
+
+[05:21:48.0899] <evilpie>
+> <@dereknongeneric:mozilla.org> what i don't understand is why throw that if you don't have the proper error reporter, it's just going to do a core dump
+
+I don't really understand what you are saying. Core dumps?
+
+[05:31:55.0684] <sudipto64>
+> <@pchimento:igalia.com> so, after returning into C++ from every call into JS, you have to check the exception state and handle the exception
+
+ok thanks ..so that means ..this I need to handle externally ..
+
+[05:33:03.0083] <ptomato>
+well, practically speaking it means you should take the code from the JS_SetErrorReporter callback and refactor into it in a function that you call after returning from JS each time
+
+[05:33:50.0192] <sudipto64>
+yeah ..got it 
+
+[06:13:17.0566] <evilpie>
+mgaudet: Had you seen https://bugzilla.mozilla.org/show_bug.cgi?id=1384003 before? These two open bugs might still be interesting
+
+[08:01:02.0813] <mgaudet>
+yeah; we'll have to look at those. Maybe I'll just re-hook that metabug under DOM streams
+
+[08:24:20.0362] <mgaudet>
+confession: Successfully sent the [DOM Streams Intent to Ship](https://groups.google.com/a/mozilla.org/g/dev-platform/c/5JS0Kbs41-Q) 
+
+[08:24:22.0202] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[09:57:18.0904] <jonco>
+sfink: have you got a link for that alert?
+
+[09:58:18.0564] <sfink>
+https://bugzilla.mozilla.org/show_bug.cgi?id=1751162#c12
+
+[10:10:53.0510] <nbp>
+confession: The eager off-thread delazification has landed! Now is time to play with different strategies to evaluate how it behaves before enabling it.
+
+[11:00:31.0637] <mgaudet>
+confession: Being baffled by the difference between using `Cu.newSandbox` and creating an iframe with regards to globals... maybe I should just write this as a darn mochitest. 
+
+[14:36:59.0245] <mgaudet>
+confession: Porting a test and being *utterly baffled* as to how it currently works. 
+
+
+2022-01-28
+[02:24:59.0805] <yulia>
+We have another groupBy regression
+
+[04:16:41.0099] <yulia>
+this is a bit of a headache: what is our pattern for hiding prototype methods behind  a pref? the iterator helpers approach is a bit heavy handed
+
+[04:17:06.0187] <yulia>
+i think we still need to see how bad the breakage is, but i want people to be able to work with nightly in case there are other issues
+
+[04:17:57.0743] <evilpie>
+@yulia `js::ShouldIgnorePropertyDefinition`
+
+[04:18:29.0847] <yulia>
+thanks
+
+[04:50:14.0789] <yulia>
+evilpie: do you have time to review?
+
+[04:56:33.0248] <evilpie>
+yulia: yes
+
+[14:27:28.0360] <ptomato>
+is anyone interested in reviewing the esr91 migration guide for embedders? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/46
+
+
+2022-01-29
+[22:55:45.0687] <sudipto64>
+ptomato: this guide helping me a lot ..
+
+[22:56:36.0561] <sudipto64>
+i'm following this guide to migrate from to 91.
+
+[22:56:47.0531] <sudipto64>
+ * i'm following this guide to migrate from 1.6 to 91.
+
+[22:57:22.0033] <sudipto64>
+if anything I found I'll let you know
+
+[08:40:28.0516] <evilpie>
+ptomato: looks good to me, but I can't say that I know everything that changed between 78 and 91
+
+[08:53:40.0290] <ptomato>
+yeah, it's not really possible to be exhaustive
+
+
+2022-01-31
+[08:56:06.0745] <sfink>
+It's annoying having to get review on my trivial, obviously-correct patches. And even more annoying when s.maug finds huge glaring bugs in them.
+
+[14:56:22.0478] <mgaudet>
+confession: Streams WPT test written... should have written it as a WPT in the first place. 
+
+[14:56:24.0777] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+

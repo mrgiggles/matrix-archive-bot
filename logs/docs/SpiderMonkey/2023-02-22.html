@@ -1,0 +1,48 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2023-02-22</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2023-02-22<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2023-02-21" class="nav-link"><span>prev</span></a>
+<a href="2023-02-23" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Wed Feb 22 2023 07:53:36 GMT-0800 (Pacific Standard Time)">15:53</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">how do we stop the infinite execution of a script?</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Wed Feb 22 2023 07:56:38 GMT-0800 (Pacific Standard Time)">15:56</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell"><span class="nick-10">yulia</span>: there's a separate 'watchdog thread' with a timer that calls <code>JS_RequestInterruptCallback</code> if needed. The engine checks the interrupt flags regularly (loop edges, function entry, potentially long-running loops, etc) and calls this callback if needed. The callback can then stop script execution if needed</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Wed Feb 22 2023 08:02:08 GMT-0800 (Pacific Standard Time)">16:02</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell">we also use this to implement <code>terminate()</code> for workers for example</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Wed Feb 22 2023 08:10:19 GMT-0800 (Pacific Standard Time)">16:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell">(to then stop execution, we throw an "uncatchable exception".. it's propagated up the stack like an exception but we ignore catch/finally blocks)</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Wed Feb 22 2023 08:20:22 GMT-0800 (Pacific Standard Time)">16:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">Intereting. I'm asking because i am struggling a bit with this test: <a href="https://searchfox.org/mozilla-central/source/testing/web-platform/tests/workers/Worker-terminate-forever-during-evaluation.html">https://searchfox.org/mozilla-central/source/testing/web-platform/tests/workers/Worker-terminate-forever-during-evaluation.html</a> </td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Wed Feb 22 2023 08:20:52 GMT-0800 (Pacific Standard Time)">16:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">it works for static imports, but on dynamic imports, we end up in a situation where the script appears to still be running when the worker global is unrooted</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Wed Feb 22 2023 08:21:31 GMT-0800 (Pacific Standard Time)">16:21</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">or some other thing is causing the global scope to remain alive -- i think it is the last test that needs to be cleared, so i'm trying to think how to ensure everything cleans up correctly</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Wed Feb 22 2023 08:38:31 GMT-0800 (Pacific Standard Time)">16:38</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-16" title="@rhunt:mozilla.org">Ryan Hunt</span>&gt;</div></td><td class="msg-cell">are there any pretty printers for JS types supported by LLDB? I see there's some gdb code, but I'm not sure if that's compatible with LLDB</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Wed Feb 22 2023 08:54:03 GMT-0800 (Pacific Standard Time)">16:54</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell"><span class="nick-10">yulia</span>: maybe we're ignoring the interrupt "exception" somewhere? you could break in <code>WorkerPrivate::InterruptCallback</code> and see what happens up the stack</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Wed Feb 22 2023 08:54:26 GMT-0800 (Pacific Standard Time)">16:54</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@yulia:mozilla.org">yulia</span>&gt;</div></td><td class="msg-cell">good idea</td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Wed Feb 22 2023 10:09:20 GMT-0800 (Pacific Standard Time)">18:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> are there any pretty printers for JS types supported by LLDB? I see there's some gdb code, but I'm not sure if that's compatible with LLDB</blockquote></mx-reply>None that I know of. I'm pretty sure there aren't any.</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Wed Feb 22 2023 10:09:27 GMT-0800 (Pacific Standard Time)">18:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@denispal:mozilla.org">denispal</span>&gt;</div></td><td class="msg-cell">Is there a way to get the address of an object from the shell?  Kinda like dumpObject() but just return the address (and maybe size)</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Wed Feb 22 2023 10:09:51 GMT-0800 (Pacific Standard Time)">18:09</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell"><code>objectAddress()</code></td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Wed Feb 22 2023 10:10:10 GMT-0800 (Pacific Standard Time)">18:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell">(found via <code>js -e 'help(/address/i)'</code>)</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Wed Feb 22 2023 10:10:25 GMT-0800 (Pacific Standard Time)">18:10</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@denispal:mozilla.org">denispal</span>&gt;</div></td><td class="msg-cell"><span class="nick-12">sfink</span>: ty!</td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Wed Feb 22 2023 10:11:09 GMT-0800 (Pacific Standard Time)">18:11</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-10" title="@jandem:mozilla.org">jandem</span>&gt;</div></td><td class="msg-cell">also <code>byteSize(object)</code></td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

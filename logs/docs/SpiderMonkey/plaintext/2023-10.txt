@@ -1,0 +1,1708 @@
+2023-10-02
+[06:21:28.0644] <asuth>
+The hover state improvements (and a bunch of others) are up on asuth.searchfox.org now, so like https://asuth.searchfox.org/mozilla-central/query/default?q=class-diagram%3A%27mozilla%3A%3Adom%3A%3AReadableStreamDefaultReader%27%20depth%3A4 is maybe more useful now
+
+[06:39:17.0619] <arai>
+yeah, the function looks good.  it would be even better if each parameter is different type, so that it's more robust against adding/removing options in future
+
+[09:08:54.0678] <dthayer>
+arai: re: your question from the other room, the patch is https://phabricator.services.mozilla.com/D184843 and it crashes running `(() => { let y = [y] = [,]; })()`. I have a patch which fixes this and I think it's plenty safe, it's just a little yucky, so I was hoping there was an established path here
+
+[09:11:09.0618] <jonco>
+arai: so in bug 1856295 you have a dependent string whose base is an atom? that doesn't sound like it should be possible currently - atoms and non atoms are not allocated in the same zone and atoms and dependent strings are distinct 
+
+[09:11:11.0593] <botzilla>
+https://bugzil.la/1856295 — ASSIGNED (arai) — Assertion failure: !linearStr->isPermanentAtom() when adding more permanent atoms
+
+[09:11:22.0358] <dthayer>
+The relevant place to look is on line 3366 in BytecodeEmitter.cpp, where we do the assignment. When actually interpreting the bytecode, we will either go through what's emitted there, or the equivalent assignment that's emitted further down in the function. But because we emit the CheckLexical there, we don't emit it in the other path
+
+[09:13:19.0297] <arai>
+dthayer: I'll look into the patch shortly
+
+[09:13:45.0075] <arai>
+jonco: so, possibility is that someone explicitly creates dependent string with atom?
+
+[09:14:30.0592] <jonco>
+I would have expected that to assert
+
+[09:15:08.0640] <arai>
+`JS_NewDependentString` or something
+
+[09:15:37.0626] <jonco>
+it could be that the string flags are being overwritten
+
+[09:16:16.0754] <arai>
+okay, I'll look into those parts tomorrow. thanks!
+
+[09:17:27.0410] <dthayer>
+arai: I'm also just pushing the patch I have that fixes it up to phabricator. Feel free to just reject it if there's a cleaner solution here
+
+[09:24:38.0406] <arai>
+dthayer: so, it's almost same situation as `let y = x ? y : y;` where then-branch and else-branch needs check?
+
+[09:25:56.0791] <arai>
+if so, you need to enclose both branches with `TDZCheckCache`
+
+[09:26:02.0192] <arai>
+(haven't yet checked the actual code tho)
+
+[09:26:52.0171] <dthayer>
+hang on, let me check. that looks like exactly the kind of silly obvious answer I would have missed
+
+[09:26:53.0527] <arai>
+or, that's what `IfEmitter` already does https://searchfox.org/mozilla-central/rev/95787423bc1c7ba895ef9c6918feb054866d9f41/js/src/frontend/IfEmitter.cpp#44-46
+```cpp
+// Enclose then-branch with TDZCheckCache.
+if (lexicalKind_ == LexicalKind::MayContainLexicalAccessInBranch) {
+  tdzCache_.emplace(bce_);
+```
+
+[09:28:53.0447] <arai>
+so, if you're using `InternalIfEmitter` (which doesn't use the above code), switching to `IfEmitter` would solve
+
+[09:29:43.0562] <arai>
+https://searchfox.org/mozilla-central/rev/95787423bc1c7ba895ef9c6918feb054866d9f41/js/src/frontend/IfEmitter.h#227-228,247
+```cpp
+// Class for emitting bytecode for blocks like if-then-else which doesn't touch
+// lexical variables.
+...
+class MOZ_STACK_CLASS InternalIfEmitter : public IfEmitter {
+```
+
+[09:33:48.0033] <dthayer>
+right - okay yeah that's what I was looking for. I was under the impression reading the names that IfEmitter was for explicit branches in the actual source, and InternalIfEmitter was for transparent, internal branching like I was trying to do, but it looks like the difference is purely to do with the TDZ cache?
+
+[09:34:33.0627] <arai>
+maybe we should have debug-only code to track the modification to lexical variables and assert that when `InternalIfEmitter` is on stack
+
+[09:35:16.0085] <arai>
+it's for internal use, but so far the internal use didn't require the lexical variables. you could add another variant, or add parameter to `InternalIfEmitter` to enable the TDZ things
+
+[09:37:06.0568] <arai>
+the difference is: 1. no explicit method before putting condition, which allows using existing value as condition,  2. no TDZ things, which is simply optimization because it was possible
+
+[09:37:32.0487] <arai>
+so, given that the 2nd case isn't valid in this scenario, it would make sense to make it optional
+
+[09:37:53.0347] <arai>
+so, make `LexicalKind` public and add the parameter to `InternalIfEmitter` ctor?
+
+[09:40:51.0870] <arai>
+re-posted comment
+
+[09:41:27.0208] <arai>
+I'll read through the patch this week
+
+
+2023-10-03
+[06:07:26.0721] <jandem>
+I think jit-tests got a lot slower recently. I'll try to bisect..
+
+
+2023-10-04
+[10:04:51.0939] <jonco>
+sfink: here's the patch I use to dump marking telemetry to a file on try: https://pastebin.mozilla.org/vO8pVUUN
+
+[10:05:50.0070] <sfink>
+Thanks. I have things to dump various other data to uploaded files, but hadn't done telemetry.
+
+[10:07:53.0496] <jonco>
+sfink: yeah, I got the idea from the hazard analysis 
+
+
+2023-10-05
+[01:56:58.0535] <smaug>
+jonco: I'm still playing with various options for GC/CC/other scheduling. Does spidermonkey expose a hint whether ALLOC_TRIGGER might happen soon?
+
+[02:00:17.0319] <jonco>
+JS_MaybeGC will start a collection if we are close to the threshold
+
+[02:00:20.0137] <smaug>
+(or I guess I should check what sliceBytes_ mean and when and how it is set - assuming that controls when we trigger ALLOC_TRIGGER slices)
+
+[02:00:25.0598] <jonco>
+There's no way to check currently
+
+[02:02:07.0622] <jonco>
+oh that's more about EAGER_ALLOC_TRIGGER
+
+[02:03:31.0425] <smaug>
+I was just looking at https://searchfox.org/mozilla-central/rev/d436104fc6c31677b08a851796bead25153be699/js/src/gc/GC.cpp#1720
+
+[02:03:35.0137] <smaug>
+and code around it
+
+[02:04:09.0680] <jonco>
+this is where we trigger an incremental slice for every 1MB of allocations during an incremental GC
+
+[02:06:02.0722] <smaug>
+oh, that is rather often
+
+[02:06:16.0085] <jonco>
+there's a GC param to change this (JSGC_ZONE_ALLOC_DELAY_KB) but there doesn't seem to be a pref connected to it
+
+[02:06:44.0265] <jonco>
+this was choosen to improve the splay latency benchmark
+
+[02:07:27.0793] <smaug>
+ok, this https://searchfox.org/mozilla-central/source/js/src/gc/Scheduling.h#438 
+
+[02:08:31.0116] <jonco>
+yes, you can try changing it (note the default value there is in bytes but if you set it via the pref it takes a value in KB)
+
+[02:09:05.0655] <smaug>
+jonco: no task is scheduled on Gecko side to run these slices, they are run synchronously, always, right?
+
+[02:09:30.0214] <jonco>
+yes, they are triggered from within the engine
+
+[02:09:40.0815] <jonco>
+otherwise long running JS doesn't GC
+
+[02:09:51.0099] <smaug>
+sure
+
+[02:10:13.0509] <smaug>
+I'm just thinking that maybe when we're getting closer to some threshold, Gecko could try to find time to run more slices
+
+[02:10:28.0465] <smaug>
+and if the threshold is then reached, then we'd run synchronously
+
+[02:11:02.0713] <jonco>
+yes that could help
+
+[02:12:06.0307] <smaug>
+In general I'm hoping to find ways to make scheduling less timing based, and more based on the recent allocations 
+
+[02:13:16.0762] <smaug>
+Timing based doesn't work so well on slower machines, where we allocate at slower pace
+
+[02:13:21.0893] <jonco>
+great, I totally agree with that
+
+[02:28:01.0840] <smaug>
+jonco: splay is part of some other benchmark?
+
+[02:54:56.0647] <jandem>
+smaug: splay is one of the octane tests. There's also a separate splay-latency test
+
+[02:55:18.0910] <jandem>
+ * smaug: splay is one of the octane tests. There's also a splay-latency test in newer versions of the benchmark
+
+[03:25:57.0026] <smaug>
+ah, we run that still
+
+[03:35:59.0190] <smaug>
+hmm, nursery size keeps still decreasing during major GC and then we run out of nursery and need to run minor gc
+
+[03:44:42.0777] <jonco>
+smaug: it's part of js2 as well
+
+[07:35:14.0472] <liam_g>
+As an embedder, do I have any access to the "arguments" object that you get inside a function? Can I set arguments.callee, or can I add my own properties to the arguments object?
+
+[07:36:58.0587] <Redfire>
+I did a kinda random and probably stupid thing, measuring `JSON.parse` in different runtimes.
+"Benchmark" ran each 10 times, which each were load 5MB file and run `JSON.parse` 100 times.
+
+```py
+Summary
+  jsc read.js ran
+    1.50 ± 0.03 times faster than sm read.js
+    1.60 ± 0.09 times faster than d8 read.js
+    4.25 ± 0.04 times faster than qjs --std qjs.js
+    5.74 ± 0.06 times faster than libjs libjs.js
+    9.89 ± 0.32 times faster than grjs read.js
+   16.68 ± 0.16 times faster than boa read.js
+```
+
+[07:37:06.0698] <Redfire>
+* I did a kinda random and probably stupid thing, measuring `JSON.parse` in different runtimes.
+"Benchmark" ran each 10 times, which each were load 5MB file and run `JSON.parse` 100 times.
+
+```
+Summary
+  jsc read.js ran
+    1.50 ± 0.03 times faster than sm read.js
+    1.60 ± 0.09 times faster than d8 read.js
+    4.25 ± 0.04 times faster than qjs --std qjs.js
+    5.74 ± 0.06 times faster than libjs libjs.js
+    9.89 ± 0.32 times faster than grjs read.js
+   16.68 ± 0.16 times faster than boa read.js
+```
+
+[07:37:17.0503] <Redfire>
+* I did a kinda random and probably stupid thing, measuring `JSON.parse` in different runtimes.
+"Benchmark" ran each 10 times, which each were load 5MB file and run `JSON.parse` 100 times.
+
+```
+Summary
+  jsc read.js ran
+    1.50 ± 0.03 times faster than sm read.js
+    1.60 ± 0.09 times faster than d8 read.js
+    4.25 ± 0.04 times faster than qjs --std qjs.js
+    5.74 ± 0.06 times faster than libjs libjs.js
+    9.89 ± 0.32 times faster than grjs read.js
+   16.68 ± 0.16 times faster than boa read.js
+```
+
+[07:37:46.0736] <Redfire>
+* I did a kinda random and probably stupid thing, measuring `JSON.parse` in different runtimes.
+"Benchmark" ran each 10 times, which each were load 5MB file and run `JSON.parse` 100 times.
+
+```
+Summary
+  jsc read.js ran
+    1.50 ± 0.03 times faster than sm read.js
+    1.60 ± 0.09 times faster than d8 read.js
+    4.25 ± 0.04 times faster than qjs --std qjs.js
+    5.74 ± 0.06 times faster than libjs libjs.js
+    9.89 ± 0.32 times faster than grjs read.js
+   16.68 ± 0.16 times faster than boa read.js
+```
+
+[07:50:22.0824] <jandem>
+liam_g: can you say more about what you're trying to do? You mean an arguments object for a builtin implemented in C++? or for the caller frame?
+
+[07:51:19.0055] <liam_g>
+The latter, i think.
+
+[07:52:54.0499] <liam_g>
+I have some special callback functions that get called under special circumstances, like onClick(). The user can define it and get a callback when the mouse clicks.
+
+[07:53:40.0253] <liam_g>
+I'd like to be able to specialize the arguments.callee property that the user can see. Or add my own property to this.
+
+[07:54:05.0275] <liam_g>
+* I'd like to be able to specialize the arguments.callee property that the user can see. Or add my own property to arguments.
+
+[07:54:26.0042] <liam_g>
+It's not essential, but it would make the callback function cleaner.
+
+[07:54:36.0079] <jandem>
+so call a JS function with a special `arguments` object? that's not possible, the engine defines it internally when the JS function executes
+
+[07:55:46.0312] <jandem>
+you could pass a similar object as argument
+
+[07:56:38.0939] <liam_g>
+Yeah that's what I'm doing now. It's just getting a bit muddled with multiple arguments. Guess I'll stick with it though.
+
+[07:56:50.0321] <liam_g>
+Thanks for the help 
+
+[07:58:13.0465] <jandem>
+ * so calling a JS function with a special `arguments` object? that's not possible, the engine defines it internally when the JS function executes
+
+[08:02:57.0543] <jandem>
+np!
+
+[08:12:32.0391] <jandem>
+liam_g: (the `this` value you can set, but maybe you're already using it?)
+
+[08:13:50.0538] <iain>
+Redfire: Yeah, I think SM/V8/JSC tend to trade off who's faster on JSON performance based on who's done the most recent optimization pass and the details of the workload
+
+[08:26:01.0070] <mgaudet>
+So, I know bryan is actively working on changing this a bit for self hosted code, but today, our jit-code is all realm-specific right? i.e. if we baked into jit code properties of the realm it would be fine
+
+[08:29:32.0288] <iain>
+No. Baseline ICs, for example, are shared more broadly (per zone, IIRC)
+
+[08:29:40.0064] <iain>
+The baseline interpreter is per-runtime
+
+[08:29:51.0636] <mgaudet>
+Perfect. Thank you.
+
+[09:35:21.0797] <sfink>
+oh, I think I've found why my string measurements seemed weird. I'm measuring space using `str->length()`, and the bulk of the space is in ropes. So I think this is plain old fashioned double-counting leading to quadratic errors.
+
+[09:42:39.0723] <sfink>
+Ok, this makes more sense. 30% of strings are deduplicated, which accounts for just under 30% of the total string chars. 10% of strings are (nondeduplicated) malloc strings, but those hold nearly 60% of string chars. The rest are inline strings and ropes.
+
+[10:03:18.0903] <mstange>
+sfink: Do you have a somewhat recent try push for the "cache atom on string" patches? I'd like to see if they help on Charts-observable-plot
+
+[10:04:03.0072] <mstange>
+But if not, don't let me distract you from the string deduplication work, https://bugzilla.mozilla.org/show_bug.cgi?id=1851874 is one of the biggest buckets we have available
+
+[10:06:29.0918] <sfink>
+I haven't pushed that to try since we talked at All Hands. I was planning on landing some of the prep patches if I ever got around to it.
+
+[10:13:14.0235] <smaug>
+jonco: hmm, what is js2 ?
+
+[10:13:44.0234] <smaug>
+But I guess octane should cover this
+
+[10:15:03.0982] <iain>
+smaug: Jetstream 2
+
+[10:15:08.0109] <smaug>
+(initial results hint that increasing JSGC_ZONE_ALLOC_DELAY_KB would be good for sp3, but I had tons of other patches on the stack too, so running now only that, and also octane.)
+
+[10:15:11.0067] <smaug>
+aha, thanks
+
+[10:15:40.0589] <smaug>
+ok, will run also that
+
+
+2023-10-06
+[01:24:17.0844] <smaug>
+jonco: FWIW, tweaking JSGC_ZONE_ALLOC_DELAY_KB alone doesn't [seem](https://treeherder.mozilla.org/perfherder/compare?originalProject=try&originalRevision=92365de399a42815bf290fb288291f28ed004dbc&newProject=try&newRevision=c1927014ed79b9890d66c1ae4d8b12eb4708478d&page=1&framework=13) to be doing anything too good.  It was useful when I used it with some other changes. I'll keep looking into this
+
+[01:24:45.0734] <jonco>
+smaug: cool
+
+[01:25:22.0459] <jonco>
+You said before that the nursery was shrinking very quickly after page load. Do you have a profile or something to show this?
+
+[01:25:27.0363] <jonco>
+Interested to see what's going on here.
+
+[01:25:54.0887] <jonco>
+There's a heuristic to shrink the nursery if collections are taking too long but it should be disabled during page load.
+
+[05:01:36.0286] <arai>
+I'm thinking about changing the string's hash calculation, to special case `"get "` and `"set "` prefixes, so that it can be calculated from the hash for unprefixed string.  was there similar experiment before?
+
+[05:02:24.0648] <arai>
+the context is [bug 1850344](https://bugzilla.mozilla.org/show_bug.cgi?id=1850344) and [bug 1848278](https://bugzilla.mozilla.org/show_bug.cgi?id=1848278), where I'd like to add more permanent atoms, and also to reduce the runtime calculation for accessor names
+
+[05:02:25.0729] <botzilla>
+https://bugzil.la/1850344 — ASSIGNED (arai) — Use permanent atom for startup-related or frequently-used atoms, or all atoms used by bindings
+
+[05:02:26.0162] <botzilla>
+https://bugzil.la/1848278 — ASSIGNED (arai) — Make permanent atom set extensible by embedder
+
+[05:04:30.0150] <arai>
+if we add many permanent atoms as static data, including their length and hash, the binary size increase becomes problematic (200kB~400kB), and I'm wondering how the static data can be reduced while also reducing the startup cost
+
+[05:05:21.0480] <arai>
+and one possibility is to deduplicate accessor names and unprefixed property name.  the text content can be easily deduplicated, but the hash is not, with the current way
+
+[05:31:36.0922] <jandem>
+arai: by "permanent atoms as static data" you mean statically allocated JSAtoms?
+
+[05:32:20.0932] <arai>
+haven't yet investigated the `JSAtom` itself as static data, but at least statically calculate the input data for atomization
+
+[05:32:45.0354] <arai>
+so, length and hash, and the same for accessors
+
+[05:33:16.0438] <jandem>
+does the compiler deduplicate when there's the same entry for another interface or do we have to do it ourselves?
+
+[05:34:21.0891] <arai>
+the text content could be deduplicated by compiler (maybe with some annotation?).  but so far I haven't seen it happening in my prototype.  the content for unprefixed and prefixed are stored separately
+
+[05:36:55.0892] <arai>
+then, hash isn't deduplicate-able, and if we add ~10000 entries, 4 bytes for each still has some impact
+
+[05:38:21.0540] <arai>
+oh, I should explain the problem that I'm trying to solve.  it's [bug 1846110](https://bugzilla.mozilla.org/show_bug.cgi?id=1846110)
+
+[05:38:22.0900] <botzilla>
+https://bugzil.la/1846110 — NEW (nobody) — Too much time spent in CreateInterfaceObjects during sp3
+
+[05:38:36.0622] <jandem>
+how many distinct WebIDL accessor names are there in total?
+
+[05:39:51.0641] <arai>
+6731 properties + interface names, 3512 of them has getter, 2098 of them has setter
+
+[05:40:56.0190] <jandem>
+improving speedometer with this would be nice
+
+[05:41:58.0447] <arai>
+and my prototype increases the binary size by 360kB (https://bugzilla.mozilla.org/show_bug.cgi?id=1850344#c4)
+
+[05:42:36.0927] <arai>
+and now trying to figure out how to compress it
+
+[05:43:33.0003] <arai>
+such like, deduplicate text, omit accessor length and calculate it from unprefixed name, and also change the hash so that it can be calculated from unprefixed name with low cost
+
+[05:44:27.0378] <jandem>
+if you store the length separately, maybe we can get rid of the null terminator somehow and store an index into a very large string? not sure if that makes sense
+
+[05:45:06.0643] <arai>
+yeah, using index and no null-terminator sounds promising. I'll try that
+
+[05:45:09.0695] <jandem>
+I'm not sure about special-casing the get/set prefix in the string hashing algorithm
+
+[05:45:31.0352] <arai>
+xpt codegen uses index into large string, but afaik it has null terminator
+
+[05:45:41.0877] <jandem>
+ah
+
+[05:47:24.0010] <arai>
+I wonder there are some other place that generates accessor name from unprefixed name in hot path
+
+[05:48:07.0146] <arai>
+if there's, changing the hashing algorithm would be beneficial there as well
+
+[05:48:20.0274] <jandem>
+(some names are substrings of other names like "click" and "onclick", but maybe that's not super common)
+
+[05:49:11.0028] <arai>
+yeah, I've experimented with deduplicating the property name, and there wasn't much case except for accessor vs unprefixed.
+
+[05:49:36.0881] <jandem>
+that makes sense
+
+[05:53:55.0024] <arai>
+hm, there's [NameToFunctionName](https://searchfox.org/mozilla-central/rev/6602bdf9fff5020fbc8e248c963ddddf09a77b1b/js/src/vm/JSFunction.cpp#1791) which calculates accessor name from unprefixed name. I wonder if it becomes hot outside of WebIDL CreateInterfaceObject
+
+[05:55:04.0916] <jandem>
+before the bound function rewrite, we [had some code](https://searchfox.org/mozilla-esr102/rev/2ac4b481997e2bcf569c91d8bb7ab1e5a0b7b1b0/js/src/vm/JSFunction.cpp#1135) to lazily generate the bound-prefixed name there. I wonder if we could do something like that here
+
+[05:56:07.0444] <arai>
+sounds interesting.  yeah, the accessor function's name won't actually be used in most case
+
+[05:56:30.0677] <arai>
+and if that can be lazily generated, we can omit them from static data
+
+[05:56:36.0941] <jandem>
+(now we allocate them eagerly for bound functions, but we do have [a cache](https://searchfox.org/mozilla-central/rev/6602bdf9fff5020fbc8e248c963ddddf09a77b1b/js/src/gc/Zone.h#274-279) for it)
+
+[05:57:30.0606] <jandem>
+yeah for accessors this should be very uncommon.. might be a nice saving
+
+[05:57:45.0098] <arai>
+okay, I'll look into it.  thanks!
+
+[06:00:13.0903] <jandem>
+great. I hope this works
+
+[06:27:47.0541] <kevin_wang_22>
+Hi, 
+Is there any public function in mozjs to parse arithmetic and logical expressions? 
+
+[06:34:48.0443] <arai>
+kevin_wang_22: do you want to get AST from it?
+
+[06:35:21.0061] <arai>
+also, what's the requirement there?  do you want to accept only specific syntax?
+
+[06:36:27.0531] <arai>
+if there's no restriction and also you want AST, `Reflect.parse` would fit there.  it's not C++ API tho, you can call it by evaluating JS code
+
+[06:36:40.0545] <arai>
+if there's more requirement, can you provide the details?
+
+[06:51:11.0804] <kevin_wang_22>
+The only requirement is: Considering use any other external libraries about Shunting yard algorithm(like muParse), I would like to use the one embedded in mozjs. I will use it to determine some conditions then to active an js script if condition matches 
+
+[07:00:01.0056] <arai>
+so, the input is variables + expression, and there's no limitation about the syntax, and there will never be malicious code, and you want to get the result of evaluating the expression, is that correct?
+
+[07:00:30.0957] <arai>
+like, if the feature supports function declaration, the input will never use it?
+
+[07:04:21.0676] <arai>
+if that's the case, you can do the following:  1. set those variables as global variable (`JS_DefineProperty`), 2. evaluate the expression in the global (`JS::Evaluate`) and get the result from it
+
+[07:08:25.0035] <kevin_wang_22>
+By using JS::Evaluate, we have to create a jscontext and other components. Is there a c++ functions can just parse the expression without those?
+
+[07:09:18.0807] <arai>
+just to make sure, what do you mean with "parse" ?  does it include evaluating the parsed AST ?
+
+[07:10:06.0779] <arai>
+what's the expected output?  for example, the input is something like `conditionA || conditionB`, and the expected output is `true` or `false` ?
+
+[07:12:06.0490] <kevin_wang_22>
+Yes, I think so. For example, expression: "varA + varB * varC < 100", varA, varB, varC has their own values(like, varA=10, varB=20, varC=2). After parsing the expression, it return false(because (10 + 20 * 2 < 100) is false)
+
+[07:12:25.0461] <arai>
+evaluation is tied to `JSContext` and global.  you need them to get the evaluation result
+
+[07:14:03.0334] <kevin_wang_22>
+Thank you
+
+[07:22:07.0699] <smaug>
+jonco: what do you think of using something like https://searchfox.org/mozilla-central/rev/6602bdf9fff5020fbc8e248c963ddddf09a77b1b/js/src/gc/GC.cpp#1834-1837 for those slices which are called from a timer, and not from idle callback? Or perhaps not eagerAllocTrigger but something else
+
+[07:30:00.0126] <smaug>
+I mean, don't trigger a slice if we aren't over some threshold.
+
+[08:14:53.0586] <jonco>
+smaug: I think it's a good idea to use fewer timers.  Making this change will mean zones near the GC threshold are collected sooner, and zones not near the threshold are not collected in this way.  I don't think it would be much different from removing the timer altogether.
+
+[09:14:34.0419] <smaug>
+that is true, it is getting closer to not have a timer at all
+
+[09:32:57.0013] <mgaudet>
+C++ question: if I have a `mozilla::Array<T,N> array` that I initialize with both some elements of `T` and some subtypes of `T`, and subtypes of `T` have a different amount of storage, I'm implicitly upcasting to the base type of totally breaking my subtype aren't I... (I think this is true as I try to figure out how do offset of.... and I think it just doesn't work. 
+
+[09:33:09.0616] <mgaudet>
+ * C++ question: if I have a `mozilla::Array<T,N> array` that I initialize with both some elements of `T` and some subtypes of `T`, and subtypes of `T` have a different amount of storage, I'm implicitly upcasting to the base type of totally breaking my subtype aren't I... (I think this is true as I try to figure out how do offset of.... and I think it just doesn't work.)
+
+[09:43:21.0176] <arai>
+do you mean array[0] is initialized with T ctor and array[1] is initialized with subclass ctor?
+
+[09:45:55.0994] <mgaudet>
+Yeah (I am realizing that yesterday in my fighting with this I probably should have caught on to this when I needed copy constructors to be public -- so what's happening is that the array is being created type homogenously from heterogenous intializers by just callling the base class constructor) 
+
+[09:52:15.0581] <Redfire>
+You could take the JSString approach and put all the required fields for the subclass in the base class
+
+[09:53:35.0006] <mccr8>
+You could use T* instead of T and allocate separately. Less efficient, of course.
+
+[09:59:08.0667] <arai>
+yeah, moving all fields into base class would be simple approach
+
+[10:00:48.0496] <arai>
+what's T ?
+
+[10:00:51.0928] <mgaudet>
+(Ironically, I'm being hoist in my own cleverness previously because I made my derived class be a template with variable size. Oops. Ah well. Glad to know the mistake I made) 
+
+[10:01:15.0990] <arai>
+oh, variable size...
+
+[10:01:24.0519] <mgaudet>
+ * (Ironically, I'm being hoist in on my own cleverness previously because I made my derived class be a template with variable size. Oops. Ah well. Glad to know the mistake I made) 
+
+[10:01:31.0948] <mgaudet>
+ * (Ironically, I'm being hoist on my own cleverness previously because I made my derived class be a template with variable size. Oops. Ah well. Glad to know the mistake I made) 
+
+[10:02:04.0698] <mgaudet>
+Yeah; the whole thing is going to need some rethinking; it's Ok. I'll get there. Have something else to tackle for a bit anyhow
+
+[10:06:14.0255] <arai>
+if the range of the size isn't much wide, you could have a fixed-length buffer in the base class and use union in the subclass to use the buffer for fields with specific type, but not sure if it's easy to handle
+
+[10:07:22.0869] <arai>
+otherwise, using a pointer as element type would be simpler
+
+[10:10:36.0173] <mgaudet>
+Yeah -- pointer will definitely be where I end up -- just have to figure out lifetime (UniqPtr probably) 
+
+[10:13:15.0528] <mgaudet>
+(Actually -- I likely can do something better because of how this array is composed) 
+
+
+2023-10-10
+[22:28:16.0248] <liam_g>
+ * In my embedding, I'm implementing `JS::JobQueue` so that I can use Promises. `enqueuePromiseJob()` gives me a `job` object, which I am then calling using`JS::Call()`. My question is this: is `JS::Call()` the right function to call to run the`job\`?
+
+[22:28:23.0571] <liam_g>
+ * In my embedding, I'm implementing `JS::JobQueue` so that I can use Promises. `enqueuePromiseJob()` gives me a `job` object, which I am then calling using`JS::Call()`. My question is this: is `JS::Call()` the right function to call to run the`job`?
+
+[23:24:20.0110] <liam_g>
+ * <del>It seems to be working fine, and my Promise job queue works. But when I stepped through, I noticed some behavior that I didn't expect. Running `JS::Call()` on `job` is actually queuing another Promise job, which then gets scheduled again. When the second one reaches `enqueuePromiseJob()`, `JS::Call()` gets called again, and this time it goes through. This makes me wonder if I should be unwrapping the first `job` somehow in order to avoid the redundant second promise.</del>
+
+[01:02:05.0065] <Standard8>
+Does anyone know if the [globals referenced here](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/tools/lint/eslint/eslint-plugin-mozilla/lib/environments/jsm.js#24-29) would be available in xpcshell?
+
+Could it be that the BackstagePass is making them available [because of this line](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/js/xpconnect/src/XPCShellImpl.cpp#1334)?
+
+
+From testing they do seem to be available, but I just want to make sure I'm not missing anything.
+
+[01:03:13.0622] <Standard8>
+Also, presumably, the [whole of that `jsm` environment](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/tools/lint/eslint/eslint-plugin-mozilla/lib/environments/jsm.js) applies to sys.mjs files? Hence we could probably rename that environment now that we've got most jsms converted?
+
+[01:44:13.0501] <arai>
+`crypto` etc are available from [this line in XPCWrappedNative::WrapNewGlobal](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/js/xpconnect/src/XPCWrappedNative.cpp#235), which is called by [xpc::InitClassesWithNewWrappedGlobal](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/js/xpconnect/src/nsXPConnect.cpp#564), from [XRE_XPCShellMain](https://searchfox.org/mozilla-central/rev/1865e9fba4166ab2aa6c9d539913115723d9cc53/js/xpconnect/src/XPCShellImpl.cpp#1281)
+
+[01:44:58.0887] <arai>
+and I agree with renaming the environment name
+
+[01:48:41.0047] <Standard8>
+Aha, thank you. We might be able to remove some more of `importGlobalProperties` now 🙂 
+
+[11:06:50.0384] <smaug>
+jonco: I wonder if there is some other good way to progress iGC than time or new allocations. (time, at least how we use it now, is problematic because it is the same regardless of the hardware.)  Could we estimate the speed by tracking how many objects a single slice can trace through in X ms or something like that. Though, that might be very inaccurate too, depending on the fragmentation and what else is happening in the system.
+
+[11:24:41.0858] <mccr8>
+Isn't the consistency of time good because ultimately we're trying to avoid being unresponsive to the user?
+
+[11:31:46.0103] <sfink>
+are we talking about a fallback if not enough idle time is found, or is this about even looking for idle time for iGC slices in the first place? I could definitely see targeting a percentage of (hopefully idle) time. eg: time the slices, then fire off another slice to make GC time at least 10% of total time (during an iGC).
+
+[11:31:59.0966] <smaug>
+mccr8: we're triggering slices way too often on slow machines where because of the speed there isn't much garbage 
+
+[11:32:59.0839] <sfink>
+oh, you want less frequent slices, not more
+
+[11:33:03.0918] <smaug>
+sfink: we're pretty good finding and using idle time. I recently tweaked that some more, so that we should have even more idle time
+
+[11:33:50.0976] <smaug>
+but when we're then running some code, and we "just" had idle time, we may trigger a new slice because of the timer
+
+[11:34:23.0650] <sfink>
+right
+
+[11:34:31.0352] <smaug>
+on faster machine we often find idle time, but the same code runs slower on other machines, so that slice might get run in middle of something more critical
+
+[11:34:50.0343] <smaug>
+...because the timer happened to fire
+
+[11:37:10.0580] <smaug>
+ * but when we're then running some code, and we "just" had idle time, we may still trigger a new slice because of the timer
+
+[11:39:12.0954] <smaug>
+anyhow, considering what options we have here. Right now when running certain benchmarks especially on Android we do GC too much and at wrong time
+
+[11:41:01.0339] <sfink>
+is there a good example profile I could stare at? I'm working on something else, but I'd like to understand this better and be thinking about it.
+
+[11:44:35.0762] <sfink>
+we could try adjusting `javascript_options_gc_delay_interslice` based on measured slice rate of progress, like you suggested. Have you experimented with bumping that up on Android? 250 -> 1000 or something.
+
+[11:56:53.0528] <smaug>
+sfink:  I don't have a good profile at hand right now. I can create later. [This](https://treeherder.mozilla.org/perfherder/comparesubtest?originalProject=try&newProject=try&newRevision=6a5669f7e4ebb6e6566408f0f6411055c36eda14&originalSignature=4590278&newSignature=4590278&framework=13&application=geckoview&originalRevision=e7fdeb7b0e36678426d92779f74f2074a88aacbe&page=1&showOnlyConfident=1) has 1000 interslice  (and it also makes JS engine triggered slices increase the budget if there is a pending CC) 
+
+[12:00:00.0543] <sfink>
+ok, that's good data
+
+[12:09:18.0137] <sfink>
+(though adding in the replicates makes most of the changes go away)
+
+
+2023-10-11
+[01:14:16.0058] <jonco>
+> <@smaug:mozilla.org> mccr8: we're triggering slices way too often on slow machines where because of the speed there isn't much garbage
+
+If there's not much garbage it sounds like we are starting too many GCs.  But I think you're talking about incremental slices. 
+
+[01:17:22.0853] <jonco>
+1 second is a long time to wait between incremental slices.  As I mentioned on the patch, leaving barriers enabled slows down JS execution, although it's not as easy to spot on profiles because it doesn't show up as GC time.
+
+[02:02:46.0429] <jonco>
+It would be good to see a profile for this.  Possibly the solution is to not start so many GCs, rather than to delay the incremental slices.
+
+[02:09:46.0690] <smaug>
+jonco: but that causes still some penalty to slower systems where running burst of js heavy tasks takes more time, and gc slice might more likely run between those tasks.
+
+[02:14:30.0292] <smaug>
+So I wonder if there was some other heuristic we could use rather than time.
+
+[04:19:37.0405] <smaug>
+Now testing what the behavior is if the timer based slices were just shorter. They are currently quite long
+
+
+2023-10-12
+[00:17:05.0548] <liam_g>
+Is there any way of calling `Object.freeze()` or some equivalent on a JS::Value within C++?
+
+[01:14:09.0655] <jandem>
+liam_g: `JS_FreezeObject(cx, obj)`
+
+[01:33:58.0706] <liam_g>
+Nice!
+
+[11:05:05.0847] <mstange>
+If I have a regular JS array of a million integers, does the GC need to look at the entire array contents?
+
+[11:05:20.0001] <mstange>
+I'm wondering if it would be worth switching some arrays in the profiler to use typed arrays
+
+[11:05:40.0164] <mstange>
+We have some arrays which are just numbers, but also some arrays where the element is either a number or null
+
+[11:13:38.0866] <iain>
+mstange: We don't do any sort of tracking of the contents of non-typed arrays, so yes, the GC does need to look at the entire array. I don't have any good intuition on whether switching to a typed array would be faster.
+
+[11:16:25.0089] <mstange>
+Interesting, I see. JSC seems to special case: https://github.com/WebKit/WebKit/blob/d0c48f7ae3442165f9b92239cf5b4fbee3c255da/Source/JavaScriptCore/runtime/JSArrayInlines.h#L170
+
+[11:20:15.0593] <iain>
+I believe V8 does something vaguely similar for their arrays.
+
+[15:40:56.0114] <arai>
+In [bug 1858803](https://bugzilla.mozilla.org/show_bug.cgi?id=1858803), I'm about to look into adding JSON parse API that doesn't require `JSContext`.  was there any similar attempt?  if so, was there any issue or concern?
+
+[15:40:59.0973] <botzilla>
+https://bugzil.la/1858803 — NEW (nobody) — Add non-GC JSON API
+
+
+2023-10-13
+[21:59:42.0066] <Redfire>
+https://cfallin.org/blog/2023/10/11/spidermonkey-pbl/ 👀 
+
+[00:53:38.0799] <jonco>
+> <@mstange:mozilla.org> If I have a regular JS array of a million integers, does the GC need to look at the entire array contents?
+
+We used to have an optimisation for this that used TI, before we removed it.  Using a typed array should help, if marking time ends up being significant.
+
+[08:01:32.0180] <@allstarschh>
+dminor: meeting ?
+
+[08:11:46.0886] <dminor>
+Sorry, was running a little late
+
+
+2023-10-15
+[14:32:50.0515] <arai>
+> <@arai:mozilla.org> In [bug 1858803](https://bugzilla.mozilla.org/show_bug.cgi?id=1858803), I'm about to look into adding JSON parse API that doesn't require `JSContext`.  was there any similar attempt?  if so, was there any issue or concern?
+
+some update on this.  we have [JsonCpp](https://searchfox.org/mozilla-central/source/toolkit/components/jsoncpp) in tree, and if the consumer wants to get an object from JSON string, it should fit.  then, I've prototyped another approach in SpiderMonkey which doesn't allocate object but uses callback for each node. it's faster, but is complex compared to JsonCpp way
+
+[14:34:41.0574] <arai>
+I've posted 2 patches as consumer for each API, in [bug 1858692](https://bugzilla.mozilla.org/show_bug.cgi?id=1858692)
+
+[14:34:42.0829] <botzilla>
+https://bugzil.la/1858692 — ASSIGNED (arai) — DOMLocalization::TranslateElements spends most of its time creating a JS Global
+
+[14:35:59.0139] <arai>
+(hm, I guess I shouldn't use linkified bug number here?  it results in duplicate preview)
+
+
+2023-10-16
+[18:54:25.0454] <arai>
+Just realized native getter/setter created by [DefineAccessorPropertyById](https://searchfox.org/mozilla-central/rev/81f368dab93fff035ce7fcc376e16990e89dd5ec/js/src/vm/PropertyAndElement.cpp#105) doesn't use `FunctionKind::Getter` or `FunctionKind::Setter`, but `FunctionKind::NormalFunction`.  is it expected?  perhaps `FunctionKind::{Getter,Setter}` are only for scripted function?
+
+[20:59:00.0101] <arai>
+filed bug 1859207 for it
+
+[20:59:01.0917] <botzilla>
+https://bugzil.la/1859207 — ASSIGNED (arai) — Assert FunctionFlags integrity between FunctionKind and other bits
+
+[23:09:34.0022] <jandem>
+I guess the `FunctionKind` is more about the scripted function's syntactic form? clarifying/fixing this would be great 
+
+[09:04:33.0161] <mgaudet>
+Is the mapping between realms and globals 1-1? (Or can you have multiple realms for a single global or vice versa)
+
+[09:05:18.0580] <mgaudet>
+(ShadowRealms don't count -- implementation wise we don't use realms)
+
+[09:05:59.0759] <mgaudet>
+(You would think, nearly 6 years in, I would be able to answer this question instinctively) 
+
+[09:06:10.0092] <mccr8>
+Isn't realm just the spec name for globals? That was my impression...
+
+[09:09:34.0802] <mgaudet>
+Ok: I think it is a 1-1 relationship. (and the spec text helps a bit too: 
+
+> Before it is evaluated, all ECMAScript code must be associated with a realm. Conceptually, a realm consists of a set of intrinsic objects, an ECMAScript global environment, all of the ECMAScript code that is loaded within the scope of that global environment, and other associated state and resources.
+
+) 
+
+[09:48:08.0112] <jandem>
+yes it's 1:1
+
+[11:51:15.0758] <mstange>
+sfink: Julien made a benchmark which spends 40% of its time in JS string atomization: https://tanstack-virtual--speedometer-preview.netlify.app/?suite=TodoMVC-React-Redux-toolkit#summary
+
+[11:51:38.0598] <mstange>
+so I'm curious how much the hash caching work speeds it up
+
+[11:51:59.0299] <mstange>
+[here's the report](https://github.com/jrmuizel/js-profile-compare/blob/main/reports/Tanstack-virtual-BrowserWin25-Oct13.md)
+
+[12:00:15.0063] <sfink>
+oh nice
+
+[12:01:28.0365] <mstange>
+[here's the report with unminified source](https://github.com/jrmuizel/js-profile-compare/blob/main/reports/Tanstack-virtual-BrowserWin25-Oct16.md)
+
+[12:01:36.0412] <sfink>
+mstange: on an unrelated note, I just ran into a problem where my browser's main process was burning 125% CPU on my laptop. I tried profiling it a few times, but when loading the profile it just spun and eventually timed out. I've restarted now, but what do you recommend for that situation? I guess I could've run perf.
+
+[12:02:39.0257] <mstange>
+sfink: that's a frustrating situation, we're not well set up for unresponsive parent processes
+
+[12:02:52.0612] <mstange>
+sfink: there is a way to dump a profile from gdb, let me try to find it
+
+[12:03:21.0816] <sfink>
+it wasn't completely unresponsive, just noticeably sluggish.
+
+[12:04:58.0665] <sfink>
+while shutting it down, strace -c on the parent process had 70% of the time in futex, summing to many seconds of actual time. I don't think that's typical even during shutdown. But that's getting into the details.
+
+[12:05:05.0322] <mstange>
+ah, then you could have probably dumped it from the browser console
+
+[12:05:17.0170] <mstange>
+`Services.profiler.dumpProfileToFileAsync("/path/to/profile.json")`
+
+[12:05:36.0498] <sfink>
+ooh thanks, I'll copy that and keep it in my notes for next time.
+
+[12:06:38.0847] <mstange>
+but it's possible that it would have timed out the same way; anyway, worth trying
+
+[12:08:11.0895] <mstange>
+ * [here's the report with unminified source](https://github.com/jrmuizel/js-profile-compare/blob/main/reports/Tanstack-virtual-BrowserWin25-Oct16.md) (the unminified benchmark is at https://tanstack-virtual-unminified--speedometer-preview.netlify.app/?suite=TodoMVC-React-Redux-toolkit#summary )
+
+[12:20:09.0016] <sfink>
+hm, if I'm reading that code right, it's using numeric keys to store object properties. That has its own set of optimizations. I'll try to look at what path that is hitting.
+
+
+2023-10-17
+[16:27:26.0875] <kevin_wang_22>
+Hi team, 
+I encounter this assertion failure when cleanup jscontext, any one knows how to resolve it?
+** Assertion failure: cx, at /home/wangcheng/host_workspace/external-mozjs-102/firefox-102.5.0/js/src/threading/ProtectedData.cpp:59 **
+
+[16:33:06.0165] <arai>
+kevin_wang_22: can you provide backtrace for the assertion?
+
+[16:38:19.0105] <kevin_wang_22>
+I find it's caused by ** JS_DisableInterruptCallback() **, what can cause that assertion failure. backtrace are listed:
+1: StopIsolationHelper(), try to deinitialize interruption
+1: InterruptionHelper::deInitialize() is called, flag 1
+1: Assertion failure: cx, at /home/wangcheng/host_workspace/external-mozjs-102/firefox-102.5.0/js/src/threading/ProtectedData.cpp:59
+1: #01: ???[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libmozjs-102.so +0x272031]
+1: #02: JS_DisableInterruptCallback(JSContext*)[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libmozjs-102.so +0x6d4b64]
+1: #03: ???[ScriptingService_Test +0x1625fba]
+1: #04: ???[ScriptingService_Test +0x11c7ff7]
+1: #05: ???[ScriptingService_Test +0x11c36e7]
+1: #06: ???[ScriptingService_Test +0xda4c37]
+1: #07: ???[ScriptingService_Test +0xdbe4ad]
+1: #08: ???[ScriptingService_Test +0xdc3e2e]
+1: #09: ???[ScriptingService_Test +0xdc40d7]
+1: #10: ???[ScriptingService_Test +0xdc417f]
+1: #11: ???[ScriptingService_Test +0xd9efe0]
+1: #12: ???[ScriptingService_Test +0xd9f049]
+1: #13: ???[ScriptingService_Test +0xd9f07e]
+1: #14: ???[ScriptingService_Test +0xd9f0b0]
+1: #15: ???[ScriptingService_Test +0xd9f0ff]
+1: #16: std::_Sp_counted_base<(__gnu_cxx::_Lock_policy)2>::_M_release()[ScriptingService_Test +0xb0f2e2]
+1: #17: std::__shared_count<(__gnu_cxx::_Lock_policy)2>::~__shared_count()[ScriptingService_Test +0xb0f36f]
+1: #18: ???[ScriptingService_Test +0xda2db7]
+1: #19: ???[ScriptingService_Test +0x1177cf7]
+1: #20: ???[ScriptingService_Test +0x1174539]
+1: #21: void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*)[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x4696a]
+1: #22: testing::Test::Run()[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3c7c3]
+1: #23: testing::TestInfo::Run()[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3c925]
+1: #24: testing::TestSuite::Run()[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3ca05]
+1: #25: testing::internal::UnitTestImpl::RunAllTests()[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3cf03]
+1: #26: bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*)[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x46e8a]
+1: #27: testing::UnitTest::Run()[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3d11c]
+1: #28: ???[ScriptingService_Test +0xb0f272]
+1: #29: ???[ScriptingService_Test +0xb0efaa]
+1: #30: __libc_start_main[/lib/libc.so.6 +0x2709b]
+1: #31: ???[ScriptingService_Test +0xb0ec5a]
+1: #32: ??? (???:???)
+
+
+[16:40:16.0430] <kevin_wang_22>
+ * arai: 
+I find it's caused by \*\* JS\_DisableInterruptCallback() __, what can cause that assertion failure. backtrace are listed:
+1: Assertion failure: cx, at /home/wangcheng/host\_workspace/external-mozjs-102/firefox-102.5.0/js/src/threading/ProtectedData.cpp:59
+1: #01: ???\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libmozjs-102.so +0x272031\]
+1: #02: JS\_DisableInterruptCallback(JSContext_)\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libmozjs-102.so +0x6d4b64\]
+1: #03: ???\[ScriptingService\_Test +0x1625fba\]
+1: #04: ???\[ScriptingService\_Test +0x11c7ff7\]
+1: #05: ???\[ScriptingService\_Test +0x11c36e7\]
+1: #06: ???\[ScriptingService\_Test +0xda4c37\]
+1: #07: ???\[ScriptingService\_Test +0xdbe4ad\]
+1: #08: ???\[ScriptingService\_Test +0xdc3e2e\]
+1: #09: ???\[ScriptingService\_Test +0xdc40d7\]
+1: #10: ???\[ScriptingService\_Test +0xdc417f\]
+1: #11: ???\[ScriptingService\_Test +0xd9efe0\]
+1: #12: ???\[ScriptingService\_Test +0xd9f049\]
+1: #13: ???\[ScriptingService\_Test +0xd9f07e\]
+1: #14: ???\[ScriptingService\_Test +0xd9f0b0\]
+1: #15: ???\[ScriptingService\_Test +0xd9f0ff\]
+1: #16: std::\_Sp\_counted\_base\<(\_\_gnu\_cxx::\_Lock\_policy)2>::\_M\_release()\[ScriptingService\_Test +0xb0f2e2\]
+1: #17: std::\_\_shared\_count\<(\_\_gnu\_cxx::\_Lock\_policy)2>::~\_\_shared\_count()\[ScriptingService\_Test +0xb0f36f\]
+1: #18: ???\[ScriptingService\_Test +0xda2db7\]
+1: #19: ???\[ScriptingService\_Test +0x1177cf7\]
+1: #20: ???\[ScriptingService\_Test +0x1174539\]
+1: #21: void testing::internal::HandleExceptionsInMethodIfSupported\<testing::Test, void>(testing::Test_, void (testing::Test::_)(), char const_)\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x4696a\]
+1: #22: testing::Test::Run()\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3c7c3\]
+1: #23: testing::TestInfo::Run()\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3c925\]
+1: #24: testing::TestSuite::Run()\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3ca05\]
+1: #25: testing::internal::UnitTestImpl::RunAllTests()\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3cf03\]
+1: #26: bool testing::internal::HandleExceptionsInMethodIfSupported\<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl\*, bool (testing::internal::UnitTestImpl::_)(), char const_)\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x46e8a\]
+1: #27: testing::UnitTest::Run()\[/tmp/adg/tests/wangcheng/ScriptingService/usr/lib/libgtest.so.1 +0x3d11c\]
+1: #28: ???\[ScriptingService\_Test +0xb0f272\]
+1: #29: ???\[ScriptingService\_Test +0xb0efaa\]
+1: #30: \_\_libc\_start\_main\[/lib/libc.so.6 +0x2709b\]
+1: #31: ???\[ScriptingService\_Test +0xb0ec5a\]
+1: #32: ??? (???:???)
+
+[16:42:39.0602] <arai>
+kevin_wang_22: do you call `JS_DisableInterruptCallback` from your code?
+
+[16:43:44.0608] <arai>
+where does it happen, and what's the relation between the call and "cleanup `JSContext`" ?
+
+[16:46:28.0599] <arai>
+also, have you verified the `JS_DisableInterruptCallback`'s parameter is non-null?
+
+[16:48:37.0571] <arai>
+oh, maybe the parameter is unrelated. the `cx` in the assertion comes from `TlsContext.get();` in [js::CheckContextLocal::check](https://searchfox.org/mozilla-esr102/rev/2ac4b481997e2bcf569c91d8bb7ab1e5a0b7b1b0/js/src/threading/ProtectedData.cpp#58-59)
+
+[16:49:32.0782] <arai>
+the possibilities are: you're calling it in wrong thread, or you've destroyed the thread's `JSContext` before that point
+
+[16:51:55.0511] <kevin_wang_22>
+> <@arai:mozilla.org> oh, maybe the parameter is unrelated. the `cx` in the assertion comes from `TlsContext.get();` in [js::CheckContextLocal::check](https://searchfox.org/mozilla-esr102/rev/2ac4b481997e2bcf569c91d8bb7ab1e5a0b7b1b0/js/src/threading/ProtectedData.cpp#58-59)
+
+Yeah, I have checked the JSContext *, it's not null. It happens when I clean up js context, I used **JS_RequestInterruptCallback**, so i called **JS_DisableInterruptCallback** when cleanup. I suddenly remember I should call the cleanup procedure from some other thread, let me try.
+
+
+2023-10-18
+[20:25:44.0942] <ptomato>
+anyone have a few spare cycles to review this example I wrote for the embedder guide, on how to integrate WeakRef and FinalizationRegistry in an embedding? https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/pull/75
+
+[09:17:28.0766] <mgaudet>
+sfink: Gentle review ping for Bug 1856338 -- but if you don't have time, feel free to get me to reassign those patches too 
+
+[09:17:31.0509] <botzilla>
+https://bugzil.la/1856338 — ASSIGNED (anba) — Update Temporal implementation to draft Sept 26, 2023
+
+[09:18:03.0860] <sfink>
+wha? no need to be gentle in this case, I didn't realize that I still had some pending. Sorry!
+
+[09:18:20.0372] <mgaudet>
+No worries :) 
+
+[09:18:54.0781] <sfink>
+I really need to finish up the other stack of anba patches in my queue, so I don't always assume that's all there is.
+
+[09:19:40.0680] <mgaudet>
+the mega stacks can occasionally cause some problems for sure; anyhow, I just pinged because I know I'd forgotten about them for a bit and thought I might not be the only one.
+
+
+2023-10-19
+[10:32:36.0097] <mgaudet>
+oops
+
+
+2023-10-20
+[06:01:10.0367] <Redfire>
+Any reason why `GetRegExpFlags` might fail here? Debugger says `cx->runtime()` returns null
+```
+Assertion failure: !cx->isHelperThreadContext() && js::CurrentThreadCanAccessRuntime(cx->runtime()), at C:/Users/Redfire/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/ec63ca3/mozjs-sys/mozjs/js/src/vm/RegExpObject.cpp:1180
+#01: JS::GetRegExpFlags (C:\Users\Redfire\.cargo\git\checkouts\mozjs-fa11ffc7d4f1cc2d\ec63ca3\mozjs-sys\mozjs\js\src\vm\RegExpObject.cpp:1180)
+#02: ion::objects::regexp::RegExp::flags (C:\Users\Redfire\spiderfire\ion\src\objects\regexp.rs:50)
+#03: ion::objects::regexp::RegExp::to_string (C:\Users\Redfire\spiderfire\ion\src\objects\regexp.rs:54)
+#04: ion::format::regexp::format_regexp (C:\Users\Redfire\spiderfire\ion\src\format\regexp.rs:20)
+#05: ion::format::object::format_object (C:\Users\Redfire\spiderfire\ion\src\format\object.rs:42)
+#06: ion::format::format_value (C:\Users\Redfire\spiderfire\ion\src\format\mod.rs:34)
+#07: cli::evaluate::eval_inline::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\evaluate.rs:33)
+#08: cli::commands::eval::eval_source::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\commands\eval.rs:25)
+#09: cli::commands::handle_command::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\commands\mod.rs:31)
+```
+
+[06:02:25.0297] <Redfire>
+ * Any reason why `GetRegExpFlags` might fail here?
+
+```
+Assertion failure: !cx->isHelperThreadContext() && js::CurrentThreadCanAccessRuntime(cx->runtime()), at C:/Users/Redfire/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/ec63ca3/mozjs-sys/mozjs/js/src/vm/RegExpObject.cpp:1180
+#01: JS::GetRegExpFlags (C:\Users\Redfire\.cargo\git\checkouts\mozjs-fa11ffc7d4f1cc2d\ec63ca3\mozjs-sys\mozjs\js\src\vm\RegExpObject.cpp:1180)
+#02: ion::objects::regexp::RegExp::flags (C:\Users\Redfire\spiderfire\ion\src\objects\regexp.rs:50)
+#03: ion::objects::regexp::RegExp::to_string (C:\Users\Redfire\spiderfire\ion\src\objects\regexp.rs:54)
+#04: ion::format::regexp::format_regexp (C:\Users\Redfire\spiderfire\ion\src\format\regexp.rs:20)
+#05: ion::format::object::format_object (C:\Users\Redfire\spiderfire\ion\src\format\object.rs:42)
+#06: ion::format::format_value (C:\Users\Redfire\spiderfire\ion\src\format\mod.rs:34)
+#07: cli::evaluate::eval_inline::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\evaluate.rs:33)
+#08: cli::commands::eval::eval_source::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\commands\eval.rs:25)
+#09: cli::commands::handle_command::async_fn$0 (C:\Users\Redfire\spiderfire\cli\src\commands\mod.rs:31)
+```
+
+[06:02:42.0977] <Redfire>
+I'm quite certain it's running on the same thread
+
+[06:06:32.0572] <Redfire>
+```
+JSRuntime::mainContextFromAnyThread() Runtime.h:354
+js::CurrentThreadCanAccessRuntime(const JSRuntime *) Runtime.cpp:765
+JS::GetRegExpFlags(JSContext *, Handle<…>) RegExpObject.cpp:1180
+ion::objects::regexp::RegExp::flags(*mut ion::context::Context) regexp.rs:50
+ion::objects::regexp::RegExp::to_string(*mut ion::context::Context) regexp.rs:54
+ion::format::regexp::format_regexp(*mut ion::context::Context,ion::format::config::Config,*mut ion::objects::regexp::RegExp) regexp.rs:20
+ion::format::object::format_object(*mut ion::context::Context,ion::format::config::Config,ion::objects::object::Object) object.rs:42
+ion::format::format_value(*mut ion::context::Context,ion::format::config::Config,*mut ion::value::Value) mod.rs:34
+cli::evaluate::eval_inline::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,*mut core::task::wake::Context) evaluate.rs:33
+cli::commands::eval::eval_source::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,*mut core::task::wake::Context) eval.rs:25
+cli::commands::handle_command::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::commands::handle_command::async_fn_env$0> > >,*mut core::task::wake::Context) mod.rs:31
+```
+
+
+[06:06:47.0216] <Redfire>
+ * Here's the proper stacktrace: ```
+JSRuntime::mainContextFromAnyThread() Runtime.h:354
+js::CurrentThreadCanAccessRuntime(const JSRuntime *) Runtime.cpp:765
+JS::GetRegExpFlags(JSContext *, Handle<…>) RegExpObject.cpp:1180
+ion::objects::regexp::RegExp::flags(*mut ion::context::Context) regexp.rs:50
+ion::objects::regexp::RegExp::to_string(*mut ion::context::Context) regexp.rs:54
+ion::format::regexp::format_regexp(*mut ion::context::Context,ion::format::config::Config,*mut ion::objects::regexp::RegExp) regexp.rs:20
+ion::format::object::format_object(*mut ion::context::Context,ion::format::config::Config,ion::objects::object::Object) object.rs:42
+ion::format::format_value(*mut ion::context::Context,ion::format::config::Config,*mut ion::value::Value) mod.rs:34
+cli::evaluate::eval_inline::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,*mut core::task::wake::Context) evaluate.rs:33
+cli::commands::eval::eval_source::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,*mut core::task::wake::Context) eval.rs:25
+cli::commands::handle_command::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::commands::handle_command::async_fn_env$0> > >,*mut core::task::wake::Context) mod.rs:31
+```
+
+[06:06:55.0695] <Redfire>
+ * Here's the proper stacktrace: 
+```
+JSRuntime::mainContextFromAnyThread() Runtime.h:354
+js::CurrentThreadCanAccessRuntime(const JSRuntime \*) Runtime.cpp:765
+JS::GetRegExpFlags(JSContext \*, Handle\<…>) RegExpObject.cpp:1180
+ion::objects::regexp::RegExp::flags(\*mut ion::context::Context) regexp.rs:50
+ion::objects::regexp::RegExp::to\_string(\*mut ion::context::Context) regexp.rs:54
+ion::format::regexp::format\_regexp(\*mut ion::context::Context,ion::format::config::Config,\*mut ion::objects::regexp::RegExp) regexp.rs:20
+ion::format::object::format\_object(\*mut ion::context::Context,ion::format::config::Config,ion::objects::object::Object) object.rs:42
+ion::format::format\_value(\*mut ion::context::Context,ion::format::config::Config,\*mut ion::value::Value) mod.rs:34
+cli::evaluate::eval\_inline::async\_fn$0(core::pin::Pin\<ref\_mut$\<enum2$cli::evaluate::eval\_inline::async\_fn\_env$0 > >,\*mut core::task::wake::Context) evaluate.rs:33
+cli::commands::eval::eval\_source::async\_fn$0(core::pin::Pin\<ref\_mut$\<enum2$cli::commands::eval::eval\_source::async\_fn\_env$0 > >,\*mut core::task::wake::Context) eval.rs:25
+cli::commands::handle\_command::async\_fn$0(core::pin::Pin\<ref\_mut$\<enum2$cli::commands::handle\_command::async\_fn\_env$0 > >,\*mut core::task::wake::Context) mod.rs:31
+
+[06:07:05.0262] <Redfire>
+ * Any reason why `GetRegExpFlags` might fail here?
+
+```
+Assertion failure: !cx->isHelperThreadContext() && js::CurrentThreadCanAccessRuntime(cx->runtime()), at C:/Users/Redfire/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/ec63ca3/mozjs-sys/mozjs/js/src/vm/RegExpObject.cpp:1180
+```
+
+[06:07:33.0058] <Redfire>
+ * Here's the proper stacktrace:
+
+```
+JSRuntime::mainContextFromAnyThread() Runtime.h:354
+js::CurrentThreadCanAccessRuntime(const JSRuntime *) Runtime.cpp:765
+JS::GetRegExpFlags(JSContext *, Handle<…>) RegExpObject.cpp:1180
+ion::objects::regexp::RegExp::flags(*mut ion::context::Context) regexp.rs:50
+ion::objects::regexp::RegExp::to_string(*mut ion::context::Context) regexp.rs:54
+ion::format::regexp::format_regexp(*mut ion::context::Context,ion::format::config::Config,*mut ion::objects::regexp::RegExp) regexp.rs:20
+ion::format::object::format_object(*mut ion::context::Context,ion::format::config::Config,ion::objects::object::Object) object.rs:42
+ion::format::format_value(*mut ion::context::Context,ion::format::config::Config,*mut ion::value::Value) mod.rs:34
+cli::evaluate::eval_inline::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::evaluate::eval_inline::async_fn_env$0> > >,*mut core::task::wake::Context) evaluate.rs:33
+cli::commands::eval::eval_source::async_fn$0(core::pin::Pin<ref_mut$<enum2$<cli::commands::eval::eval_source::async_fn_env$0> > >,*mut core::task::wake::Context) eval.rs:25
+```
+
+[09:13:17.0888] <arai>
+Redfire: can you check which condition in the assertion fails?
+
+[09:17:36.0935] <arai>
+one possibility is that `CurrentThreadCanAccessRuntime` fails because the `JSContext` associated with the thread is already destroyed (`TlsContext.get()` below returns nullptr): https://searchfox.org/mozilla-central/rev/9f6a9e601b2ab9ad1a3877691ea17c66c1fd8867/js/src/vm/Runtime.cpp#764
+```cpp
+return rt->mainContextFromAnyThread() == TlsContext.get();
+```
+
+
+2023-10-21
+[18:29:48.0805] <Redfire>
+Seems to be the latter condition
+
+[18:35:38.0014] <arai>
+have you confirmed `JSContext` is alive at that point?  are you using multiple JSContext in your application?
+
+[18:52:24.0153] <Redfire>
+Yep it's alive, and only 1 JSContext
+
+[18:53:01.0496] <Redfire>
+This is the first time `CHECK_THREAD` has been a problem 
+
+[18:59:22.0096] <arai>
+can you go inspect variables used in `js::CurrentThreadCanAccessRuntime` in debugger?
+
+[18:59:25.0588] <arai>
+ * can you inspect variables used in `js::CurrentThreadCanAccessRuntime` in debugger?
+
+[18:59:34.0129] <arai>
+what's the value of `TlsContext.get()` ?
+
+[19:00:48.0117] <arai>
+also `rt` and `rt->mainContextFromAnyThread()`
+
+[19:01:12.0740] <Redfire>
+Last i checked, my debugger failed to read `rt`
+
+[19:05:09.0996] <Redfire>
+Also, `GetRegExpSource`, which is run right before in the same function succeeds
+
+[19:05:31.0529] <arai>
+it fails because it's optimized out?
+
+[19:05:48.0752] <arai>
+if so, is it possible to test with non-optimized build?
+
+[19:12:54.0036] <Redfire>
+optimize is already disabled
+
+[19:19:13.0991] <arai>
+oh, what was the reason it failed to read?
+
+[19:19:28.0672] <arai>
+`rt` contained invalid pointer?
+
+[19:22:32.0335] <Redfire>
+Well, there's two ways this goes, either a segfault at `CHECK_THREAD` or an assertion failure (slightly different reproduction)
+
+[19:24:12.0817] <arai>
+hm, it sounds like memory corruption or something
+
+[19:25:13.0034] <arai>
+running with valgrind might tell something
+
+[19:51:48.0748] <Redfire>
+I would run valgrind, but this works fine on linux 😅
+
+[19:51:58.0215] <Redfire>
+Only fails on windows
+
+[19:54:47.0993] <Redfire>
+It could be this again, hmm https://github.com/servo/mozjs/blob/master/mozjs/src/jsglue.cpp#L988-L994
+
+[19:55:02.0449] <Redfire>
+since `RegExpFlags` *does* have a constructor
+
+[20:00:46.0488] <arai>
+oh, sounds complex issue...
+
+[21:05:12.0329] <Redfire>
+That was indeed the problem, call convention, *sigh*
+
+[06:05:28.0139] <Redfire>
+It seems MSVC basically does an implicit outparam in rcx/rax(not sure which, i cant read masm)
+
+[08:06:33.0638] <Redfire>
+What even does `JSCLASS_IS_DOMJSCLASS` do? Is it purely a marker or does it change how the engine handles the object?
+
+[08:07:43.0660] <Redfire>
+Also, is it intended for all JSAPI-defined classes to have that flag?
+
+[08:27:41.0638] <arai>
+the flag is used in some places inside engine, as a special case for each operation https://searchfox.org/mozilla-central/search?q=symbol:_ZNK7JSClass10isDOMClassEv&redirect=false
+
+[08:32:55.0344] <arai>
+the flag doesn't have to be set, unless you need the DOM-specific special case
+
+[08:36:27.0901] <arai>
+hmm, I cannot find a documentation for the list of special cases... but here's one example that sounds simple: https://searchfox.org/mozilla-central/rev/cc35ffeaf33a3f4e0b2ce6b77f9e5817a705e0c8/js/src/builtin/Object.cpp#536,570-577
+```cpp
+static JSString* GetBuiltinTagSlow(JSContext* cx, HandleObject obj) {
+...
+      if (obj->isCallable()) {
+        // Non-standard: Prevent <object> from showing up as Function.
+        JSObject* unwrapped = CheckedUnwrapDynamic(obj, cx);
+        if (!unwrapped || !unwrapped->getClass()->isDOMClass()) {
+          return cx->names().object_Function_;
+        }
+      }
+      return cx->names().object_Object_;
+```
+
+[08:36:50.0063] <arai>
+it's a tag for `Object.prototype.toString` result
+
+
+2023-10-23
+[07:52:39.0548] <liam_g>
+If i embed Spidermonkey in a custom C++ program in Visual Studio, what would it take to be able to use the VS debugger in my JS code? I've always assumed that the entry barrier here would be so high that it's not even worth asking. But not being able to debug my JS is also costly. Is it possible?
+
+[07:57:10.0356] <liam_g>
+Or perhaps i should ask, what would it take to run my embedded JS code in *any* debugger?
+
+[08:39:20.0290] <jandem>
+liam_g: I don't know what kind of application you have, but for the JS shell there's a toy [jorendb debugger](https://searchfox.org/mozilla-central/rev/e4afef5d3ff67781dc1377912344694f3cf3a226/js/examples/jorendb.js#12-19) that might be helpful
+
+[08:40:22.0930] <jandem>
+I haven't really used this and it appears to be broken atm, but I think sfink said he uses it sometimes
+
+[10:35:36.0417] <sfink>
+yes, I still use it quite a bit. How is it broken? I often think it's broken, but then realize that I'm not using the exact invocation that it requires, usually the difference between `-f SCRIPT` and just `SCRIPT`.
+
+[10:36:13.0859] <sfink>
+(and my irregular attempts at resolving this always end up with "oh right, THAT's why I haven't fixed this already..." though as usual I couldn't tell you right now why that is.)
+
+
+2023-10-24
+[23:03:46.0093] <jandem>
+oh it needs `-f SCRIPT`, with just the script it overrecurses for some reason
+
+[00:32:33.0183] <liam_g>
+Thanks folks, I'll look into this.
+
+[09:01:46.0708] <dbezhetskov>
+how to get all jsbytecodes for all case nodes for a switch bytecode in BaselineCodegen?
+right know we can get default case => `jsbytecode* defaultpc = pc + GET_JUMP_OFFSET(pc);`
+but how to get all others cases bytecodes? 
+
+[09:01:53.0435] <dbezhetskov>
+ * how to get all jsbytecodes for all case nodes for a switch bytecode in BaselineCodegen?
+right know we can get default case => `jsbytecode* defaultpc = pc + GET_JUMP_OFFSET(pc);`
+but how to get all others cases bytecodes?
+
+[09:04:29.0139] <dbezhetskov>
+ * how to get all jsbytecodes for all case nodes for a switch bytecode in BaselineCodegen?
+right know we can get default case => `jsbytecode* defaultpc = pc + GET_JUMP_OFFSET(pc);`
+but how to get all others cases bytecodes?
+btw, I tried `pc + low` and other combinations but it isn't a first case bytecode
+
+[09:04:35.0588] <dbezhetskov>
+ * how to get all jsbytecodes for all case nodes for a switch bytecode in BaselineCodegen?
+right know we can get default case => `jsbytecode* defaultpc = pc + GET_JUMP_OFFSET(pc);`
+but how to get all others cases bytecodes?
+btw, I tried `pc + low` but it isn't a first case bytecode
+
+[09:15:57.0950] <tcampbell>
+dbezhetskov: https://searchfox.org/mozilla-central/rev/10d0e01455559a433670bd718a3ecc0ece5d2cb9/js/src/vm/Opcodes.h#2474-2475
+
+[09:16:09.0599] <tcampbell>
+They are in the "resumeoffsets" table
+
+[09:16:22.0755] <tcampbell>
+ * They are in the "resumeoffsets" vector
+
+[09:16:55.0058] <tcampbell>
+https://searchfox.org/mozilla-central/rev/10d0e01455559a433670bd718a3ecc0ece5d2cb9/js/src/vm/JSScript.h#1993-2005
+
+[09:19:52.0483] <dbezhetskov>
+aah, thanks, I've missed tableSwitchCaseOffset part
+
+[09:19:58.0294] <tcampbell>
+The resumeoffsets are bytecodeoffsets (number of bytes from `JSScript->code()`). For things like BaselineScript, there is a similar vector with same slots but the contents native machine code pointers https://searchfox.org/mozilla-central/rev/10d0e01455559a433670bd718a3ecc0ece5d2cb9/js/src/jit/BaselineJIT.h#266-270
+
+[09:20:06.0955] <tcampbell>
+no worries, it is all a little clever
+
+[09:21:26.0749] <tcampbell>
+It used to be more obvious, but we wanted the opcodes to all be fixed size, so we moved the variable-length data to the 'resumeoffsets' list, which had the nice benefit that each JIT could have it's own list of virtual or native PCs.
+
+
+2023-10-25
+[05:22:58.0745] <canadahonk>
+Are there docs anywhere on embedding SM via Wasm(/WASI)? I know there's some downstream repos from the Bytecode Alliance but they seem inactive and not sure if they're still recommended to be used. Thanks!
+
+[05:52:06.0381] <jandem>
+canadahonk: this is marked experimental still but might be interesting: https://github.com/bytecodealliance/componentize-js
+
+[05:53:18.0116] <canadahonk>
+> <@jandem:mozilla.org> canadahonk: this is marked experimental still but might be interesting: https://github.com/bytecodealliance/componentize-js
+
+looks cool, but I was looking for more the engine (interpreter) dynamically, not compiling js to wasm ahead of time
+
+[05:53:41.0395] <canadahonk>
+> <@jandem:mozilla.org> canadahonk: this is marked experimental still but might be interesting: https://github.com/bytecodealliance/componentize-js
+
+ * looks cool, but I was looking for more the engine (interpreter) dynamically, not compiling js to wasm ahead of time (eg can "just" eval from JS on a webpage)
+
+[06:00:08.0092] <jandem>
+canadahonk: like this? https://mozilla-spidermonkey.github.io/sm-wasi-demo/
+
+[06:00:28.0682] <canadahonk>
+> <@jandem:mozilla.org> canadahonk: like this? https://mozilla-spidermonkey.github.io/sm-wasi-demo/
+
+yeah!
+
+[06:03:28.0025] <jandem>
+this is just a simple js shell demo. We don't have much documentation about this. For more serious use cases we'd ideally have a better environment than the js shell
+
+[06:04:56.0005] <canadahonk>
+could you theoretically expose functions/etc to the js world from the worker? or would you need to fork SM, etc
+
+[06:56:33.0760] <Redfire>
+Wasmer has some stuff on WASI support on top of the rust bindings https://github.com/wasmerio/mozjs/tree/wasi
+
+[07:41:27.0848] <jjaschke>
+Hi, I have a basic (or not?) JS question. I'm trying to find out if this [wpt](https://github.com/web-platform-tests/wpt/blob/b2a38f9f6f/css/css-highlight-api/HighlightRegistry-iteration-with-modifications.html) is correct. The test creates an iterator for a `maplike` (there's a similar one which uses `setlike` fwiw) and assumes that the iterator uses a copy of the data, instead of the original live data. Therefore, any updates to the `maplike` after creating the iterator are not reflected in the iteration.
+
+Is this the right behavior, and does this align to how iteration of "normal" maps (or sets for that matter) is expected to happen? Geckos implementation for `maplike` iterates over live data, hence we fail the mentioned wpt.
+
+[07:50:57.0886] <Ms2ger>
+Ref https://webidl.spec.whatwg.org/#es-map-iterator
+
+[07:52:41.0971] <Ms2ger>
+I'm not sure if that's well-defined
+
+[07:52:58.0128] <Ms2ger>
+In any case, it's not a JS question :)
+
+[08:02:57.0487] <jjaschke>
+> <@ms2ger:igalia.com> In any case, it's not a JS question :)
+
+What would be a better place to ask then?
+
+[08:04:04.0545] <jjaschke>
+FWIW, when I use the example in [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map/@@iterator), it looks like the iterator uses live data, both in Firefox and Chrome.
+
+[08:21:59.0207] <jandem>
+> <@canada_goose:mozilla.org> could you theoretically expose functions/etc to the js world from the worker? or would you need to fork SM, etc
+
+it'd require changes to SpiderMonkey to bridge the two JS worlds. The JS shell isn't the best fit for that kind of thing. It would be nice to have a better embedding for wasi users that would support this natively
+
+[08:22:10.0352] <jandem>
+> <@canada_goose:mozilla.org> could you theoretically expose functions/etc to the js world from the worker? or would you need to fork SM, etc
+
+ * it'd require changes to SpiderMonkey to bridge the two JS worlds. The JS shell also isn't the best fit for that kind of thing. It would be nice to have a better embedding for wasi users that would support this natively
+
+[08:23:26.0627] <canadahonk>
+I have an idea to mostly do it without SM support (but quite cursed), so I think I'm okay for now. would be nice though yeah :) (but not important)
+
+[08:24:07.0063] <canadahonk>
+(you can likely use stdout/stdin as "IPC" between the two worlds and make interface wrappers)
+
+[09:02:07.0305] <smaug>
+Ms2ger: well the JS side is a JS question 🙂 What is the expected behavior for normal maps? And sounds like iteration is "live".
+
+[09:03:24.0585] <smaug>
+jjaschke: #whatwg:matrix.org  or #dom:mozilla.org would be then the places to ask questions about webidl.
+
+[09:04:50.0529] <smaug>
+and Ms2ger was already asking there
+
+[09:29:19.0493] <jandem>
+that works if you're just passing strings. You can also write to the in-memory file system (that's also how we pass the JS source code you enter on the website)
+
+[09:36:36.0021] <jandem>
+it's also fun to think about using Wasm GC eventually for certain JS objects shared with the other side
+
+[14:23:39.0058] <iain>
+jjaschke: A JS Map is specified to use live data. See section 24.1.5.1 of the spec [here](https://tc39.es/ecma262/#sec-map-iterator-objects), and particularly part 2.d.iii.5: "NOTE: The number of elements in entries may have increased while execution of this abstract operation was paused by Yield." The same also appears to be true for Set objects. You can't iterate over a WeakMap or a WeakSet.
+
+
+2023-10-26
+[06:40:50.0598] <padenot>
+I have the main thread that busy waits on a memory location in a SAB _without_ doing an `Atomics.load` (not my code), and another thread that eventually writes to this memory location to attempt to unblock the first thread, Chromium seem to perform some synchronization, Firefox locks up the main thread
+
+[06:40:54.0967] <padenot>
+is this what we expect ?
+
+[06:42:58.0623] <padenot>
+I see ES says: `Non-atomic accesses do not have a strict total ordering agreed upon by all agents, i.e., unordered.`, but still. This is on x86_64 if it matters
+
+[06:50:00.0428] <padenot>
+It also says: `Naive code generation uses these patterns:  Regular loads and stores compile to single load and store instructions. [...]`. I wonder if somehow SM optimizes something and everything falls apart, because non-atomic loads and store on int32 on x86 don't require atomic operations to work
+
+[07:04:05.0383] <jandem>
+padenot: do you happen to have a test case?
+
+[07:04:34.0407] <padenot>
+sure
+
+[07:05:25.0855] <padenot>
+https://www.wothke.ch/webV2M_worklet_ff/ -- it locks up the browser
+
+[07:06:44.0602] <padenot>
+https://www.wothke.ch/webV2M_worklet_ff/worker_backend.js line 112 is the non-atomic load, https://www.wothke.ch/webV2M_worklet_ff/v2m-processor44.js in `setReturnCode` is the atomic store
+
+[07:07:04.0030] <padenot>
+despite its name, `worker_backend.js` is running on the main thread
+
+[07:09:07.0014] <padenot>
+maybe I should learn to disassemble or otherwise understand what SM runs
+
+[08:18:36.0022] <padenot>
+jandem: should I minimize and file ?
+
+[08:20:52.0149] <padenot>
+or maybe it's absolutely legal per spec and there's no issue
+
+[08:21:24.0944] <padenot>
+doing concurrent access without atomic is for people who like living dangerously anyways
+
+[08:21:33.0902] <padenot>
+ * doing concurrent accesses without atomics is for people who like living dangerously anyways
+
+[08:40:25.0781] <jandem>
+padenot: if you have something like this (the loop is from their code), the JIT will definitely hoist that typed array load: https://paste.mozilla.org/u1UgtynU
+
+[08:41:13.0416] <padenot>
+that's horribly dangerous no ?
+
+[08:41:55.0298] <jandem>
+maybe v8 doesn't optimize this for SAB views, or still executes the code in a lower tier without LICM
+
+[08:42:32.0811] <padenot>
+I find it really surprising that it's legal to optimize it this way tbh
+
+[08:44:29.0921] <padenot>
+I understand that it can tear or return weird results, or whatever, but it should eventually do something
+
+[08:49:06.0684] <jandem>
+with `Atomics.load` we don't hoist the load
+
+[08:49:40.0753] <padenot>
+argh what is it then
+
+[08:50:02.0051] <jandem>
+padenot: please file a bug. I don't know off-hand if this is specified
+
+[08:50:32.0661] <jandem>
+ * padenot: please file a bug. I don't know off-hand if this is specified (optimizing non-atomic load from SAB view)
+
+[08:50:36.0818] <padenot>
+it seems to be:
+```
+Examples of transformations that remain valid are: merging multiple non-atomic reads from the same location, reordering non-atomic reads, introducing speculative non-atomic reads, merging multiple non-atomic writes to the same location, reordering non-atomic writes to different locations, and hoisting non-atomic reads out of loops even if that affects termination. Note in general that aliased TypedArrays make it hard to prove that locations are different.
+```
+
+[08:50:53.0018] <padenot>
+ * it seems to be:
+
+```
+> Examples of transformations that remain valid are: merging multiple non-atomic reads from the same location, reordering non-atomic reads, introducing
+ > speculative non-atomic reads, merging multiple non-atomic writes to the same location, reordering non-atomic writes to different locations, and hoisting > non-atomic reads out of loops even if that affects termination. Note in general that aliased TypedArrays make it hard to prove that locations are different.
+
+
+[08:51:02.0894] <padenot>
+ * it seems to be:
+
+> Examples of transformations that remain valid are: merging multiple non-atomic reads from the same location, reordering non-atomic reads, introducing
+> speculative non-atomic reads, merging multiple non-atomic writes to the same location, reordering non-atomic writes to different locations, and hoisting
+> non-atomic reads out of loops even if that affects termination. Note in general that aliased TypedArrays make it hard to prove that locations are different.
+
+[08:51:19.0094] <padenot>
+end of note 2: https://tc39.es/ecma262/#sec-shared-memory-guidelines
+
+[08:52:49.0737] <padenot>
+preceeded by "We outline some rules about program transformations that are intended to be taken as normative"
+
+[08:53:11.0910] <jandem>
+right, this is "hoisting non-atomic reads out of loops even if that affects termination"
+
+[08:53:40.0129] <padenot>
+yeah so it seems to be legal
+
+[08:54:14.0947] <padenot>
+in the grand scheme of things I can only agree with being annoying to people that are doing non-atomic concurrent accesses
+
+[08:54:28.0474] <padenot>
+but it's surprising
+
+[08:55:36.0238] <padenot>
+it would be good to ensure we're doing what we thing we're doing though
+
+[08:55:44.0977] <padenot>
+I'll minimize + file
+
+[08:55:53.0059] <padenot>
+ * it would be good to ensure we're doing what we think we're doing though
+
+[08:56:12.0515] <jandem>
+I noticed an angry comment about `Atomics.wait` in the source code :)
+
+[08:56:27.0739] <padenot>
+the person that reported that is _extremely_ insulting
+
+[08:57:17.0565] <padenot>
+but I decided to investigate anyway by fear of something serious
+
+[08:57:47.0039] <jandem>
+thanks for looking into this
+
+[08:57:59.0720] <padenot>
+(originally a web audio bug because one of those thread is an audioworklet)
+
+[08:58:08.0665] <jandem>
+it probably works if you disable Ion with `javascript.options.ion = false` and restart
+
+[08:58:51.0989] <padenot>
+ok I'll verify this tomorrow, that'll be a good test
+
+[08:58:56.0683] <jandem>
+do you have a bug #?
+
+[08:59:59.0776] <padenot>
+1859103 but it's not very pleasant to read
+
+[09:00:14.0650] <padenot>
+I was going to spin another bug to investigate quietly
+
+[09:00:38.0678] <padenot>
+the code itself is absolutely horrible as well
+
+[09:01:42.0388] <jandem>
+ugh :/
+
+[09:03:18.0054] <padenot>
+let's not preoccupy ourselves with this character, i'll just answer to do an atomic load in a busy loop and that'll be it
+
+[09:04:00.0926] <padenot>
+/me leaves for the day
+
+[09:04:20.0927] <padenot>
+thanks for double-=checking!
+
+[09:04:23.0183] <padenot>
+ * thanks for double-checking!
+
+[09:24:57.0684] <jonco>
+dthayer: the bug about adding profiler support for GC memory is bug 1811927, particularly the changes to js/src/gc/Memory.cpp
+
+[09:25:00.0336] <botzilla>
+https://bugzil.la/1811927 — ASSIGNED (jesup) — Report non-malloc memory managed by SpiderMonkey to the profiler, e.g. wasm memory
+
+[16:26:30.0574] <sfink>
+I have a `Set` that I am processing one element at a time. The fastest way I know of to grab an arbitrary element from a `Set` is `let [elt] = myset`. But I'll be processing elements one at a time, which means I'll immediately delete the element from the set, work on it, and then go on to the next one.
+
+[16:26:45.0343] <sfink>
+it takes about the same amount of time to do `let elt = myset.values().next().value` fwiw.
+
+[16:31:21.0671] <sfink>
+what disturbs me about this is that the backing implemention is `OrderedHashSet`, which has a separate table of all of the elements (which maintains the order (and as a side effect speeds up the hashtable operations, which means maintaining order is cheaper than you'd expect.)
+
+[16:31:54.0984] <sfink>
+that backing table can be reallocated if you delete from the end, but I don't think it can do anything if you remove all but the last element.
+
+[16:32:32.0180] <sfink>
+but I don't know of any fast way to get the last element of the set.
+
+[16:33:09.0297] <sfink>
+or maybe on a more significant note: taking the first element gives me a breadth-first search. I can't really do a depth first search using a `Set`.
+
+[16:33:26.0008] <sfink>
+(yes, this could well be a "then don't use a `Set`, idiot!" type thing)
+
+[16:33:51.0114] <sfink>
+Anyway, not really a problem, just realizing that having an ordered `Set` implies the existence of operations that don't exist.
+
+[16:39:35.0064] <sfink>
+We could always optimize `[...myset].at(-1)` I guess 🫤
+
+[16:45:11.0380] <sfink>
+Oops. Actually, I'm wrong. We pay no attention to where elements are removed, and will resize the table based on the ratio of dead slots. There's a comment saying we `could` reuse the space if you remove the last element, but it's not implemented. So ignore me.
+
+
+2023-10-27
+[18:38:45.0536] <mstange>
+sfink: Not quite the same thing, but this reminds me of https://bugzilla.mozilla.org/show_bug.cgi?id=1632210 where I ended up just forgetting about the set in the end and just using the iterator
+
+[05:09:32.0586] <padenot>
+jandem: disabling ion makes this page "work"
+
+[05:09:58.0925] <padenot>
+so it's probably what we thought yesterday
+
+[05:10:56.0586] <jandem>
+padenot: agreed
+
+[05:11:22.0204] <padenot>
+(as does doing an atomic load of course, which is the correct thing to do)
+
+[09:23:12.0933] <sfink>
+> <@mstange:mozilla.org> sfink: Not quite the same thing, but this reminds me of https://bugzilla.mozilla.org/show_bug.cgi?id=1632210 where I ended up just forgetting about the set in the end and just using the iterator
+
+You're right, that's very similar. And I hadn't considered just using the iterator. 
+
+[09:23:19.0557] <sfink>
+I think that would work for me. I do need to remove elements during iteration, and I can't quite wrap my head around the semantics when adding and removing during iteration, but it doesn't really matter for my case.
+
+[09:23:49.0214] <sfink>
+I don't really care which element I get, as long as I get all of them, so I can just create a new iterator when the first one runs dry.
+
+[09:25:29.0217] <sfink>
+In my playing around, I *really* do not understand the semantics. If I read [the spec on CreateSetIterator](https://262.ecma-international.org/14.0/#sec-createsetiterator), it seems like if I do:
+
+[09:25:40.0744] <sfink>
+`s = new Set(['a', 'b', 'c']); i = s.values();` then I get the iterator.
+
+[09:26:01.0101] <sfink>
+calling `i.next()` returns 'a', of course.
+
+[09:28:24.0697] <sfink>
+now if I do `s.delete('b'); print(i.next().value);`, from my reading of the spec it should be looking at the cached `entries` index 1, which is now empty. Oh! But it hasn't updated `numEntries` yet, and won't because it skips that when it sees an empty slot... ok never mind, I was wrong.
+
+[09:29:15.0642] <sfink>
+(I thought it should end the termination without returning 'c', because I thought it always updated numEntries and you'd be past the new number of entries.)
+
+
+2023-10-29
+[08:51:49.0389] <aadhi0319>
+What is the best way to determine what zone a thread is associated with? I'm trying to find some way to get a reference to a JSRuntime or JSContext and then try to use that to get the current zone.
+
+[09:18:11.0066] <aadhi0319>
+I realized I had a reference to `gc` and was able to use that to get the context and zone. 
+
+
+2023-10-30
+[05:06:50.0480] <dbezhetskov>
+hello, is it possible to specify shell arguments through `./mach jstests test262`, for example I want to add --baseline-eager and --spectre-mitigations=off?
+
+[05:07:06.0595] <dbezhetskov>
+ * hello, is it possible to specify shell arguments through `./mach jstests test262`, for example I want to add `--baseline-eager` and `--spectre-mitigations=off`?
+
+[05:10:43.0802] <arai>
+dbezhetskov: `JSTESTS_EXTRA_ARGS` environment variable is applied for all variants https://searchfox.org/mozilla-central/search?q=JSTESTS_EXTRA_ARGS&path=&case=true&regexp=false
+
+[05:11:28.0436] <arai>
+the variants I meant is listed in https://searchfox.org/mozilla-central/source/js/src/tests/lib/tests.py
+
+[05:13:17.0379] <arai>
+`--baseline-eager` may conflict with some of them.  you might need to pass `--jitflags=none` parameter to mach jstests command
+
+[05:48:42.0905] <jandem>
+if you're running `./mach jstests` locally, you can also use `./mach jstests --args="--baseline-eager --spectre-mitigations=off"
+
+[05:48:47.0603] <jandem>
+ * if you're running `./mach jstests` locally, you can also use \`./mach jstests --args="--baseline-eager --spectre-mitigations=off"`
+
+[05:48:59.0204] <jandem>
+ * if you're running `./mach jstests` locally, you can also use `./mach jstests --args="--baseline-eager --spectre-mitigations=off"`
+
+[07:42:24.0534] <dbezhetskov>
+thanks arai and jandem , it works
+
+[14:16:31.0281] <rkraesig>
+If a `js::PromiseObject` is created without a JS-side executor, it will have `PROMISE_FLAG_DEFAULT_RESOLVING_FUNCTIONS` set, and its `PromiseSlot_RejectFunction` slot will never be used. This is technically documented, but only as an implementation detail. Would it be reasonable to explicitly reserve that slot for use by the native-code "executor" that's responsible for resolving the promise?
+
+[14:22:25.0827] <rkraesig>
+(Not necessarily directly, but at least as something like `getExtraData` and `setExtraData`members on `PromiseObject`.)
+
+[15:35:52.0593] <arai>
+is it for embedding context, or is it for adding another built-in feature or optimization?
+
+[15:37:44.0984] <arai>
+"slot is not used" there means the slot contains `undefined` instead of function
+
+[15:41:02.0475] <arai>
+I cannot guarantee that things work even if it contains random data
+
+[15:42:17.0336] <arai>
+so, for embedding context, I suggest avoid that, unless you verified that the slot is never touched
+
+[15:45:54.0998] <arai>
+if the context is to add internal optimization, then it makes sense to reuse the slot
+
+[16:43:21.0578] <rkraesig>
+Embedding. Specifically Firefox, though, so I'm not willing to rely on implementation details of the current version.
+
+I _have_ verified that the slot is never touched unless the relevant flag is set, except [as part of resolution/rejection](https://searchfox.org/mozilla-central/rev/a1827d62f97d9721993ba489f4af7dea422d418f/js/src/builtin/Promise.cpp#1632); that's fine in my case, but may not be appropriate in general.
+
+[16:50:53.0282] <arai>
+is there a bug filed for it?
+
+[16:52:43.0094] <arai>
+if it's really necessary for performance optimization etc, it might make sense to provide the functionality as public API
+
+
+2023-10-31
+[17:12:04.0715] <rkraesig>
+There's no bug, no — I wanted to check whether it was even vaguely reasonable, first.
+
+It's _not_ strictly necessary for optimization (and performance isn't even my primary concern; just implementation complexity). If that would be a requirement, then I can find another way to do it.
+
+[17:17:50.0591] <arai>
+it's not a strict requirement, but given the `PROMISE_FLAG_DEFAULT_RESOLVING_FUNCTIONS` is for performance optimization and, whether it's reasonable or not would depend on case
+
+[17:18:21.0950] <arai>
+ * it's not a strict requirement, but given the `PROMISE_FLAG_DEFAULT_RESOLVING_FUNCTIONS` is for performance optimization, whether it's reasonable or not would depend on case
+
+[07:38:21.0316] <yury>
+I have a pieces of code/loop that not suppose to trigger GC/allocations. Is there a debug runtime guard I can add to check it really does not do that?
+
+[07:42:07.0564] <yury>
+ * I have a piece of code/loop that not suppose to trigger GC/allocations. Is there a debug runtime guard I can add to check it really does not do that?
+
+[07:42:48.0567] <Bryan Thrall [:bthrall]>
+yury: does [`AutoCheckCannotGC`](https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#1129 ) do what you need?
+
+[07:43:33.0828] <yury>
+> <@bthrall:mozilla.org> yury: does [`AutoCheckCannotGC`](https://searchfox.org/mozilla-central/source/js/public/GCAPI.h#1129 ) do what you need?
+
+will check thanks
+

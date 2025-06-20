@@ -1,0 +1,2149 @@
+2021-11-01
+[01:55:46.0203] <yulia>
+> <@calebjasik:boba.best> Why did it work to copy data across threads for regular module scripts? Because of the data being owned by something before the refactor + then not being owned and copyable?
+
+Yes, its owned by another data structure, which has already been refactored to make its use in workers possible. Making it copyable doesn't seem to be a good direction and would be a significant change to the dom script loader, which is more complex than the worker script loader. This is getting a bit into the weeds though.
+
+[01:57:22.0444] <yulia>
+The short story is - we didn't unify our script loaders when writing the worker script loader (it was meant to be temporary), its lead to some tech debt which is tricky to resolve
+
+[03:52:05.0818] <Nicolò>
+Hi! I pushed some patches whose builds failed with `max number of clients reached` withot logging anything else: that error makes me think that it's not caused by a build error in the patches. Could someone with the "Can Edit" capability restart them? 🙏
+- https://phabricator.services.mozilla.com/harbormaster/build/462020/
+- https://phabricator.services.mozilla.com/harbormaster/build/462022/
+- https://phabricator.services.mozilla.com/harbormaster/build/462023/
+- https://phabricator.services.mozilla.com/harbormaster/build/462024/
+- https://phabricator.services.mozilla.com/harbormaster/build/462025/
+
+[05:38:32.0987] <DerekNonGeneric>
+[Zombie compartments! Recognize and report them. Stop the screaming.](https://blog.mozilla.org/nnethercote/2011/07/20/zombie-compartments-recognize-and-report-them-stop-the-screaming/)
+
+[05:43:13.0851] <yulia>
+hmm, i don't have edit access either. let me ask
+
+[14:33:41.0187] <DerekNonGeneric>
+it feel so wrong having `DOMException` in the back-end like we do now... not really sure what other choice we had though seeing as how the `AbortError` is really a `DOMException`
+
+[14:35:26.0979] <DerekNonGeneric>
+I just happened to run into another SpiderMonkey embedder's website, maybe you all have heard of it (WhiteBeam)? http://www.whitebeam.org/
+
+[14:37:18.0755] <DerekNonGeneric>
+inspired by them, I would probably have called it `ROMException` (Resource Object Model)
+
+[14:39:53.0904] <DerekNonGeneric>
+they give you all credit for their JS runtime in the credits section -- really cool that other people are having success doing this, might be going to give it a shot myself http://www.whitebeam.org/credits.rhtm
+
+[14:48:08.0372] <DerekNonGeneric>
+looks like they got started on expanding upon the JS intrinsics http://www.whitebeam.org/library/guide/javascript.rhtm
+
+[15:02:40.0619] <DerekNonGeneric>
+think this is where they implemented import assertions for JSON modules https://sourceforge.net/p/whitebeam/whitebeam/ci/master/tree/presentation/TemplateIf/TempIfJSONimp.cxx
+
+[15:09:33.0290] <DerekNonGeneric>
+can someone link the embedders guide again? all i have is this https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Value.md
+
+[15:11:07.0848] <tcampbell>
+That is the right repository. I think there are a few different files beside the one you linked that describe a few common things
+
+[15:12:49.0600] <DerekNonGeneric>
+must be this `Building%20SpiderMonkey.md` https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/next/docs/Building%20SpiderMonkey.md
+
+[15:15:15.0879] <DerekNonGeneric>
+tcampbell: do you know if there is any way i would be able to use `mach` to build this? `make` is a big no-no for cross-platform reasons
+
+[15:16:16.0307] <tcampbell>
+DerekNonGeneric: yep, mach works. You'll still need to add `ac_add_options --disable-jemalloc`, and then setting install prefix is similar
+
+[15:17:35.0923] <tcampbell>
+I don't seem to have the config lying around any more but I've been building with mach when testing examples in recent months
+
+[15:19:53.0852] <DerekNonGeneric>
+okay, great, going to be exploring this space a bit more to see how reasonable this workflow would be for other projects as well (the Node.js build system is also in need of a new build-system)
+
+[15:20:40.0390] <DerekNonGeneric>
+ * okay, great, going to be exploring this space a bit more to see how reasonable this workflow would be for other projects as well (the Node.js build system is similarly in bad shape)
+
+
+2021-11-02
+[01:35:17.0946] <Standard8>
+yulia: Not sure if this helps with any of the work towards es6 modules in the tree, but thought I'd just let you know that bug 1738236 has just landed.
+
+This removes the last production instances (that ESLint knows of) of the `this` or `null` second argument to ChromeUtils.import.
+
+There's still around 60 tests to fix, hopefully they'll mainly happen via mentored bugs.
+
+[01:35:21.0324] <botzilla>
+https://bugzil.la/1738236 — RESOLVED (standard8) — Clean up remaining production uses of the second argument to ChromeUtils.import and change rule to a warning
+
+[03:24:28.0820] <yulia>
+> <@standard8:mozilla.org> yulia: Not sure if this helps with any of the work towards es6 modules in the tree, but thought I'd just let you know that bug 1738236 has just landed.
+> 
+> This removes the last production instances (that ESLint knows of) of the `this` or `null` second argument to ChromeUtils.import.
+> 
+> There's still around 60 tests to fix, hopefully they'll mainly happen via mentored bugs.
+
+Awesom!
+
+[03:24:31.0783] <yulia>
+ * Awesome!
+
+[07:04:09.0571] <tcampbell>
+jonco: meeting ping
+
+[07:05:56.0724] <jonco>
+tcampbell: on my way
+
+[10:35:55.0558] <jonco>
+sfink: ping
+
+[10:36:15.0125] <sfink>
+jonco: what's up?
+
+[10:36:38.0898] <sfink>
+here now
+
+
+2021-11-03
+[09:29:44.0704] <jonco>
+nbp: sfink thanks for adding notes
+
+[09:30:05.0211] <jonco>
+also mgaudet ^
+
+[09:34:15.0395] <sfink>
+jonco: I think you had another project size estimate that I missed. (See "Potential projects" in the notes.)
+
+[10:11:32.0203] <calebjasik>
+yulia, if you want to check out a project that'll benefit from module workers dropping, we're running a lightweight compiler in the browser for a repl! https://github.com/snowpackjs/astro-repl/
+
+[10:12:13.0639] <calebjasik>
+currently we're trying to sort out consistency between different browsers though 😅, for example apparently Safari can't spawn workers inside of workers?
+
+
+2021-11-04
+[14:32:46.0976] <mgaudet>
+confession: I now have a _compiling_ version of ReadableByteStreamTee. `24 files changed, 2370 insertions(+), 256 deletions(-)`
+
+[14:32:51.0114] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:43:57.0483] <sfink>
+nice!
+
+[14:47:08.0891] <mgaudet>
+So... in _theory_, I just have to rebase my fetch prototype atop this, and I'll pass all the tests; and if I add one more function, we'll support... all(?) of readable byte streams (which were never supported in the JS implementation) 
+
+[14:47:27.0823] <mgaudet>
+But... that's a tomorrow / week after next project 
+
+
+2021-11-05
+[02:25:10.0380] <annevk>
+mgaudet: wow, that sounds great
+
+[08:25:14.0616] <nbp>
+I was mentioning yesterday, or the day before that Lcov might have been disabled in Code Coverage CI. I just got a bug because it is not ;)
+
+[09:16:14.0116] <tcampbell>
+ha
+
+[13:36:26.0113] <mgaudet>
+confession: Bugs are always harder when you're looking for something that _didn't_ happen, vs something wrong that *did*. I will probably not solve this slightly baffling Fetch API bug this week. Nor next, as I will be taking all next week as vacation./
+
+
+2021-11-09
+[01:58:39.0087] <dbezhetskov>
+Hi Ryan Hunt, I'm trying to beef up my understanding of Wasm GC and its implementation in SM and I found out that you worked on this. I see that SM supported `(rtt.canon $t)`. I see that you pregenerated `TypeIdDesc` for each type so each type definition has unique corresponding value  
+
+[02:00:04.0070] <dbezhetskov>
+ * Hi Ryan Hunt, I'm trying to beef up my understanding of Wasm GC and its implementation in SM and I found out that you worked on this. I see that SM supported `(rtt.canon $t)`. I see that you pregenerated `TypeIdDesc` for each type so each type definition has unique corresponding value, is this right? Also, could you clarify how do you implement `ref.cast` in this case?
+
+[02:00:27.0651] <dbezhetskov>
+ * Hi Ryan Hunt, I'm trying to beef up my understanding of Wasm GC and its implementation in SM and I found out that you worked on this. I see that SM supported `(rtt.canon $t)`. I see that you pregenerated `TypeIdDesc` for each type so each type definition has a unique corresponding value, is this right? Also, could you clarify how do you implement `ref.cast` in this case?
+
+[02:02:31.0895] <dbezhetskov>
+ah, I see, `ref.cast` is a runtime call that iterates through all parents and tries to find matching one
+
+[02:02:44.0586] <dbezhetskov>
+ * ah, I see, `ref.cast` is a runtime call that iterates through all parents and tries to find the matching one
+
+[09:41:16.0601] <Ryan Hunt>
+ dbezhetskov Yes, at compile-time each GC type definition gets it's own slot in TlsData to store an RttValue corresponding to rtt.canon $t. rtt.canon $t at runtime simply loads from this slot. At instantiation time is when we actually create the RttValue's for the type definitions. Currently, each type definition get's a fresh RttValue. In the full-MVP we should perform canonicalization and share an RttValue for type definitions that are actually equivalent
+
+[09:42:08.0042] <Ryan Hunt>
+And yes, ref.cast performs a linear check to see if the dynamic subtype RttValue is in the static supertype RttValue
+
+
+2021-11-11
+[23:36:28.0436] <wingo>
+Ryan Hunt: if there is single inheritance then a type check could be O(1) right?  the usual trick of each type having a field which is a linear array of its parent types; to know of T is an instance of U, you check if T.parents[U.parents.len] == U
+
+[23:36:53.0578] <wingo>
+ * Ryan Hunt: if there is single inheritance then a type check could be O(1) right?  the usual trick of each type having a field which is a linear array of its parent types; to know of T is an subtype of U, you check if T.parents[U.parents.len] == U
+
+[23:38:37.0815] <wingo>
+or is canonicalization the problem
+
+[04:36:21.0476] <Ryan Hunt>
+wingo: yeah, we could use the super type display trick with the current design of the MVP. It’s just a missing optimization (amongst others)
+
+[04:38:14.0142] <wingo>
+ok :)  was wondering if the problem of equirecursive type equality somehow bled into subtyping
+
+[04:46:28.0544] <dbezhetskov>
+Ryan Hunt hi, I've just run this simple test in SM:
+```
+(module 
+    (type $t1 (struct (field i32)))
+    (type $t2 (struct (field i32) (field i32)))
+
+    (func (export "main") (result i32)
+        (ref.test (struct.new_with_rtt $t2 (i32.const 37) (i32.const 19) (rtt.canon $t2)) (rtt.canon $t1))
+    )
+)
+```
+and revealed that the result of `ref.test` is `0`. I thought that struct in current MVP should be follow "width and depth" rule
+
+[04:47:12.0742] <dbezhetskov>
+btw, I see that we initialize `RttValue::Parent` slot only inside `rttSub`
+
+[04:47:47.0216] <dbezhetskov>
+ * Ryan Hunt hi, I've just run this simple test in SM:
+```
+(module 
+    (type $t1 (struct (field i32)))
+    (type $t2 (struct (field i32) (field i32)))
+
+    (func (export "main") (result i32)
+        (ref.test (struct.new_with_rtt $t2 (i32.const 37) (i32.const 19) (rtt.canon $t2)) (rtt.canon $t1))
+    )
+)
+```
+
+and revealed that the result of `ref.test` is `0`. I thought that structs in the current MVP desing should follow "width and depth" rule
+
+[04:53:31.0483] <Ryan Hunt>
+I believe that the results of your simple test are correct.. canon $t2 has no rtt parent, so it cannot be cast to canon $t1. Even though $t2 <: $t1, you have to construct the rtts using this relationship (via rtt sub) in order to use it at runtime
+
+[04:53:51.0071] <Ryan Hunt>
+Is V8 giving a different result?
+
+[04:54:23.0798] <dbezhetskov>
+> <@rhunt:mozilla.org> Is V8 giving a different result?
+
+no, SM and V8 gives the same results
+
+[04:54:43.0256] <dbezhetskov>
+> <@rhunt:mozilla.org> Is V8 giving a different result?
+
+ * no, SM and V8 gives the same results
+
+[04:54:56.0579] <dbezhetskov>
+ * no, SM and V8 give the same results
+
+[04:55:03.0199] <dbezhetskov>
+ * no, SM and V8 return the same results
+
+[05:00:23.0122] <wingo>
+i didn't realize casts+subtyping required rtt's
+
+[05:00:50.0182] <wingo>
+/me ignorant apparently
+
+[05:05:43.0172] <wingo>
+i guess that's the "subtyping between nominal and structural types is not allowed currently" point from https://docs.google.com/document/d/1DklC3qVuOdLHSXB5UXghM_syCh-4cMinQ50ICiXnK3Q/edit#
+
+[05:20:31.0059] <Ryan Hunt>
+Upcasting does not require rtt's. So in the example, you could cast from $t2 to $t1 for free by just passing a $t2 value to $t1 param/local. This works entirely at compile time. Downcasting requires runtime assistance via rtt's. My understanding is that you construct a GC value with the right chain of rtt's for which you'll desire to be able to do downcasts on (the chain is verified at compile time to follow the static subtyping relationship). What you get from this is the ability to do O(1) casts, as you mentioned
+
+[06:06:48.0399] <Ms2ger 💉💉>
+Ryan Hunt: hey, I was wondering if you had thoughts on passing wasm functions to `new WebAssembly.Function()` - I realized that the existing import-export trick doesn't really work for them
+
+[06:12:32.0265] <Ryan Hunt>
+Ms2ger 💉💉: I don't have a strong opinion on it, except that I don't really see the use-case in passing a wasm function to that constructor. It would be nice to not have to handle that case, but I think it might not be terrible to do if we have to. I was hoping the CG would come to a consensus on it, but it doesn't seem like they have (https://github.com/WebAssembly/js-types/issues/13).
+
+[06:14:00.0906] <Ms2ger 💉💉>
+Ryan Hunt: fair enough, thanks
+
+
+2021-11-15
+[07:06:32.0902] <tcampbell>
+lth: this type of thing causes me frustration https://searchfox.org/mozilla-central/rev/3c8a7970944daaf917b547dffc0790bcd37cadc1/js/src/gc/Allocator.cpp#39,62-64
+
+[07:07:23.0391] <tcampbell>
+Things take the cx parameter but based on CanGC may or may not register error. Then it comes down to if the caller is progating or hiding that failure
+
+[07:08:12.0063] <lth>
+nasty
+
+[07:08:28.0465] <tcampbell>
+If we had an alias for `bool` that indicated to the reader returning-false-means-pending-exception. So what the hell would I call the return type of that function?
+
+[07:08:38.0878] <tcampbell>
+ * If we had an alias for `bool` that indicated to the reader returning-false-means-pending-exception. What the hell would I call the return type of that function?
+
+[07:08:56.0604] <lth>
+i think "alias for bool" is not what we're looking for
+
+[07:08:58.0924] <Ms2ger 💉💉>
+What function?
+
+[07:09:03.0302] <lth>
+fundamentally there are more states here
+
+[07:09:29.0311] <tcampbell>
+> <@ms2ger:igalia.com> What function?
+
+In that example above, js::AllocateObject
+
+[07:09:30.0427] <Ms2ger 💉💉>
+true|false|FILE_NOT_FOUND
+
+[07:09:39.0603] <tcampbell>
+PRINTER_ON_FIRE
+
+[07:10:00.0346] <lth>
+in some sense, AllocateObject always returns a status code
+
+[07:10:09.0292] <lth>
+sometimes this code may not be failure, cf MOZ_ALWAYS_TRUE
+
+[07:10:59.0968] <lth>
+but whatever the solution, a single-bit return is almost certainly not what we want imo
+
+[07:11:21.0019] <lth>
+i did a sketch last week for some wasm code and ended up with four states only for that little corner of the universe:
+
+[07:11:38.0416] <lth>
+OK, Reported, UnreportedOOM, UnreportedWithData
+
+[07:11:51.0085] <lth>
+where the last one carries separate data about the failure
+
+[07:12:23.0147] <lth>
+(eg error message, error code, to be reported when a cx is available)
+
+[07:12:25.0697] <tcampbell>
+This is an ugly thing that we've been brewing with the Intl work https://searchfox.org/mozilla-central/source/intl/components/src/ICUError.h#19
+
+[07:13:18.0844] <lth>
+yeah
+
+[07:14:07.0318] <lth>
+somehow i feel that each subsystem should / could have its own error reporting logic, so long as there's no data loss; the logic could be adapted to the needs of the subsystem
+
+[07:16:20.0180] <lth>
+(always nice to share code obviously but not good to let that get in the way of progress)
+
+[07:17:44.0394] <tcampbell>
+Another fun example is IndexedDB https://searchfox.org/mozilla-central/rev/3c8a7970944daaf917b547dffc0790bcd37cadc1/dom/indexedDB/IDBResult.h#21-24
+In this case, the spec has some extra terminal symbols that get propagated in the same place as Value. I think `*invalid*` is the main oddity since it is returned during internal steps when a Value is not found, but this isn't throwing an errror
+
+[07:19:11.0914] <tcampbell>
+In a way, similar to JSMagic
+
+[07:19:28.0369] <tcampbell>
+ * In a way, similar to JS::MagicValue
+
+[07:21:12.0999] <lth>
+/me also worries about TlsContext.get() and how its return value is used to report errors deep down in the stack
+
+[07:22:34.0252] <tcampbell>
+yeah, that is where I stopped digging down the rabbit hole to be honest
+
+[07:24:44.0112] <tcampbell>
+In the few WASM cases I changed, largely I started added ROOM calls when sibling calls were already doing it, so that the function was at least consistent. The mix of some return paths having the OOM pending while others didn't in the same function seemed more misleading
+
+[07:25:06.0173] <lth>
+y, and i did some digging last week and there are plenty of these
+
+[07:25:11.0094] <lth>
+(got to go; more tomorrow)
+
+[09:36:02.0864] <barret>
+can `moz_arena_malloc()` return non-null even if there isnt enough memory?
+
+[09:50:07.0346] <nbp>
+barret: I would expect it to return null if there is not enough memory.
+
+[09:58:28.0301] <sfink>
+depends on your definition of "not enough memory", I would think. It will certainly allow you to overcommit physical memory.
+
+[10:13:04.0124] <nbp>
+My latest definition of not enough memory is mprotect returning an OOM.
+
+[11:30:16.0308] <chaircrusher>
+Hi folks. What can I get away with turning off building the SpiderMonkey library?  Our sysadmins are freaking out about the executable size on disk compared to our old JS1.8.5 cgi programs.
+
+[11:41:22.0263] <arai>
+chaircrusher: do you want to reduce the size of the library, or stop generating some file?
+
+[11:55:52.0180] <chaircrusher>
+Part of the problem is solved by not statically linking libmozjs, but wondering what can be turned off.
+JIT compilation doesn't help that much in a CGI called hundreds of times a second, since the individual instance doesn't last very long.
+
+
+[11:57:29.0932] <arai>
+if your program isn't using Intl APIs and some string methods, [`--without-intl-api`](https://searchfox.org/mozilla-central/rev/674b6582bafedc11fba6dc537769c88e9ed921d3/js/moz.configure#1035) might help
+
+[11:58:23.0579] <chaircrusher>
+I don't think we use intl APIs but we definitely work with UTF8 and UTF16.
+
+[12:01:49.0110] <arai>
+Strings methods that depends on intl api are: `toLocaleLowerCase`, `toLocaleUpperCase`, `localeCompare`, and `normalize`
+
+[12:02:26.0482] <arai>
+the former 3 still works without intl api, but there can be some difference in the behavior
+
+[12:02:57.0049] <arai>
+`normalize` is defined only if intl api is available
+
+[12:03:02.0715] <arai>
+https://searchfox.org/mozilla-central/rev/674b6582bafedc11fba6dc537769c88e9ed921d3/js/src/builtin/String.cpp#3509-3521
+
+[12:03:17.0916] <chaircrusher>
+thanks
+
+[12:03:19.0644] <arai>
+UTF8 / UTF16 don't depend on it
+
+[12:04:43.0145] <chaircrusher>
+They run many sites on virtual servers using limited-size file systems, so hundreds of copies of a big executable on different sites can eat up disk pretty fast.
+
+[12:05:36.0743] <chaircrusher>
+But I think linking shared will get the job done, and I'll work on whittling down JS from the full Mozilla (as it were) if that doesn't satisfy them.
+
+[12:47:38.0477] <sfink>
+I don't know if/how much `--disable-jit` would shrink the library
+
+[14:17:56.0750] <mgaudet>
+Hey all: jon4t4n has run into a  failure in [this patch](https://phabricator.services.mozilla.com/D126050). [This test](https://searchfox.org/mozilla-central/rev/674b6582bafedc11fba6dc537769c88e9ed921d3/js/src/tests/test262/language/module-code/eval-gtbndng-indirect-faux-assertion.js#32-38) tries to redefine `assert`, but fails because we already have a non-configurable `assert` on globalThis. 
+
+As he writes in the patch, this seems like an incompatibility between our shell and test262. For now, I'd stamp the patch with that test disabled, but longer term, is this something where we'd want to get it fixed upstream, or should we be supporting redefining assert in our shell tests? 
+
+[14:57:10.0436] <arai>
+do we have `assert` property?  I'm not aware of it
+
+[15:10:19.0215] <arai>
+mgaudet: it's from here  https://searchfox.org/mozilla-central/rev/674b6582bafedc11fba6dc537769c88e9ed921d3/js/src/tests/test262/shell.js#12-21
+
+[15:12:11.0412] <arai>
+is the function really unnecessary?  or maybe we need to do `globalThis.assert = function() { ... }` ?
+
+[15:15:34.0963] <arai>
+if the function is requirement for test262, I think the testcase is inappropriate that it overwrites the property/function
+
+[15:16:20.0903] <arai>
+or maybe there should be more detailed requirement about the global variables' descriptor
+
+[15:18:25.0933] <arai>
+https://github.com/tc39/test262/blob/main/CONTRIBUTING.md#test-environment
+
+[15:18:45.0186] <arai>
+it doesn't say about the descriptor
+
+[15:19:30.0851] <arai>
+so IMO it's the testcase's bug
+
+[15:32:53.0204] <arai>
+mgaudet, jon4t4n: filed https://github.com/tc39/test262/issues/3310
+
+[15:36:08.0274] <arai>
+for now, we could (a) modify `shell.js` to do `globalThis.assert = function() { ... }`, to make it match what the testcase expects for the helper, or (b) disable the test until it gets fixed to use different property
+
+
+2021-11-16
+[18:37:22.0017] <barret>
+> <@barret:mozilla.org> can `moz_arena_malloc()` return non-null even if there isnt enough memory?
+
+it turns out my issue was not related to moz_arena_malloc at all
+
+[09:29:51.0913] <mgaudet>
+confession: Just passed all the fetch WPT tests with DOM ReadableStreams
+
+[09:29:57.0206] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:51:59.0129] <sfink>
+confession: returned to DOM typed array fun. Hashed out a way to make progress. Writing some very questionable code to "freeze" ArrayBuffer and view lengths. Wild stuff.
+
+[15:07:21.0445] <mgaudet>
+confession: Spent the day mostly investigating a bug in our existing streams implementation. In other news, a try build using DOM Streams was... greener than I expected. 
+
+[15:47:52.0905] <Tim>
+any idea why I would get this message when trying to `mach bootstrap`? untarring "/home/tjc/.mozbuild/node.tar.zst"
+ERROR!!!!!! Could not find artifacts for a toolchain build named `linux64-fix-stacks`. Local commits, dirty/stale files, and other changes in your checkout may cause this error. Make sure you are on a fresh, current checkout of mozilla-central. Beware that commands like `mach bootstrap` and `mach artifact` are unlikely to work on any versions of the code besides recent revisions of mozilla-central.
+
+
+[15:50:56.0149] <arai>
+sounds like this error message? https://searchfox.org/mozilla-central/rev/6deb8b6af57a8b5b6b1bcb143ea498e566475d8d/python/mozbuild/mozbuild/artifact_commands.py#23-30
+
+[15:52:12.0704] <arai>
+Are you using mozilla-unified ?
+
+[15:52:17.0022] <arai>
+ * Are you using mozilla-unified repository?
+
+[15:57:44.0281] <arai>
+try checking  1. what revision you're on  2. if there's any local change   3. if the error happens is temporary
+
+[15:58:41.0839] <Tim>
+I do have local patches, but I'm not sure why that would cause a problem
+
+[15:59:02.0536] <Tim>
+The most recent upstream commit is 2e257a27a6a9ea346f19a4780955361e8ff0a72b
+
+[15:59:51.0365] <Tim>
+from adding print statements into the python scripts, it looks like it's trying to download this URL: https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-clang-13.hash.0f8fa07a8ee1aa665c2aee58a4a9f60cbf98e409fefbc56aff2a1dca6ecf8964
+
+
+
+2021-11-17
+[16:00:07.0865] <Tim>
+which indeed doesn't work
+
+[16:00:12.0040] <Tim>
+oops, that's a different one
+
+[16:00:45.0216] <Tim>
+it complains about different toolchains different times when I run it
+
+[16:01:21.0273] <arai>
+maybe there's issue in the network or server-side?
+
+[16:01:47.0846] <arai>
+btw, I don't find `2e257a27a6a9ea346f19a4780955361e8ff0a72b` revision
+
+[16:01:56.0008] <arai>
+what repository is it?
+
+[16:04:24.0057] <Tim>
+maybe my revision IDs are different because I'm using git, but it's this changeset: https://hg.mozilla.org/releases/mozilla-beta/rev/043912bd98bf
+
+[16:04:52.0218] <arai>
+oh, you're on beta branch?
+
+[16:05:15.0814] <Tim>
+I guess so? I'm not sure because we have an internal igalia fork and my co-worker merged the changes into our internal fork
+
+[16:06:26.0188] <Tim>
+if I run `mach build`, it complains about linux64-clang; if I run `mach bootstrap`, it complains about linux64-fix-stacks
+
+[16:06:43.0580] <Tim>
+the other URL is https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-fix-stacks.hash.e5beed8804f958b36ff9e570abc3ead1269e8bc31a72f95da4d264438c12f5f7
+ and that doesn't work either
+
+[16:07:27.0624] <arai>
+if it's not clean central tip, it might be the reason (not sure the details, but that's the possibility).  people in #build:mozilla.org room would know better about artifacts
+
+[16:07:59.0471] <arai>
+ * if it's not clean central tip, it might be the reason (not sure the details, but that's the possibility).  people in #build:mozilla.org room would know better about artifacts downloaded during bootstrap and build
+
+[16:09:18.0329] <Tim>
+I'll ask there, thanks!
+
+[16:20:03.0934] <arai>
+kmag: review ping for bug 1738282
+
+[16:20:06.0035] <botzilla>
+https://bugzil.la/1738282 — ASSIGNED (arai) — Crash in [@ shutdownhang | js::frontend::CompilationStencil::~CompilationStencil]
+
+[04:55:21.0018] <stratan>
+Hello people! Is it possible to enable workers in the spidermonkey shell? 
+
+[04:58:02.0115] <arai>
+stratan: there's `evalInWorker` function that evaluates the code in separate thread
+
+[04:58:27.0867] <arai>
+but that's different than how Web API's `Worker` works
+
+[05:02:44.0383] <stratan>
+arai: I’d just like to run another/or the same .js file simultaneously. I’m not interested in the actual worker features. Would that be enough?
+
+[05:03:21.0462] <arai>
+just running the code should work
+
+[06:01:35.0807] <stratan>
+Great! Thank you arai :)
+
+[07:38:22.0605] <DerekNonGeneric>
+> <@mgaudet:mozilla.org> confession: Just passed all the fetch WPT tests with DOM ReadableStreams
+
+mgaudet: that is very impressive, looks like having Web IDL-backed types is something worth considering; by any chance, would you happen to know if that would also assist w/ the error messages thrown for web content for bug 1738282? 😅
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1581277
+
+[07:38:26.0629] <botzilla>
+https://bugzil.la/1738282 — ASSIGNED (arai) — Crash in [@ shutdownhang | js::frontend::CompilationStencil::~CompilationStencil]
+
+[07:44:09.0313] <DerekNonGeneric>
+knowing whether we would need to put `DOMString` and friends server-side to get this level of confidence that buffers don't overflow for localized error message strings..
+
+[07:46:02.0110] <nbp>
+DerekNonGeneric: This is another way to improve documentation around error messages: https://nbp.github.io/arewedocumentedyet/ . Do you think it would be doable to map the `MSG_*` to the MDN page?
+
+[07:46:34.0504] <nbp>
+DerekNonGeneric: These links are the one which appear in the devtools console when the error show up.
+
+[07:51:05.0707] <DerekNonGeneric>
+linking to the MDN pages for each error sounds like a great idea! thanks for providing all of those (had not yet checked to see what all was already out there)
+
+[07:54:46.0229] <DerekNonGeneric>
+nbp: are these like error codes on a property of an instances of the standard JS errors (`Error`, `SyntaxError`, `TypeError`)?
+
+[07:55:47.0295] <DerekNonGeneric>
+ * nbp: are these like error codes on a property of instances of the standard JS errors (`Error`, `SyntaxError`, `TypeError`) or that the actual name of the objects (like the Symbol name as seen in Node.js core errors)?
+
+[07:56:17.0074] <DerekNonGeneric>
+ * nbp: are these like error codes on a property of instances of the standard JS errors (`Error`, `SyntaxError`, `TypeError`) or the actual name of the objects (like the Symbol name as seen in Node.js core errors)?
+
+[08:00:39.0549] <DerekNonGeneric>
+lol, probably going to have to do my research on this, pretty sure node.js has much to learn from how the DOM is making guarantees that we cannot currently make
+
+[08:02:51.0741] <nbp>
+DerekNonGeneric: yes, these aare the generic codes used in an enum of the js engine. 
+
+[08:06:16.0928] <nbp>
+The links only exists when they are registered in the devtools. 
+
+[08:08:50.0585] <DerekNonGeneric>
+hum, that is pretty darn interesting -- that is like having an additional diagnostics subsystem (will have to look into that)
+
+[08:39:07.0871] <mgaudet>
+Happy 2-year Warp-anniversary! (https://hacks.mozilla.org/2020/11/warp-improved-js-performance-in-firefox-83/) 
+
+[08:41:42.0171] <Ms2ger 💉💉>
+What even is tim
+
+[08:41:48.0698] <Ms2ger 💉💉>
+Sorry tim
+
+[08:41:52.0969] <Ms2ger 💉💉>
+What even is time
+
+[08:42:26.0552] <Ms2ger 💉💉>
+Oh
+
+[08:42:40.0937] <Ms2ger 💉💉>
+mgaudet: I know it doesn't feel like it, but 2020 was last year :)
+
+[08:46:58.0804] <mgaudet>
+It definitely feels like it
+
+[09:20:05.0215] <Tim>
+> <@ms2ger:igalia.com> Sorry tim
+
+I've been asking myself "what even is tim" for a very long time
+
+[14:46:38.0310] <mgaudet>
+confession: Fixed a crashing mochitest. One step closer to being able to submit these patches for review. 
+
+[14:46:41.0245] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-11-18
+[01:04:34.0580] <stratan>
+nbp: very cool stream on the Lifo allocator! Would be cool to stream some IonMonkey stuff too :)
+
+[02:23:50.0374] <nbp>
+stratan: This is in the todo list for future streams. I do not yet know in which order, but Range Analysis, VMFunctions+VMCalls, Recover Instructions, are things that I intend to make streams about.
+
+[06:09:05.0825] <mayankleoboy1>
+> stratan: This is in the todo list for future streams. I do not yet know in which order, but Range Analysis, VMFunctions+VMCalls, Recover Instructions, are things that I intend to make streams about.
+
+Any publicly available link for the stream? 
+
+[06:12:40.0595] <nbp>
+mayankleoboy1: https://www.twitch.tv/BackToTheCode you can follow also the twitter account for follow-up announcements: https://twitter.com/_BackToTheCode_
+
+[06:13:33.0708] <nbp>
+ * mayankleoboy1: https://www.twitch.tv/BackToTheCode you can follow also the twitter account for follow-up announcements: [https://twitter.com/_BackToTheCode_](https://twitter.com/_BackToTheCode_)
+
+[06:15:33.0872] <nbp>
+ * mayankleoboy1: https://www.twitch.tv/BackToTheCode you can follow also the twitter account for follow-up announcements: [https://twitter.com/](https://twitter.com/_BackToTheCode_)[_](https://twitter.com/_BackToTheCode_)[BackToTheCode](https://twitter.com/_BackToTheCode_)[_](https://twitter.com/_BackToTheCode_)
+
+[10:12:54.0720] <mgaudet>
+ArrayBuffer question: I'm looking at my implementation of [this spec algorithm](https://streams.spec.whatwg.org/#can-transfer-array-buffer), specifically Step 4: "If SameValue(O.[[ArrayBufferDetachKey]], undefined) is false, return false." 
+
+Is that a thing we need to worry about in our implementation of array buffers? Or is that a no-op for us? My current implementation is here: https://paste.mozilla.org/VyC3m0JB 
+
+[10:48:51.0903] <tcampbell>
+mgaudet: I don't think we have to worry https://tc39.es/ecma262/#sec-properties-of-the-arraybuffer-instances
+
+[10:49:58.0162] <tcampbell>
+unless HTML is using that? hmm
+
+[10:50:41.0036] <sfink>
+note: my network is down, and I can't both hotspot and use my local development server at the same time, so I'm going to be on and off today. (Unless I can get this USB wifi dongle to work...)
+
+[10:51:27.0838] <sfink>
+I hadn't heard of ArrayBufferDetachKey before. I wonder if an `isWasm() return false` test might be needed.
+
+[10:51:28.0653] <mgaudet>
+> <@tcampbell:mozilla.org> unless HTML is using that? hmm
+
+That was where I was sort of stuck; but I see no evidence of it
+
+[10:51:57.0026] <mgaudet>
+sfink: Hmm. Interesting point
+
+[10:53:40.0815] <iain>
+"detachKey" doesn't show up anywhere relevant in searchfox
+
+[10:56:54.0505] <sfink>
+https://webassembly.github.io/JS-BigInt-integration/js-api/index.html#memories is one place that sets it.
+
+[10:58:17.0838] <sfink>
+https://html.spec.whatwg.org/#structuredserializewithtransfer has a note about it being used for preventing implementations from detaching
+
+[10:59:09.0954] <mgaudet>
+Hmmm. Ok; so does that mean that the `isWasm()` might be covering that case? 
+
+[10:59:22.0281] <sfink>
+yes, it looks like it
+
+[10:59:31.0944] <mgaudet>
+🆒
+
+[10:59:37.0392] <sfink>
+but I'm not sure about other cases, eg USEROWNED
+
+[10:59:46.0160] <sfink>
+ * but I'm not sure about other cases, eg `USER_OWNED`
+
+[11:00:09.0982] <sfink>
+and `EXTERNAL`
+
+[11:00:26.0310] <mgaudet>
+ Well, I am off for lunch. But this has presented me with some possible entries. Thanks for the pointers :) 
+
+[11:02:02.0239] <sfink>
+[structured cloning](https://searchfox.org/mozilla-central/rev/3881c4ca80d1b4b2f43be695438ecaf90ee4f86c/js/src/vm/StructuredClone.cpp#1120-1147) has a set of conditions that might serve as a reference, though I think the spec text will be different
+
+[11:02:30.0203] <sfink>
+ * structured cloning has a [set of conditions](https://searchfox.org/mozilla-central/rev/3881c4ca80d1b4b2f43be695438ecaf90ee4f86c/js/src/vm/StructuredClone.cpp#1120-1147) that might serve as a reference, though I think the spec text will be different
+
+[11:13:40.0952] <sfink>
+ah, one git clone of a random repository and a modprobe of a freshly built driver, and I can get to both networks. Who said linux is hard to use? ;-)
+
+[13:35:18.0809] <mgaudet>
+confession: Just submitted the patches for Stream all the way from adding byte stream support all the way to Fetch/blob integration. Apologies to s.maug, who will be reviewing the majority of it: ` 50 files changed, 5451 insertions(+), 221 deletions(-)` 
+
+[13:35:21.0671] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:42:45.0805] <mgaudet>
+PS: If anyone has pointers to websites that they know use ReadableStreams, I'd appreciate pointers. There's a legend that twitch.tv uses them; if so... well, I watched a few minutes of a stream using DOM Streams... so that's a vote of confidence (I just am not confident that twitch *continues* to use ReadableStreams, even if they once did)
+
+
+2021-11-19
+[20:45:31.0100] <arai>
+mgaudet, jon4t4n : it turns out the failure around `assert` is from our test harness not honoring `raw` flag. filed bug 1742035 for it, and now looking into it
+
+[20:45:32.0815] <botzilla>
+https://bugzil.la/1742035 — NEW (nobody) — Stop loading test262/shell.js if raw flag is used in test262
+
+[06:03:52.0966] <nbp>
+/me wonders why the file is not included … realize 3 minutes later that `#ifndef` guard should be updated after a copy&paste …
+
+[06:07:55.0794] <DerekNonGeneric>
+c++ copypasta macros
+
+[06:19:59.0097] <DerekNonGeneric>
+nbp: am i allowed to fork https://github.com/nbp/arewedocumentedyet and add more references?
+
+[06:22:46.0201] <DerekNonGeneric>
+cannot figure out how to contribute
+
+[06:22:54.0564] <nbp>
+DerekNonGeneric: Yes, or even make PR ;)
+
+[06:23:28.0429] <nbp>
+hum … I guess I should add a README/LICENSE files at the very least …
+
+[06:24:26.0264] <DerekNonGeneric>
+lol, that might help (still haven't figured out where to additions/subtractions would go)
+
+[06:24:55.0423] <nbp>
+My blocker was in the devtools files in mozilla-central.
+
+[06:25:28.0087] <nbp>
+https://github.com/nbp/arewedocumentedyet/blob/master/index.html#L33
+
+[06:26:07.0387] <nbp>
+This is importing the source from the devtools as a JS file in the page (completely ugly, but this is a nice way to stay in sync :P)
+
+[06:27:12.0383] <nbp>
+DerekNonGeneric: The `ErrorDocs` from https://hg.mozilla.org/mozilla-central/raw-file/tip/devtools/server/actors/errordocs.js is used to map to each help page.
+
+[06:27:50.0239] <nbp>
+What would be good it to list all MSG_* keys in a similar way.
+
+[06:30:47.0013] <nbp>
+DerekNonGeneric: the telemetry part is likely to be unchanged, as the keys are already listed in the page. Thus I presume you will have to change [the displayResults function](https://github.com/nbp/arewedocumentedyet/blob/master/display.js#L8-L48)
+
+[06:34:44.0083] <DerekNonGeneric>
+normally things named like `JSMSG_READ_ONLY` are constants in C, but here it's not clear why they would be named like this
+
+[06:35:21.0879] <nbp>
+They are listed here, because the keys are sent to the devtools as literal strings.
+
+[06:35:41.0653] <nbp>
+And the devtools uses these key to link to the corresponding MDN page.
+
+[06:36:00.0253] <nbp>
+the MDN page is composed of what is mapped by the ErrorDocs variable.
+
+[06:37:47.0608] <nbp>
+JS errors are defined in https://searchfox.org/mozilla-central/source/js/public/friend/ErrorNumbers.msg , which is included in C++ , after defining the macro used in this file.
+
+[06:38:22.0996] <nbp>
+Such as https://searchfox.org/mozilla-central/source/js/src/vm/ErrorMessages.cpp#18
+
+[06:43:30.0444] <DerekNonGeneric>
+well, if you like hash tables, maybe Redis would be a good fit for this
+
+[06:43:53.0089] <DerekNonGeneric>
+well, let me see..
+
+[06:49:32.0119] <DerekNonGeneric>
+lmao, `JSMSG_JSON_CYCLIC_VALUE` is a good one
+
+[06:52:42.0878] <DerekNonGeneric>
+so, basically it seems like key-value pairs would need to be stored in a format that doesn't have that error
+
+[06:54:54.0233] <nbp>
+What would be nice, is that the keys for `MSG_*` errors, that are likely used in the devtools to compute the documentation (or should be), to be listed in `errordocs.js`, such that arewedocumentedyet can use this mapping like the devtools console do.
+
+[06:55:09.0474] <nbp>
+ * What would be nice, is that the keys for `MSG_*` errors, that are likely used in the devtools to compute the documentation links (or should be), to be listed in `errordocs.js`, such that arewedocumentedyet can use this mapping like the devtools console do.
+
+[06:57:55.0603] <DerekNonGeneric>
+ah yeah, you would want to have these in a JS file eventually
+
+[06:58:43.0620] <DerekNonGeneric>
+sorry, need to have breakfast, going to have to get back to you
+
+[07:53:15.0198] <annevk>
+mgaudet: hey, if you want to give input on https://github.com/whatwg/streams/pull/1182 now would be the time. I generally think this design is good, but I might have missed some subtlety. I think the plan is to merge later today.
+
+[07:54:11.0968] <mgaudet>
+> <@annevk:mozilla.org> mgaudet: hey, if you want to give input on https://github.com/whatwg/streams/pull/1182 now would be the time. I generally think this design is good, but I might have missed some subtlety. I think the plan is to merge later today.
+
+I don’t have any of that paged in right now, so I think I will defer to your review. 
+
+[07:54:43.0489] <mgaudet>
+(And won’t be able to get to it in the next few hours at minimum. Apologies for procrastinating on taking a look)
+
+[07:56:23.0972] <annevk>
+mgaudet: fair enough, I'll tell Domenic he can merge it now then
+
+[07:57:21.0641] <mgaudet>
+ Thanks. 
+
+[14:14:45.0383] <mgaudet>
+confession: reviewed code sample test results from another team; made some strides towards reviewing Records and Tuples. Hoping I can finish next week
+
+[14:14:49.0143] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[14:28:01.0726] <sfink>
+mgaudet: you might be right, but I can't tell if you're calling [UnwrapArrayBuffer](https://searchfox.org/mozilla-central/source/js/src/vm/ArrayBufferObject.cpp#1788-1803) or [UnwrapArrayBuffer](https://searchfox.org/mozilla-central/source/js/src/vm/ArrayBufferObject.cpp#1914-1916). I think, uh, maybe we should not be doing things this way.
+
+[14:28:23.0611] <sfink>
+I'm afraid to look at the blame, because there's a good chance it'll point at me.
+
+[14:28:48.0471] <mgaudet>
+(I mean you’re not wrong) 
+
+
+2021-11-21
+[09:09:22.0478] <Redfire>
+Finally released my first prerelease 🤩 https://github.com/Redfire75369/spiderfire/releases/tag/v0.1.0-pre.1
+
+[13:50:48.0850] <jakechampion>
+When implementing new JavaScript features - where should tests be added? Should they get added to test262 or somewhere bespoke within SpiderMonkey's codebase?
+
+[15:11:35.0423] <arai>
+mostly to test262.  if there's implementation specific test, tests/non262 or jit-test
+
+[15:18:09.0874] <arai>
+for example, if the implementation has options optimization for JIT and the code path is taken only after N executions, or it has optimization for specific input/situations, those tests should be in jit-test
+
+[15:18:31.0457] <arai>
+* for example, if the implementation has optimization for JIT and the code path is taken only after N executions, or it has optimization for specific input/situations, those tests should be in jit-test
+
+[15:18:58.0472] <jakechampion>
+Thank you arai - I'll write test262 tests for it ☺️
+
+
+2021-11-22
+[17:42:47.0299] <jakechampion>
+This is the ticket I started work on -- https://bugzilla.mozilla.org/show_bug.cgi?id=1566146
+All the methods have been implemented, next I'll look into writing tests on Test262
+(This is my first attempt to contribute to SpiderMonkey 🥳)
+
+[18:01:47.0160] <arai>
+jakechampion: it looks like you've removed `Differential Revision: ` line from the commit message when amending, and submitted it as new phabraictor revision
+
+[18:02:05.0406] <arai>
+that results in having 3 phabricator revisions for same patch
+
+[18:02:24.0060] <arai>
+when submitting, `moz-phab` adds `Differential Revision: ...` line, at the bottom of the commit message
+
+[18:03:06.0659] <arai>
+so, when amending, please keep it, so that moz-phab updates the existing phabricator revision when you re-submit it
+
+[18:03:13.0408] <arai>
+ * so, when amending, please keep the line, so that moz-phab updates the existing phabricator revision when you re-submit it
+
+[18:03:59.0855] <jakechampion>
+Thank you Arai, I'm trying to see how I can remove the extra revisions but I don't see anything obvious for that
+
+[18:04:53.0534] <arai>
+first, for the `intersection` patch, you need to update the `Differential Revision: ` line to point `D131739`
+
+[18:04:57.0418] <arai>
+and submit it again
+
+[18:05:41.0137] <arai>
+then, for extra phabricator revision, go to the page, and "Add Action..." at the bottom of the page, above comment field, "Abandon Revision", and "Submit"
+
+[18:06:14.0812] <arai>
+ * then, for extra phabricator revisions (D131746 and D131747), go to the page, and "Add Action..." at the bottom of the page, above comment field, "Abandon Revision", and "Submit"
+
+[18:08:23.0531] <jakechampion>
+Thank you again Arai, all should be corrected now 🤞
+
+[18:08:36.0567] <arai>
+yeah, looks correct
+
+[18:09:37.0075] <arai>
+optionally you can remove the dependency between them, by "Edit Related Revisions..." at the top-right of the D131739 page, "Edit Child Revisions", and remove D131746 and D131747 from there
+
+[18:09:52.0904] <arai>
+you can see the relation between them in https://lando.services.mozilla.com/D131734/
+
+[18:23:46.0813] <arai>
+jakechampion: Thank you for working on it :)  posted review comments for the first patch. Several comments there applies to other patches, so I'll review others after they're addressed
+
+[20:28:53.0718] <Redfire>
+```
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+Hit MOZ_CRASH(mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed) at /home/redfire/.cargo/git/checkouts/mozjs-fa11ffc7d4f1cc2d/de147f0/mozjs/mozglue/misc/Mutex_posix.cpp:88
+fish: “target/debug/cli repl” terminated by signal SIGSEGV (Address boundary error)
+```
+I'm getting this error, only on Linux, not on Windows 🤔
+
+[20:54:40.0600] <arai>
+when does it happen?
+
+[23:15:51.0457] <Redfire>
+I think it's happening because I'm calling `std::process::exit(0)` on a different thread, so the engine doesn't get shut down properly?
+
+[23:52:33.0703] <Redfire>
+I stand corrected, it happens even when its on the same thread.
+
+[23:53:32.0761] <jandem>
+impressive: https://www.talospace.com/2021/11/51552-javascript-tests-cant-be-wrong.html
+
+[00:03:03.0349] <lth>
+yeah, was just going to post that myself, very nice
+
+[00:07:29.0368] <Redfire>
+> <@redfire75369:mozilla.org> I stand corrected, it happens even when its on the same thread.
+
+All instances of `process::exit` cause the error.
+I'm not sure why the engine isn't getting shut down when it being dropped should force that to happen.
+<https://gist.github.com/Redfire75369/c1c55b7b9228472b0178f50c9ae6c0e0>
+
+[00:09:19.0863] <arai>
+to my understanding, you cannot just call `exit` in random place, on debug build
+
+[00:10:43.0299] <arai>
+on non-debug build, we also perform fast shutdown. but on debug build, you may hit multiple assertion failure
+
+[00:36:46.0137] <Redfire>
+I'm pretty sure it had that error on a non-debug build too 🤔
+
+[00:47:04.0873] <arai>
+oh, then it may be different issue
+
+[00:48:12.0438] <Redfire>
+Correction: Slightly different error
+```
+mozilla::detail::MutexImpl::~MutexImpl: pthread_mutex_destroy failed: Device or resource busy
+fish: “target/release/cli repl” terminated by signal SIGSEGV (Address boundary error)
+```
+
+[00:48:35.0345] <Redfire>
+but I think that's just the debug info stripped
+
+[02:58:21.0931] <l11d>
+quick question regarding the GC: during a GC objects might be moved in memory (in general). are there certain objects that are encoded as unmovable? e.g., if a MIR instruction loads a pointer, the next MIR instruction triggers a GC then the object pointed to must not be moved/collected. or am I misunderstanding completely?
+
+[03:04:14.0786] <jonco>
+l11d: most objects are moveable (things in the atom zone are not moved being the main exception)
+
+[03:05:47.0615] <jonco>
+When the GC moves things it updates any pointers to point to the new copy
+
+[03:06:12.0575] <jonco>
+This requires that all pointers end up getting traced, either as roots or via a chain of pointers reachable from a root
+
+[03:07:28.0870] <jonco>
+In your case things currently being accessed by MIR instructions sound like they might get traced as part of the activation
+
+[03:08:17.0196] <l11d>
+say a MIR instruction loads a pointer to another object (to be used later). if a GC kicks in the pointer has to be a root, otherwise it could be collected. so there must be a mechanism to convey the pointer to the GC. is this what you meant by "activition"?
+
+[03:10:17.0611] <jonco>
+Yes, I'm thinking of TraceJitActivations
+
+[03:10:54.0650] <jonco>
+another aspect is that GC is not possible at all points during execution of JIT code, so live values only need to be traced if a GC is possible
+
+[03:13:47.0118] <l11d>
+thanks alot 👍️
+
+[06:06:30.0110] <hellbound22>
+Hi, can you guys help me find the Cache API JS source code? I need a reference
+
+[06:52:25.0938] <hellbound22>
+Source for this https://developer.mozilla.org/en-US/docs/Web/API/Cache ?
+
+[06:53:42.0148] <jakechampion>
+hellbound22: I think this may be what you are after -- /dom/cache/Cache.cpp
+
+[06:56:10.0706] <hellbound22>
+> <@jakechampion:mozilla.org> hellbound22: I think this may be what you are after -- /dom/cache/Cache.cpp
+
+What about the JS bindings for this?
+
+[07:00:54.0489] <jakechampion>
+hellbound22: I believe they are handled in /dom/bindings/Bindings.conf on line 89 but I'm not certain
+
+[07:10:37.0376] <hellbound22>
+> <@jakechampion:mozilla.org> hellbound22: I believe they are handled in /dom/bindings/Bindings.conf on line 89 but I'm not certain
+
+I see, thanks man
+
+[08:22:51.0626] <mgaudet>
+hellbound22: Yeah; if that's what you're after, the bindings are actually generated from [this webidl](https://searchfox.org/mozilla-central/source/dom/webidl/Cache.webidl) file. 
+
+[08:23:27.0726] <mgaudet>
+Generated binding code tends to not be too interesting; see [this](https://searchfox.org/mozilla-central/source/__GENERATED__/dist/include/mozilla/dom/CacheBinding.h) and [this](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/CacheBinding.cpp) 
+
+[10:52:37.0540] <mgaudet>
+jandem: I've reviewed all the record and tuple pieces I had planned to. A few revisions need your eye still. I'm hoping you can get to it in the next couple weeks: would be nice to have this landed before EOY
+
+[13:31:52.0719] <mgaudet>
+> <@jakechampion:mozilla.org> When implementing new JavaScript features - where should tests be added? Should they get added to test262 or somewhere bespoke within SpiderMonkey's codebase?
+
+I would add though: Basic functionality tests, particularly for stage 2 features make total sense to be in-tree as part of non262, so that the feature can at least have some basic smoke testing available while in tree.
+
+[14:43:07.0583] <mgaudet>
+confession: Seems like some of the leaks I used to see on the DOM Streams patches have since disappeared; so... I guess I'm not investigating leaks today :P 
+
+[14:43:16.0623] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-11-23
+[06:01:01.0962] <Ryan Hunt>
+jandem: Hey, so we’re running into a situation with the wasm exceptions work where we have a MIR node for an exception object, and a node for an owned data pointer of the object. We need to ensure that the object is live for as long as the data pointer is used, to prevent a GC hazard. This seems to be a similar situation to Elements/MKeepAlive. IIUC, the keep alive pass adds the required nodes to extend the lifetime of the original object to all uses of the derived pointer. Would it have been possible to instead add a parameter to each use of the derived pointer that references the original object, therefore extending the lifetime? Just want to know what our options are here
+
+[06:07:24.0357] <jandem>
+Ryan Hunt: hey, yeah I think adding the object as operand to these MIR/LIR instructions would also work. Could use the `LUse::KEEPALIVE` policy to minimize register pressure
+
+[06:12:39.0706] <Ryan Hunt>
+jandem: okay, thanks. Why do we have a keep alive pass then?
+
+[06:16:42.0702] <jandem>
+Ryan Hunt: IIRC it seemed simpler and more robust at the time, but it has been a while. Without the pass we'd probably want to assert this somehow
+
+[06:18:31.0274] <Ryan Hunt>
+okay, that makes sense
+
+[08:23:56.0099] <jonco>
+sfink: can I bug you to review the remaining patches in bug 1742127?
+
+[08:23:58.0934] <botzilla>
+https://bugzil.la/1742127 — NEW (jonco) — Don't take the GC lock when unmarking arenas
+
+[08:44:41.0116] <sfink>
+oh right, I was in the middle of that yesterday
+
+[08:45:33.0777] <sfink>
+jonco: done
+
+[08:45:39.0965] <jonco>
+thanks!
+
+[14:20:58.0156] <mgaudet>
+confession: Learning how to track down some leaks. Also learning how quickly I apparently paged out my understanding of the wild ReadableStream/BodyStream/BodyStreamHolder ownership story (which I have incorrect at the moment) 
+
+
+2021-11-24
+[02:38:28.0139] <stratan>
+Hello there :) Where can I find the source code for a nightly build?
+
+[02:42:30.0404] <arai>
+https://hg.mozilla.org/mozilla-central/
+
+[02:43:13.0411] <arai>
+here's instruction for building https://firefox-source-docs.mozilla.org/setup/index.html
+
+[03:11:06.0741] <stratan>
+But what if I want the source code of a specific nightly version? Let’s say 96.0a1
+
+[03:11:53.0107] <arai>
+how specific is it?
+
+[03:13:00.0327] <arai>
+there are tags for each cycle's end https://hg.mozilla.org/mozilla-central/tags
+
+[03:17:20.0970] <arai>
+if you want to map specific build id to revision, https://buildhub.moz.tools/?channel[0]=nightly will help
+
+[03:20:27.0945] <stratan>
+That should be enough. Thank you! :D
+
+[09:59:35.0671] <stratan>
+I'm getting the following error when trying to build with `--enable-address-sanitizer` 
+
+```
+ld.lld: error: duplicate symbol: operator delete(void*)
+>>> defined at asan_new_delete.cc:160 (/builds/worker/fetches/llvm-project/llvm/projects/compiler-rt/lib/asan/asan_new_delete.cc:160)
+>>>            asan_new_delete.cc.o:(operator delete(void*)) in archive /home/u05/.mozbuild/clang/lib/clang/9.0.0/lib/linux/libclang_rt.asan_cxx-x86_64.a
+>>> defined at cxxalloc.h:51 (/home/u05/sm_builds/change-array-by-copy-methods/js/src/out/dist/include/mozilla/cxxalloc.h:51)
+>>>            ../../memory/mozalloc/cxxalloc.o:(.text+0x40)
+
+```
+
+[09:59:51.0989] <stratan>
+any feedback would be much appreciated :) 
+
+[10:00:20.0317] <stratan>
+ * I'm getting the following error when trying to build with `--enable-address-sanitizer`
+```
+ld.lld: error: duplicate symbol: operator delete(void*)
+>>> defined at asan_new_delete.cc:160 (/builds/worker/fetches/llvm-project/llvm/projects/compiler-rt/lib/asan/asan_new_delete.cc:160)
+>>>            asan_new_delete.cc.o:(operator delete(void*)) in archive /home/u05/.mozbuild/clang/lib/clang/9.0.0/lib/linux/libclang_rt.asan_cxx-x86_64.a
+>>> defined at cxxalloc.h:51 (/home/u05/sm_builds/change-array-by-copy-methods/js/src/out/dist/include/mozilla/cxxalloc.h:51)
+>>>            ../../memory/mozalloc/cxxalloc.o:(.text+0x40)
+ld.lld: error: duplicate symbol: operator new[](unsigned long, std::nothrow_t const&)
+>>> defined at asan_new_delete.cc:108 (/builds/worker/fetches/llvm-project/llvm/projects/compiler-rt/lib/asan/asan_new_delete.cc:108)
+>>>            asan_new_delete.cc.o:(operator new[](unsigned long, std::nothrow_t const&)) in archive /home/u05/.mozbuild/clang/lib/clang/9.0.0/lib/linux/libclang_rt.asan_cxx-x86_64.a
+
+
+```
+
+[10:00:28.0109] <stratan>
+ * I'm getting the following error when trying to build with `--enable-address-sanitizer`
+```
+ld.lld: error: duplicate symbol: operator delete(void*)
+>>> defined at asan_new_delete.cc:160 (/builds/worker/fetches/llvm-project/llvm/projects/compiler-rt/lib/asan/asan_new_delete.cc:160)
+>>>            asan_new_delete.cc.o:(operator delete(void*)) in archive /home/u05/.mozbuild/clang/lib/clang/9.0.0/lib/linux/libclang_rt.asan_cxx-x86_64.a
+>>> defined at cxxalloc.h:51 (/home/u05/sm_builds/change-array-by-copy-methods/js/src/out/dist/include/mozilla/cxxalloc.h:51)
+>>>            ../../memory/mozalloc/cxxalloc.o:(.text+0x40)
+ld.lld: error: duplicate symbol: operator new[](unsigned long, std::nothrow_t const&)
+>>> defined at asan_new_delete.cc:108 (/builds/worker/fetches/llvm-project/llvm/projects/compiler-rt/lib/asan/asan_new_delete.cc:108)
+>>>            asan_new_delete.cc.o:(operator new[](unsigned long, std::nothrow_t const&)) in archive /home/u05/.mozbuild/clang/lib/clang/9.0.0/lib/linux/libclang_rt.asan_cxx-x86_64.a
+```
+
+[10:03:49.0485] <iain>
+stratan: You may need to add `--disable-jemalloc` to your mozconfig
+
+[10:04:16.0640] <iain>
+Here's the mozconfig we use for asan in CI: https://searchfox.org/mozilla-central/source/js/src/devtools/automation/variants/asan
+
+[10:04:18.0126] <stratan>
+oh I see. Is that an expected behavior?
+
+[10:06:19.0181] <stratan>
+thanks for sharing that link, quite useful :D 
+
+[10:08:38.0105] <stratan>
+`--disable-shared-js` is that the right flag to use if I want to build the shell as a static binary?
+
+[10:19:22.0491] <iain>
+stratan: Are you looking for `--enable-application=js`? (Instructions for building the shell are [here](https://firefox-source-docs.mozilla.org/js/build.html))
+
+[10:22:11.0695] <stratan>
+iain: I'm looking for a `--` flag to build the js shell as a static (assuming it's possible)
+
+[10:22:21.0073] <stratan>
+ * iain: I'm looking for a `--` flag to build the js shell as a static binary (assuming it's possible)
+
+[10:32:48.0614] <nbp>
+stratan: I am not aware of anybody looking into static builds of SpiderMonkey. We use to generate a `.a` file a while ago, I do not know if this is still the case since we moved to python as a replacement of the autotools.
+
+[10:32:54.0508] <nbp>
+ * stratan: I am not aware of anybody looking into static builds of SpiderMonkey. We used to generate a `.a` file a while ago, I do not know if this is still the case since we moved to python as a replacement of the autotools.
+
+[10:33:50.0062] <nbp>
+stratan: Looking through the build directory, I can still find `js/src/build/libjs_static.a`
+
+[10:33:50.0275] <stratan>
+Hmm alright, thank you nbp
+
+[12:24:59.0682] <jakechampion>
+howdy, if I want to run the tests within a single file, e.g. js/src/tests/non262/Set/union.js 
+Is this how I would do it --
+`./mach jstests js/src/tests/non262/Set/union.js`
+
+[12:27:10.0285] <jakechampion>
+I think not, it looks like this does what I want though: `./mach jstests Set`
+
+[12:28:23.0060] <mgaudet>
+jakechampion: yeah, you should just have to strip off the `js/src/tests` prefix 
+
+[12:28:42.0302] <jakechampion>
+thank you ☺️
+
+[12:29:00.0601] <jakechampion>
+Is there a page which documents the assertion function which are available at all?
+
+[12:31:24.0346] <jakechampion>
+ah, I think this is the file I am looking for `js/src/tests/shell.js`
+
+[12:31:25.0939] <arai>
+[`assertEq`](https://searchfox.org/mozilla-central/rev/553bf8428885dbd1eab9b63f71ef647f799372c2/js/src/shell/js.cpp#9446-9449) is shell built-in, and [`js/src/tests/shell.js`](https://searchfox.org/mozilla-central/source/js/src/tests/shell.js) defines some more
+
+[12:32:07.0675] <jakechampion>
+thank you arai :)
+I think I have enough information now to add tests within SpiderMonkey for the New Set Methods proposal
+
+[12:32:26.0144] <arai>
+in jstests, there should be at least one `reportCompare` call, for historical reason
+
+[12:32:31.0583] <arai>
+here's example https://searchfox.org/mozilla-central/rev/553bf8428885dbd1eab9b63f71ef647f799372c2/js/src/jit-test/tests/fields/bug1552875.js#12-13
+
+[12:32:46.0521] <arai>
+it doesn't have to be a part of actual test
+
+[12:33:23.0757] <arai>
+oh, wait, it was wrong file
+
+[12:33:58.0199] <jakechampion>
+When writing the tests, should they be within a js feature detection?
+Something like:
+```
+if (Set.prototype.union) {
+  // set tests here
+}
+```
+
+[12:34:30.0897] <arai>
+https://searchfox.org/mozilla-central/source/js/src/tests/non262/Array/pop-empty-nonwritable.js#29-30
+
+[12:34:43.0545] <arai>
+(it's test inside non262)
+
+[12:36:43.0176] <arai>
+for feature detection, please follow this pattern https://searchfox.org/mozilla-central/rev/553bf8428885dbd1eab9b63f71ef647f799372c2/js/src/tests/non262/Array/unscopables.js#35-45
+
+[12:37:43.0081] <arai>
+if build configuration and runtime configuration are both enabled, the feature should be enabled
+
+[12:39:01.0917] <arai>
+jstests is executed in 2 environment.  JS shell and browser.   JS shell has `getBuildConfiguration` and `getRealmConfiguration` as global function
+
+[12:39:19.0958] <arai>
+browser doesn't have them but they're available via `SpecialPowers.Cu.getJSTestingFunctions()` object
+
+[12:40:16.0582] <arai>
+oh, just realized that I forgot to ask you to reflect the runtime configuration
+
+[12:48:32.0056] <arai>
+mgaudet: also just realized that change-array-by-copy methods aren't covered by Xray.
+
+[12:51:44.0275] <arai>
+does anyone have opinion around stage 2 proposal methods (defined on the prototype object, conditionally with runtime flag, with separate JSFunctionSpec array than `ClassSpec.prototypeFunctions`) vs Xray?
+
+[12:54:58.0869] <arai>
+given they're separate array outside of ClassSpec, they needs special handling in Xray
+
+[12:57:21.0707] <arai>
+ * does anyone have opinion around stage 2 proposal methods ([defined on the prototype object, conditionally with runtime flag](https://searchfox.org/mozilla-central/rev/553bf8428885dbd1eab9b63f71ef647f799372c2/js/src/builtin/Array.cpp#4136-4138), with [separate JSFunctionSpec array](https://searchfox.org/mozilla-central/rev/553bf8428885dbd1eab9b63f71ef647f799372c2/js/src/builtin/Array.cpp#3868-3876) than `ClassSpec.prototypeFunctions`) vs Xray?
+
+[13:09:23.0896] <mgaudet>
+arai: So my understanding of x-rays is weak to begin with; I don't follow how this interaction isn't happening. Would you mind explaining a bit more so I can understand the problem?
+
+[13:10:50.0220] <arai>
+sure, give me a sec
+
+[13:10:55.0873] <mgaudet>
+(no rush) 
+
+[13:11:21.0376] <mgaudet>
+Maybe even better would be an explanation in a bug, since it sounds like this is going to need something changed anyhow
+
+[13:12:17.0950] <arai>
+okay
+
+[13:22:23.0656] <arai>
+mgaudet: bug 1742871
+
+[13:22:25.0120] <botzilla>
+https://bugzil.la/1742871 — NEW (nobody) — Cover the Change Array by copy proposal methods in Xray
+
+[13:24:45.0441] <mgaudet>
+Oh. That's... unfortunate. 
+
+[13:25:11.0599] <arai>
+yeah, it's necessary only while there's runtime flag
+
+[13:26:16.0957] <mgaudet>
+My personal feeling would be that for a stage 2 proposal, we handle this by putting some commentary near the runtime flag code, hinting that this is an unhandled edge that is correctly fixed by integrating the arrays into one array. But perhaps we ought to have a better answer by stage 3 
+
+[13:27:59.0880] <arai>
+yes, as long as they're behind build configuration, there won't be the priv-code that calls those methods on content script, and it can be deferred until stage 3
+
+[13:29:17.0141] <arai>
+then, given there are already 2 cases that prototype methods are defined conditionally, and there will be more in the future, we'd better having basic support for those methods in Xray itself, to minimize the change in Xray code in each proposal patch
+
+[13:30:20.0806] <mgaudet>
+Agreed. Good catch arai. I wouldn't have ever caught this. 
+
+[14:35:15.0521] <mgaudet>
+confession: Have spent the last couple of days trying to understand leaks that are happening in the Fetch integration of DOM Streams. 
+
+The ownership model is... uncomfortable. So far I can either leak or crash; May need some help with this eventually. Will take another stab tomorrow. 
+
+[14:35:17.0680] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+
+2021-11-25
+[01:52:38.0995] <jonco>
+jandem: what's the potential TSAN issue with bug 1742591?
+
+[01:52:40.0485] <botzilla>
+https://bugzil.la/1742591 — ASSIGNED (jonco) — Keep pinned atoms in a list to reduce marking time
+
+[01:53:59.0633] <jonco>
+I'll run the tsan tests on try to see if anything comes up
+
+[01:59:44.0770] <jandem>
+/me searches bugzilla...
+
+[02:03:25.0623] <jandem>
+jonco: see bug 1517452
+
+[02:03:26.0978] <botzilla>
+https://bugzil.la/1517452 — RESOLVED (nobody) — TSAN detects data race when background ion compilation reads flag written by foreground wasm module instantiation
+
+[02:18:22.0607] <jonco>
+jandem: ah thanks, I didn't think of that
+
+[02:19:19.0179] <jonco>
+string flags are stored in the cell header word which is relaxed atomic nowadays, so that shouldn't be a problem, but we'll see
+
+[02:19:40.0800] <jandem>
+jonco: that said, since a few weeks we have non-atoms for string literals on Ion threads and some of their flags are mutable too
+
+[02:21:07.0990] <jandem>
+that's a good point. I'd still like us to reconsider use of relaxed atomics for perf reasons, but that's unrelated to this
+
+[04:03:49.0644] <evilpie>
+We should look into having WPT streams bugs like https://bugzilla.mozilla.org/show_bug.cgi?id=1742897 categorized as DOM: Streams. mgaudet 
+
+[04:17:52.0277] <arai>
+is there any reason that `js/public/UniquePtr.h` defines `js::UniquePtr` instead of `JS::UniquePtr` ?  shouldn't it be used as public API input/output types?
+
+[04:26:24.0834] <jakechampion>
+woohoo, I got the tests passing for Set.prototype.union 🥳
+I'm going to have fun writing the tests for all the other Set methods
+
+[05:23:31.0257] <nbp>
+/me checks whether 's/js::/JS::/g' yields a compilable source …
+
+[05:40:38.0021] <jakechampion>
+is there a public build server that people can use instead of building on their own machine? builds takes a very long time on my machine unfortunately
+
+[05:42:08.0340] <arai>
+there's try server that you can use for building and testing 
+
+[05:42:59.0196] <arai>
+https://firefox-source-docs.mozilla.org/tools/try/index.html
+
+[05:44:23.0974] <arai>
+you need level 1 commit access to use it. the detailed steps to get it are described in the document 
+
+[05:44:54.0385] <arai>
+if you need voucher, I can vouch :)
+
+[05:51:13.0753] <jakechampion>
+Thank you, I will read it now and see if I need a voucher ☺️
+
+[05:52:01.0369] <jakechampion>
+yes, I will need a voucher, thank you for offering to vouch arai 
+
+[05:53:03.0300] <arai>
+Cc me on the bug for commit access
+
+[06:10:43.0367] <jakechampion>
+i'm not sure how to cc on the bug but this is the bug I raised -- https://bugzilla.mozilla.org/show_bug.cgi?id=1742973
+
+[06:11:22.0268] <arai>
+There's "Add" button next to "CC" field in "People" section
+
+[06:11:59.0665] <arai>
+(I already commented there, so no need to add cc now
+
+[06:14:58.0306] <mgaudet>
+> <@evilpie:mozilla.org> We should look into having WPT streams bugs like https://bugzilla.mozilla.org/show_bug.cgi?id=1742897 categorized as DOM: Streams. mgaudet
+
+Agreed, but maybe that's a 'post-shipping' task? 
+
+[07:53:23.0642] <jakechampion>
+I believe I found a spec-level bug in Set.prototype.isSubsetOf -- https://github.com/tc39/proposal-set-methods/issues/67
+
+[07:54:02.0841] <evilpie>
+mgaudet: I don't think anyone is looking at those wpt changes anyway and I doubt we are going to make changes to the old implementation, so I don't think we need to wait
+
+[07:58:22.0324] <mgaudet>
+evilpie: Maybe; I think I'd prefer to leave it alone for now, but if you want to open a bug about getting it changed that'd be appreciated, and then we can figure out the timeline there.
+
+[08:56:15.0975] <jakechampion>
+> <@jakechampion:mozilla.org> I believe I found a spec-level bug in Set.prototype.isSubsetOf -- https://github.com/tc39/proposal-set-methods/issues/67
+
+Looks to not be a spec bug but perhaps a bug in my patch or in my understanding of SpiderMonkey's implementation of %SetProto_add%
+
+[08:58:25.0523] <jakechampion>
+Is there a way to log out values from within the self hosted builtin implementations?
+
+[09:09:50.0596] <jakechampion>
+Yep, was my misunderstanding - I've now got all the tests passing for the New Set Methods proposal and I learnt more about SpiderMonkey internals ☺️
+
+[09:44:25.0019] <jakechampion>
+If I have `ac_add_options --enable-change-array-by-copy` in my mozconfig, should this code evaluate to `true` -- `op.getBoolOption("enable-change-array-by-copy")` ? It seems to evaluate to false which does not seem correct
+
+[10:15:28.0918] <sfink>
+jakechampion: The first is a configure option, the second is an option passed to the JS shell binary, so unless the latter is implemented to default to the configure option somehow, I wouldn't expect them to correspond.
+
+[12:48:08.0163] <mgaudet>
+confession: Fixed a DOM Streams leak related to fetch integration. It's all coming along :D 
+
+[12:48:10.0028] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[13:45:39.0712] <mgaudet>
+confession: First smoke-testing of DOM streams performance has relaxed me a bit. No proof I'm good enough yet, but nor did everything explode terribly. 
+
+[14:37:59.0362] <DerekNonGeneric>
+glad Nicolò made it back
+
+[14:42:00.0405] <DerekNonGeneric>
+there is another one, which did not make it back, perhaps it is too soon
+
+[14:45:17.0440] <DerekNonGeneric>
+nicolo-ribaudo (back on Nov 25th): not november 25 for you?
+
+[14:46:23.0543] <DerekNonGeneric>
+:( on the bots are reactive enough
+
+[14:47:58.0172] <DerekNonGeneric>
+ * ~~:( only the bots are reactive enough~~
+
+[14:48:30.0825] <DerekNonGeneric>
+ * :( only the bots are reactive enough
+
+[14:50:06.0187] <DerekNonGeneric>
+ * <del>:( only the bots are reactive enough</del>
+
+[14:53:59.0366] <nicolo-ribaudo (back on Nov 25th)>
+Oh, the beauty of having multiple accounts! 😛
+
+
+2021-11-26
+[17:51:45.0298] <arai>
+jakechampion: for debug print, you can use [`dbg` macro](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/src/builtin/Utilities.js#15-20), or [`DumpMessage` function](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/src/vm/SelfHosting.cpp#2133)
+
+[17:52:10.0353] <arai>
+both works only in debug build (`ac_add_options --enable-debug`)
+
+[17:52:35.0920] <arai>
+on non-debug build, they're no-op
+
+[19:44:02.0506] <arai>
+what's the conceptual difference between [`RealmCreatingOptions`](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/public/RealmOptions.h#71) vs [`ContextOptions`](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/public/ContextOptions.h#20) for experimental spec feature options?
+
+[19:45:59.0008] <arai>
+for example, streams options are defined in `RealmCreationOptions`, and private class fields options are defined in `ContextOptions`
+
+[19:46:20.0409] <arai>
+I'm now wondering if there's any rule about which one to use for which case
+
+[20:16:37.0257] <DerekNonGeneric>
+realms great and something quite easily confused w/ zones -- it is a beautiful thing to read all of this code in my spare time
+
+[20:17:23.0396] <DerekNonGeneric>
+ * realms are great and something quite easily confused w/ zones
+
+[20:19:05.0273] <DerekNonGeneric>
+it is very similar to iframes and this seems to be a solved problem
+
+[20:21:09.0864] <DerekNonGeneric>
+arai: zones vs realms; there was some conclusion about naming iirc
+
+[20:22:14.0551] <DerekNonGeneric>
+zones became extinct at some point, no?
+
+[20:24:52.0925] <DerekNonGeneric>
+haven't an idea how to help, but iirc there was some conclusion about zones no longer moving forward
+
+[20:26:24.0929] <DerekNonGeneric>
+anyways, wish i could point you to something, but there is so much code to look through lol
+
+[20:32:49.0435] <arai>
+DerekNonGeneric: thanks, but I think it's about unrelated topic
+
+[05:55:56.0728] <arai>
+> <@arai:mozilla.org> what's the conceptual difference between [`RealmCreatingOptions`](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/public/RealmOptions.h#71) vs [`ContextOptions`](https://searchfox.org/mozilla-central/rev/7fe9421af35256a95acc4620e9e0b76df7867287/js/public/ContextOptions.h#20) for experimental spec feature options?
+
+can anyone look into this?
+
+[05:56:06.0013] <arai>
+or, can anyone answer https://phabricator.services.mozilla.com/D131799#4300998 ?
+
+[06:05:16.0029] <jakechampion>
+@arai would it be that by using RealmCreatingOptions then each realm can decide whether to enable the experimental features or not to?
+
+[06:16:57.0576] <arai>
+yeah, but I'm not sure if experimental feature options currently listed there requires such detailed control, compared to ContextOptions
+
+[06:19:23.0861] <arai>
+I wonder if there's any other thing than granularity of the control
+
+[06:25:50.0799] <arai>
+jakechampion: if there is not anything else, your patch can use only `ContextOptions`, reverting the change to `RealmCreationOptions`, and use `cx->options()` in `js::ShouldIgnorePropertyDefinition`
+
+[06:28:25.0335] <arai>
+uh, I was about to ask people who wrote/reviewed the patch that adds experimental feature options in `RealmCreationOptions`, and turns out it's me :P
+
+[06:28:36.0011] <jakechampion>
+Okay, I think I'll also need to remove `getRealmConfiguration().enableNewSetMethods` from the tests as well 👍️
+
+[06:28:53.0699] <arai>
+err, wait
+
+[06:29:09.0322] <arai>
+you need to check runtime options in some way
+
+[06:30:23.0125] <arai>
+and `GetRealmConfiguration` function name sounds misleading, or maybe we're abusing, but properties returned by the testing function are all from `ContextOptions`
+
+[06:30:38.0978] <arai>
+https://searchfox.org/mozilla-central/rev/65d4d3399afa79c8de5a0cc11752d2ba7c31edc1/js/src/builtin/TestingFunctions.cpp#187-216
+
+[06:31:00.0384] <arai>
+jakechampion: so, for now, you can keep using `GetRealmConfiguration` to return `ContextOptions` field
+
+[06:31:11.0765] <arai>
+to provide the runtime option to testcase
+
+[06:31:40.0670] <arai>
+the testcase should check both compile-time option and runtime option
+
+[06:31:49.0560] <arai>
+and performs the test only if both are enabled
+
+[07:05:31.0779] <arai>
+jandem: can I have your opinion for the above RealmCreationOptions vs ContextOptions for experimental features?
+
+[07:08:27.0538] <jandem>
+arai: what I like about realm options is that `xpc::SetPrefableRealmOptions` is also called for worker realms, whereas a lot of context options have to be set in multiple places so we end up setting them only for the main thread's context...
+
+[07:09:02.0575] <jandem>
+ideally these would be process-wide flags IMO, the current system where context options are set in multiple places is brittle
+
+[07:10:10.0013] <lth>
+how can i log something from the js shell on windows so it shows up in the log output captured by the tryserver?
+
+[07:10:10.0485] <arai>
+ah, good to know
+
+[07:12:54.0059] <arai>
+jakechampion: okay, let's use  `RealmCreationOptions`, reverting `ContextOptions` change, and replacing any `cx->options()` with realm options
+
+[07:15:46.0372] <arai>
+lth: passing --show-output to test command executed in autospider.py might work
+
+[07:16:01.0169] <lth>
+arai: thanks, will look into that
+
+[07:16:16.0670] <arai>
+otherwise all output will be filtered by test harness
+
+[09:30:52.0692] <krosylight>
+Hi people, I'm currently poking AbortSignal and want to store a `JS::Handle<JS::Value>` as a member of C++ class and then pass it to another C++ object. Using `JS::Heap<>` is seemingly recommended for the member's type, but then how can I pass that object as a JS::Handle again?
+
+[09:39:49.0397] <krosylight>
+(I initially used JS::Heap as parameter types but then found it's not allowed)
+
+[10:09:14.0445] <krosylight>
+Wait, seems I can just use JS::Value for the parameter type and everything is okay?
+
+[10:09:30.0966] <iain>
+krosylight: If you want a JS::Handle, the easiest approach is to root the value. `Rooted<T>` auto-coerces to `Handle<T>`. (See the SMDOC comment [here](https://searchfox.org/mozilla-central/source/js/public/RootingAPI.h#33).) 
+
+[10:09:55.0744] <iain>
+If you are passing the value to something that can't trigger a GC, then you can potentially pass a JS::Value
+
+[10:10:26.0818] <iain>
+(The hazard analysis should yell at you if the thing you're calling can in fact GC)
+
+[10:12:07.0009] <iain>
+I also see a variety of places that pass a reference to a `Heap<>` ([example](https://searchfox.org/mozilla-central/source/dom/base/Pose.cpp#62))
+
+[10:14:05.0298] <krosylight>
+Actually it seems JS::Value is also not allowed as parameter type, will try the reference way
+
+[10:21:28.0887] <iain>
+Yeah, passing bare values is scary
+
+[10:21:36.0372] <iain>
+I was surprised that it seemed to work for you
+
+[10:26:35.0984] <mgaudet>
+> <@krosylight:mozilla.org> Hi people, I'm currently poking AbortSignal and want to store a `JS::Handle<JS::Value>` as a member of C++ class and then pass it to another C++ object. Using `JS::Heap<>` is seemingly recommended for the member's type, but then how can I pass that object as a JS::Handle again?
+
+Yeah; I'd store as heap. You'll need to make sure your class is marked as a script-holder (`NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS`), then implement the `TRACE` macros (`NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN` / `NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK`), and be sure to call `mozilla::HoldJSObjects(this)` in the constructor, and `mozilla::DropJSObjects(this)` in the destructor. 
+
+When it comes time to pass it to a method, then just re-root the local; (you may be able to get away with just using `RootingCx()`
+
+[10:26:53.0148] <mgaudet>
+> <@krosylight:mozilla.org> Hi people, I'm currently poking AbortSignal and want to store a `JS::Handle<JS::Value>` as a member of C++ class and then pass it to another C++ object. Using `JS::Heap<>` is seemingly recommended for the member's type, but then how can I pass that object as a JS::Handle again?
+
+ * Yeah; I'd store as heap. You'll need to make sure your class is marked as a script-holder (`NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS`), then implement the `TRACE` macros (`NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN` / `NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK`), and be sure to call `mozilla::HoldJSObjects(this)` in the constructor, and `mozilla::DropJSObjects(this)` in the destructor.
+
+When it comes time to pass it to a method, then just re-root the local; (you may be able to get away with just using `RootingCx()`)
+
+[10:30:14.0878] <iain>
+(Oh, good, somebody who's actually written gecko code showed up!)
+
+[10:33:18.0216] <krosylight>
+Thank you! I think I'll copy what dom/CustomEvent does
+
+[10:35:26.0673] <krosylight>
+(And passing by reference helps! That doesn't require any SpiderMonkey specific knowledge and now I feel dumb)
+
+[12:04:12.0629] <mgaudet>
+krosylight: CustomEvent looks like a pretty reasonable template (with the small warning that you'll need to trace the Wrapper, should your type be WrapperCached) 
+
+[12:07:40.0605] <krosylight>
+> <@mgaudet:mozilla.org> krosylight: CustomEvent looks like a pretty reasonable template (with the small warning that you'll need to trace the Wrapper, should your type be WrapperCached)
+
+Thanks! That seems related to the failure I'm getting:
+
+> Assertion failure: callback.mFound (Cycle collection participant didn't traverse to preserved wrapper! This will probably crash.),
+
+The code looks like below, not sure what I did wrong, do you see anything?
+
+```
+NS_IMPL_CYCLE_COLLECTION_CLASS(AbortController)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(AbortController)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mGlobal, mSignal)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(AbortController)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mGlobal, mSignal)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(AbortController)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mReason)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+```
+
+[12:09:11.0412] <mgaudet>
+Hmm. Now we're beyond my skills; to me that looks fine mostly (you may want to do `tmp->mReason.setNull()` in the unlink stanza) 
+
+[12:09:26.0899] <mgaudet>
+I'm not sure I've encountered that specific assert yet
+
+[12:09:56.0256] <mgaudet>
+did you remember `mozilla::HoldJSObjects`?
+
+[12:10:18.0253] <krosylight>
+Yup, 
+
+```
+AbortController::AbortController(nsIGlobalObject* aGlobal)
+    : mGlobal(aGlobal), mAborted(false), mReason(JS::UndefinedHandleValue) {
+  mozilla::HoldJSObjects(this);
+}
+```
+
+[12:11:41.0594] <mgaudet>
+hrm. Yeah; I've got nothing here alas. This is the point where I either ask in #dom, or start looking at an RR trace to see if I can understand what the assert is concerned about on a broader level
+
+[12:23:12.0929] <krosylight>
+Thank you! Never mind, that was nothing to do with JS and was about not correctly using _INHERITED elsewhere (me again being dumb)
+
+[12:23:14.0705] <mgaudet>
+confession: Cheating at implementing streams (the same way our JS impl has cheated thus far) 
+
+[12:23:16.0532] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+
+[12:23:42.0861] <krosylight>
+What update?!
+
+[12:24:07.0011] <mgaudet>
+krosylight: no worries. The CC is harsh to work with sometimes. 
+
+[12:24:30.0465] <mgaudet>
+krosylight: you mean botzilla? I just use that for tracking my status :P You can follow the link to see people's updates
+
+[12:24:42.0313] <krosylight>
+TIL that thing exists!
+
+[12:26:03.0597] <mgaudet>
+It's nice; used to be a bot called 'standups' that worked similarly. I think I'm the dominant user of confession right now but I like doing it. 
+
+[14:44:46.0420] <mgaudet>
+confession: Implemented the queueing strategies, and their size functions... properly (ish?) this time. 
+
+
+2021-11-27
+[18:22:31.0265] <Redfire>
+> <@krosylight:mozilla.org> Actually it seems JS::Value is also not allowed as parameter type, will try the reference way
+
+*looks at my 30+ functions using JS::Value as a parameter*
+
+[18:23:01.0595] <Redfire>
+All because I didn't want to deal with lifetimes 😅
+
+[18:25:57.0335] <arai>
+it's a restriction from [MSVC's limitation](https://searchfox.org/mozilla-central/rev/519a8915c5538be2f03813e05c1a7bd8dc9f49c8/build/clang-plugin/NonParamInsideFunctionDeclChecker.cpp#13-16)
+
+[18:26:03.0387] <arai>
+and enforced by clang plugin
+
+[18:26:34.0495] <arai>
+so, if you don't enable the clang plugin, and not using MSVC for compiling, you won't see the error
+
+[18:39:18.0824] <krosylight>
+> <@arai:mozilla.org> it's a restriction from [MSVC's limitation](https://searchfox.org/mozilla-central/rev/519a8915c5538be2f03813e05c1a7bd8dc9f49c8/build/clang-plugin/NonParamInsideFunctionDeclChecker.cpp#13-16)
+
+It actually compiled without problem with clang+MSVC when I used JS::Value, so I guess it's fixed? 
+
+[18:40:01.0219] <arai>
+what do you mean by "clang+MSVC" specifically?
+
+[18:40:57.0430] <krosylight>
+(assuming that the windows build uses clang+MSVC, I mean just the Windows build environment, with VS2022 in my case) 
+
+[18:41:24.0250] <arai>
+yeah, currently windows build uses clang for compilation, so you won't hit the issue
+
+[18:41:34.0961] <arai>
+the issue was from when we weren't using clang on windows
+
+[18:42:27.0596] <arai>
+so everything was compiled with MSVC's compiler
+
+[18:43:02.0111] <krosylight>
+Does it mean it can now be allowed?
+
+[18:43:33.0124] <arai>
+I'm not sure if MSVC support is completely dropped
+
+[18:44:03.0531] <arai>
+hm, this says it's dropped https://firefox-source-docs.mozilla.org/code-quality/coding-style/using_cxx_in_firefox_code.html
+
+[18:44:08.0530] <arai>
+> As of Mozilla 67, MSVC can no longer be used to build Mozilla.
+
+[18:44:51.0081] <arai>
+but iiuc SpiderMonkey is different, because of embedding
+
+[18:46:06.0488] <arai>
+so it's better keep the plugin as is, and avoid using raw JS::Value in parameter, for in-tree source
+
+[18:46:38.0761] <arai>
+ * so it's better keep the plugin as is, and avoid using raw JS::Value (or any `alignas` type) in parameter, for in-tree source
+
+[07:32:52.0858] <Redfire>
+I'm working on a custom value formatter (for my console API).
+
+There are the regular values (bool, number, string, null, undefined).
+There's the regular but recursive values (array, object).
+Then, there's the edge cases that require custom formatters (Stuff like dates, regular expressions, typed arrays, promises, functions, errors).
+
+Are there any important edge cases that I haven't considered yet?
+
+P.S: I know BigInts exist as primitives but I can't find any API for them. (rust-mozjs)
+
+[07:42:58.0841] <Redfire>
+* I'm working on my own `JS::Value` formatter (for my console API).
+
+There are the regular values (bool, number, string, null, undefined).
+There's the regular but recursive values (array, object).
+Then, there's the edge cases that require custom formatters (Stuff like dates, regular expressions, typed arrays, promises, functions, errors).
+
+Are there any important edge cases that I haven't considered yet?
+
+P.S: I know BigInts exist as primitives but I can't find any API for them. (rust-mozjs)
+
+[09:51:00.0066] <evilpie>
+> <@redfire75369:mozilla.org> I'm working on my own `JS::Value` formatter (for my console API).
+> 
+> There are the regular values (bool, number, string, null, undefined).
+> There's the regular but recursive values (array, object).
+> Then, there's the edge cases that require custom formatters (Stuff like dates, regular expressions, typed arrays, promises, functions, errors).
+> 
+> Are there any important edge cases that I haven't considered yet?
+> 
+> P.S: I know BigInts exist as primitives but I can't find any API for them. (rust-mozjs)
+
+https://searchfox.org/mozilla-central/source/js/public/BigInt.h
+
+[09:55:28.0399] <evilpie>
+> <@evilpie:mozilla.org> https://searchfox.org/mozilla-central/source/js/public/BigInt.h
+
+You should also have a look at JS_ValueToSource
+
+[11:13:49.0877] <DerekNonGeneric>
+that is one way of looking at things that I found (it looks like a great anotomy, but you can probably find clearer-looking ones)
+
+[11:28:52.0957] <DerekNonGeneric>
+evilpie: and myself may have answered the question fully (it was a big one) and there are probably more user-friendly reference implementations, but have been wanting to build something like that myself for a while
+
+[11:30:36.0743] <DerekNonGeneric>
+(hope that helps)
+
+[12:32:25.0649] <krosylight>
+> <@arai:mozilla.org> so it's better keep the plugin as is, and avoid using raw JS::Value (or any `alignas` type) in parameter, for in-tree source
+
+I wonder whether it can be applied to SpiderMonkey code only
+
+[13:24:15.0142] <evilpie>
+krosylight: Generally code should juse use JS::Handle unless there is a big performance concern
+
+[13:25:25.0709] <krosylight>
+Thanks, very reasonable to keep it then 
+
+[13:27:57.0706] <evilpie>
+ * https://phabricator.services.mozilla.com/D132281 should not use `JS::Heap[JS::Value](js::Value)&`
+
+[13:29:06.0874] <evilpie>
+ * https://phabricator.services.mozilla.com/D132281 should not use `JS::Heap<JS::Value>&`
+
+
+2021-11-28
+[22:39:29.0170] <Redfire>
+> <@evilpie:mozilla.org> https://searchfox.org/mozilla-central/source/js/public/BigInt.h
+
+I know that exists, it's just that there is no visible API as far as `rust-mozjs` is concerned.
+
+
+2021-11-29
+[22:16:04.0513] <Redfire>
+Is there any difference between `JS_ObjectIsFunction` and using `GetBuiltinClass` and checking if it is `ESClass::Function`?
+
+[22:26:21.0526] <arai>
+`GetBuiltinClass` way will hit also with proxy with function target: https://searchfox.org/mozilla-central/rev/4aae583beac98b934e2457dbd1eb6c8d7b9e3215/js/src/jsapi.cpp#2268-2270  https://searchfox.org/mozilla-central/rev/4aae583beac98b934e2457dbd1eb6c8d7b9e3215/js/src/jsfriendapi.cpp#222-269
+
+[22:26:41.0360] <arai>
+`Proxy::getBuiltinClass(cx, obj, cls);` part
+
+[22:27:49.0121] <Redfire>
+So `JS_ObjectIsFunction` is a subset of the `GetBuiltinClass` way?
+
+[22:28:55.0066] <arai>
+I'm not sure if it's appropriate to call it subset tho, `JS_ObjectIsFunction` returns true if the object is purely a function
+
+[22:29:02.0788] <arai>
+ * I'm not sure if it's appropriate to call it "subset" tho, `JS_ObjectIsFunction` returns true if the object is purely a function
+
+[22:30:33.0901] <arai>
+it depends on what you want to test, or what you want to do after the branch
+
+[22:38:05.0846] <arai>
+if you want to treat a function proxy in the same way as raw function, then `JS_ObjectIsFunction` is considered to be a subset
+
+[22:38:35.0714] <arai>
+if you want to operate on raw function, `JS_ObjectIsFunction` is what you want, and it's not a subset
+
+[23:30:38.0587] <arai>
+is either "the fallback from `dom.workers.options.*` to `javascript.options.*`", or "overriding `javascript.options.*` with `dom.workers.options.*`" something actually used?  https://searchfox.org/mozilla-central/rev/70b32246fce5ca1f53af573a21c1939df58cb969/dom/workers/RuntimeService.cpp#200-233
+
+[23:31:07.0698] <arai>
+so far I don't see any example usage
+
+[23:40:11.0168] <arai>
+in bug 1743223 patch I inherited the behavior in newly added function, but I wonder if the behavior is something we really need to preserve
+
+[23:40:12.0614] <botzilla>
+https://bugzil.la/1743223 — ASSIGNED (arai) — Add a function to reflect pref to `ContextOptions` shared between main thread and workers
+
+[05:24:56.0841] <nicolo-ribaudo>
+Q: Is there a function to get a new realm in jstests?
+
+[05:26:29.0205] <arai>
+`newGlobal()`
+
+[05:27:58.0630] <arai>
+in JS shell, it's this function https://searchfox.org/mozilla-central/rev/70b32246fce5ca1f53af573a21c1939df58cb969/js/src/shell/js.cpp#9752-9781
+
+[05:28:19.0891] <nicolo-ribaudo>
+Thanks!
+
+[05:29:03.0843] <arai>
+you cannot use options parameter in jstests, given jstests also runs on browser, and in browser it's this function https://searchfox.org/mozilla-central/rev/70b32246fce5ca1f53af573a21c1939df58cb969/js/src/tests/browser.js#167-181
+
+
+2021-11-30
+[17:13:50.0951] <arai>
+jakechampion: let me know if you need help pushing your patch to try server
+
+[18:33:14.0544] <jakechampion>
+> <@arai:mozilla.org> jakechampion: let me know if you need help pushing your patch to try server
+
+Thanks arai ☺️ - I think I've got it pushed and now have all the tests commands finished running on my local machine and all passed
+
+[18:34:57.0482] <arai>
+jakechampion: thank you!
+
+[18:35:10.0907] <arai>
+sorry I overlooked one thing in the patch (commented there)
+
+[18:35:15.0478] <jakechampion>
+For the tests, I was wondering if we should add tests which run when the enable-new-set-methods flag is not set -- they could test to confirm the methods do not exist
+
+[18:36:16.0211] <arai>
+yeah, adding it in the `else` branch for `if (getBuildConfiguration()['new-set-methods'] && getRealmConfiguration().enableNewSetMethods) {` would be nice
+
+[18:39:14.0536] <jakechampion>
+I've made those changes now - should I be pushing to try once more?
+
+[18:39:19.0849] <jakechampion>
+ * I've made those changes now - should I be pushing to Try once more?
+
+[18:43:00.0738] <arai>
+the whole run is not necessary
+
+[18:43:33.0388] <arai>
+can you run `./mach jstests non262/Set/` to see if the `else` branch passes?
+
+[18:46:04.0511] <arai>
+okay, now let's wait for the try run to finish
+
+[19:23:17.0473] <jakechampion>
+It looks like every finished and passed 🎉https://treeherder.mozilla.org/jobs?repo=try&author=me%40jakechampion.name
+
+[07:25:28.0495] <arai>
+Filed bug 1743623 for `javascript.options.*` prefs vs `dom.workers.options.*` prefs above
+
+[07:25:30.0169] <botzilla>
+https://bugzil.la/1743623 — NEW (nobody) — Revisit SpiderMonkey-related preferences used by workers
+
+[08:52:42.0833] <jonco>
+I've done some experiments to see how much memory we could save if we implemented pointer compression the in the JS engine
+
+[08:53:09.0027] <jonco>
+The summary is that this might save between 3.8% and 8.1% of JS heap memory on common use cases, or 1.4% and 2.4% of total explicit memory allocations
+
+[08:53:16.0252] <jonco>
+Results are here: https://docs.google.com/spreadsheets/d/1HgagFqAB_FGv_1P-x5rY1fJwRVnHgRxnyXG0dV9Xqnw/edit?usp=sharing
+
+[08:57:07.0720] <nicolo-ribaudo>
+Hi! Is anyone willing to vouch for me to get Level 1 access (for `mach try`)? 🙂
+
+[09:01:08.0298] <iain>
+jonco: Is that assuming 32-bt Values?
+
+[09:01:17.0990] <iain>
+ * jonco: Is that assuming 32-bit Values?
+
+[09:01:28.0639] <tcampbell>
+nicolo-ribaudo: I'm gonna suggest mgaudet  but I'm also happy to
+
+[09:02:46.0395] <nicolo-ribaudo>
+> <@tcampbell:mozilla.org> nicolo-ribaudo: I'm gonna suggest mgaudet  but I'm also happy to
+
+Thanks! I'm not in hurry, so I can wait to see if mgaudet wants to do it
+
+[09:03:07.0112] <Ms2ger 💉💉>
+nicolo-ribaudo: I'll vouch tomorrow, if you don't have anyone yet
+
+[09:08:04.0427] <jonco>
+iain: it's assuming we can specialize object element/slot storage somehow for when they only contain values that can be stored in 32 bits
+
+[09:42:57.0478] <mgaudet>
+> <@nicolo-ribaudo:matrix.org> Thanks! I'm not in hurry, so I can wait to see if mgaudet wants to do it
+
+be glad to vouch; just ni me! 
+
+[09:44:06.0521] <nicolo-ribaudo>
+CC'ed! https://bugzilla.mozilla.org/show_bug.cgi?id=1743649
+
+[12:02:14.0209] <fuzzing_desparation>
+Hello everyone. I am an undergraduate student trying to understand how to build spidermonkey for the purposes of fuzzing it in order to find issues. I have been trying to resolve an issue for several days that revolves around clang not being found in gecko-dev/js/src/compiler/clang. Can I simply cp clang and clang++ from /usr/bin? I tried doing it earlier, and started experiencing other errors. Googling these issues, I have only found one fix that would be applicable on linux, which is simply rerunning mach bootstrap and trying to build the full firefox engine. Am I missing something obvious? 
+
+[12:05:23.0556] <fuzzing_desparation>
+ * Hello everyone. I am an undergraduate student trying to understand how to build spidermonkey for the purposes of fuzzing it in order to find bugs. I have been trying to resolve an issue for several days that revolves around clang not being found in gecko-dev/js/src/compiler/clang. Can I simply copy over clang and clang++ from /usr/bin? I tried doing that earlier, and started experiencing other errors. Googling these issues, I have only found one fix that would be applicable on linux, which is simply rerunning mach bootstrap and trying to build the full firefox engine. This hasn't worked for me, so I am a bit confused. Am I missing something obvious? 
+
+[12:06:15.0129] <fuzzing_desparation>
+Pulling spidermonkey from https://github.com/mozilla/gecko-dev, and my MOZBUILD config is basically the one described in the build instructions. 
+
+[12:11:07.0864] <fuzzing_desparation>
+ * Pulling spidermonkey from https://github.com/mozilla/gecko-dev, and my MOZBUILD config is basically the one described in the build instructions. My end goal is to build Spidermonkey with instrumentation for afl fuzzing, but at this point I just wantto successfully build spidermonkey at all. 
+
+[12:11:15.0985] <fuzzing_desparation>
+ * Pulling spidermonkey from https://github.com/mozilla/gecko-dev, and my MOZBUILD config is basically the one described in the build instructions. My end goal is to build Spidermonkey with instrumentation for afl fuzzing, but at this point I just want to successfully build spidermonkey at all. 
+
+[12:18:41.0046] <iain>
+fuzzing_desparation: Have you seen [this page](https://firefox-source-docs.mozilla.org/js/build.html)? I believe `mach bootstrap` is supposed to install clang for you, so [this page](https://firefox-source-docs.mozilla.org/setup/linux_build.html#building-firefox-on-linux) might also be relevant
+
+[12:20:30.0237] <iain>
+"gecko-dev/js/src/compiler/clang" is a weird path
+
+[12:20:56.0114] <mgaudet>
+fuzzing_desparation: Would be worth posting your exact mozconfig, and maybe a pastebin of your errors
+
+[12:21:21.0089] <mgaudet>
+(but Iain's on the money for better instructions) 
+
+[12:21:36.0020] <iain>
+By default, I think mach installs build tools in ~/.mozbuild
+
+[12:21:52.0371] <iain>
+For example, I have `~/.mozbuild/clang/bin/clang`
+
+[12:21:58.0118] <mgaudet>
+If your fuzzing harness requires you build with your own compiler, I believe you can put `CC=$PATHTOCOMPILER CXX=$PATHTOC++COOMPILER` lines in your mozconfig too 
+
+[12:22:06.0443] <mgaudet>
+(possibly two separate lines) 
+
+[12:56:42.0820] <fuzzing_desparation>
+> <@mgaudet:mozilla.org> If your fuzzing harness requires you build with your own compiler, I believe you can put `CC=$PATHTOCOMPILER CXX=$PATHTOC++COOMPILER` lines in your mozconfig too
+
+Sorry, I should have specified that I have done this. 
+
+[12:57:12.0695] <fuzzing_desparation>
+> <@iain:mozilla.org> fuzzing_desparation: Have you seen [this page](https://firefox-source-docs.mozilla.org/js/build.html)? I believe `mach bootstrap` is supposed to install clang for you, so [this page](https://firefox-source-docs.mozilla.org/setup/linux_build.html#building-firefox-on-linux) might also be relevant
+
+I'm going to redo it step by step on this page and see if that works
+
+[12:58:36.0684] <fuzzing_desparation>
+This is what I changed in the mozbuild after it didn't work the first time, I'm going to retry from scratch before I come back.
+
+[13:03:29.0467] <fuzzing_desparation>
+ * This is what I changed in the MOZCONFIG after it didn't work the first time, I'm going to retry from scratch before I come back.
+
+[13:18:19.0551] <mgaudet>
+fuzzing_desparation: OK; and to be clear you need to use your own clang because that's where your fuzzing tooling is injected right? 
+
+Playing with that a bit, it certainly seems like a good start. 
+
+(I will note that `--with-clang-path` is potentially problematic for you, because it isn't matching the clang path you're using; I'd try dropping the option unless you prove to yourself it's necessary) 
+
+I haven't quite gotten to a point where I can reproduce that weird path though... 
+
+[13:32:12.0721] <fuzzing_desparation>
+> <@mgaudet:mozilla.org> fuzzing_desparation: OK; and to be clear you need to use your own clang because that's where your fuzzing tooling is injected right? 
+> 
+> Playing with that a bit, it certainly seems like a good start. 
+> 
+> (I will note that `--with-clang-path` is potentially problematic for you, because it isn't matching the clang path you're using; I'd try dropping the option unless you prove to yourself it's necessary) 
+> 
+> I haven't quite gotten to a point where I can reproduce that weird path though...
+
+Yep, I use clang 6 with llvm in order to instrument spidermonkey for fuzzing.
+
+I played with it, and was able to get rid of the original error. At first, I changed --with-clang-path to usr/local/bin, but for some reason it still wasn't finding my clang binary there. 
+
+I just fresh installed clang 6 in usr/bin instead, and specified that directory in my mozbuild instead. Then, I tried to run mach build, and I got further
+
+[13:32:39.0563] <mgaudet>
+So, clang-6 is almost certainly too old
+
+[13:33:24.0821] <fuzzing_desparation>
+> <@mgaudet:mozilla.org> So, clang-6 is almost certainly too old
+
+Ah, that's an issue for me then, as the fuzzing system I use indicates usage of clang 6 to compile the browsers and afl
+
+[13:33:26.0597] <mgaudet>
+--with-clang-path is really only supposed to be used for GCC builds that also need to run cbinddgen
+
+[13:33:32.0986] <mgaudet>
+*cbindgen 
+
+[13:34:20.0524] <fuzzing_desparation>
+I got a "Finished dev [optimized + debuginfo] target(s) in 1m 10s" message afterwards, which I think indicates a successful build? However, I did get 2 errors, which were "make[4]: *** [/home/nmissa2/DIE/engines/gecko-dev/config/rules.mk:662: Unified_cpp_js_src_frontend2.o] Error 1" and "make[3]: *** [/home/nmissa2/DIE/engines/gecko-dev/config/recurse.mk:72: js/src/jit/target-objects] Error 2"
+
+[13:34:27.0381] <fuzzing_desparation>
+I assume this is probably because of my usage of clang 6/
+
+[13:34:29.0275] <fuzzing_desparation>
+ * I assume this is probably because of my usage of clang 6?
+
+[13:35:28.0463] <mgaudet>
+ISTR that output is actually from the rust-modules getting compiled (PS: Rust will potentially pose a threat to your fuzzing; not necessarily a deal breaker, but integrating your C++ and rust fuzzing is important eventually) 
+
+[13:36:05.0147] <iain>
+Taking a step back: can I suggest trying to build without supplying your own clang version first, and then swapping out the build compiler once you know you have everything else working?
+
+[13:36:35.0822] <mgaudet>
+there's more errors elsewhere in that spew that give a more complete picture of the failure; but I tried compiling with the default clang  ubuntu installed, it failed (partially why mach bootstrap installs its own by default) 
+
+[13:37:44.0553] <fuzzing_potential>
+> <@iain:mozilla.org> Taking a step back: can I suggest trying to build without supplying your own clang version first, and then swapping out the build compiler once you know you have everything else working?
+
+Good point, I did say I was going to try that but I got excited when mach build ran on clang 6 😆
+
+[13:42:32.0027] <mgaudet>
+fuzzing_potential: https://gist.github.com/mgaudet/95c9da427a479bbc4d8090029e77f518 
+
+[13:43:28.0604] <mgaudet>
+Here's a successful moz-config I've used; but I installed LLVM/Clang nightly for doing this. Finding the right minimum version that's compatible with your fuzzing tooling will be appropriate; but given the popularity of AFL, if that's your start point, I have to imagine someone has made it work with either clang nightly, or something *close*
+
+[13:45:45.0275] <mgaudet>
+(based on yours, with a couple notes) 
+
+[14:04:52.0260] <fuzzing_potential>
+> <@fuzzing_desparation:mozilla.org> Good point, I did say I was going to try that but I got excited when mach build ran on clang 6 😆
+
+Worked, going to test mgaudet 's mozconfig. Tested with Clang 6.0.1-14 and got some errors(https://pastebin.com/mKYbtxbC), going to test with clang nightly. I'm pretty sure it will work with clang nightly, the repo for the paper I was following (https://github.com/sslab-gatech/DIE) specified usage of clang 6 specifically so I tried to stick with that, but it's outdated by a year or so. I will report back on how it goes.
+
+[14:05:18.0864] <fuzzing_potential>
+Thank you iain and mgaudet for the guidance so far.
+
+[14:05:23.0953] <mgaudet>
+oh, clang-6 is more than a year old :P But you're welcome 
+
+[14:05:41.0476] <fuzzing_potential>
+> <@mgaudet:mozilla.org> oh, clang-6 is more than a year old :P But you're welcome
+
+Ah, I meant that the DIE repo is about a year old, and they used clang 6.
+
+[14:07:14.0859] <mgaudet>
+Interesting; I wonder if they don't list any SpiderMonkey CVEs because they didn't get it to build
+
+[14:08:15.0475] <fuzzing_potential>
+> <@mgaudet:mozilla.org> Interesting; I wonder if they don't list any SpiderMonkey CVEs because they didn't get it to build
+
+Very likely to be the issue, as their build-sm.sh and build-sm-cov.sh scripts seem a bit... off to me.
+
+[14:09:20.0221] <mgaudet>
+fuzzing_potential: build_sm looks reasonable, for the old way of building SM (configure+make); mach provides better ergonomics so we strongly recommend it now
+
+[14:13:26.0721] <mgaudet>
+fuzzing_potential: Good luck! Hopefully this comes together. Would be neat to see some fuzz-bugs from a new approach. 
+
+[14:24:58.0156] <mgaudet>
+confession: Small improvements to DOM streams stack. Trying and failing to reproduce a JS streams error; alas. 
+
+[14:25:00.0614] <botzilla>
+Seen! Your update will eventually appear on https://robotzilla.github.io/histoire
+

@@ -1,0 +1,66 @@
+<!DOCTYPE html><html><head>
+  <meta charset="UTF-8">
+  <title>SpiderMonkey on 2021-01-16</title>
+  <link rel="stylesheet" href="../style.css">
+  <script>window.room = "SpiderMonkey";</script><script src="../render-roomlist.js"></script>
+  <script src="../logs.js"></script>
+</head>
+<body><div class="wrapper">
+<div class="sidebar">
+<div class="title">SpiderMonkey<br>2021-01-16<br><a href="plaintext/">plaintext logs</a></div>
+<div class="nav">
+<a href="2021-01-15" class="nav-link"><span>prev</span></a>
+<a href="2021-01-18" class="nav-link"><span style="float:right">next</span></a>
+</div>
+    <div class="all-rooms"><noscript>JavaScript is required to load the channel index, but you can go to <a href="../..">the static index</a> directly.</noscript></div>
+<div class="footer"><a href="https://github.com/bakkot/matrix-archive-bot">source on github</a></div>
+</div>
+<div class="rhs">
+<div class="rhs-header">
+<span id="error" style="color: red; display:none">error</span>
+
+<input type="text" id="query" size="25" placeholder="Search SpiderMonkey">
+<a id="search-submit" class="button icon-link" title="Search">
+  <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M505 442.7L405.3 343c-4.5-4.5-10.6-7-17-7H372c27.6-35.3 44-79.7 44-128C416 93.1 322.9 0 208 0S0 93.1 0 208s93.1 208 208 208c48.3 0 92.7-16.4 128-44v16.3c0 6.4 2.5 12.5 7 17l99.7 99.7c9.4 9.4 24.6 9.4 33.9 0l28.3-28.3c9.4-9.4 9.4-24.6.1-34zM208 336c-70.7 0-128-57.2-128-128 0-70.7 57.2-128 128-128 70.7 0 128 57.2 128 128 0 70.7-57.2 128-128 128z"></path></svg>
+</a>
+</div>
+
+<div class="log"><table id="log-table"><tbody id="log-tbody">
+
+  <tr class="msg" id="L0"><td class="ts-cell"><a class="ts" href="#L0" alt="Sat Jan 16 2021 03:40:55 GMT-0800 (Pacific Standard Time)">11:40</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell"><p>Hey everyone! A small question: would it be possible to fix <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1243367">https://bugzilla.mozilla.org/show_bug.cgi?id=1243367</a>?</p>
+<p>Scenario: my software is a dynamic library that uses an embedded SM as a shared library (on Windows).<br>For reasons, I have to use statically linked c++ runtime, while SM uses dynamically linked runtime, so my library and SM use different memory heaps.<br>The problem occurs when I'm using some JSApi that allocates memory in SM (dynamic rutime heap), but frees it using inlined <code>free</code> that's defined in the JSApi headers, i.e. using the static runtime heap. Which causes application to crash.</p>
+<p>Most notable example that has such behaviour is <code>StackGCVector</code></p>
+</td></tr>
+  <tr class="msg" id="L1"><td class="ts-cell"><a class="ts" href="#L1" alt="Sat Jan 16 2021 03:42:14 GMT-0800 (Pacific Standard Time)">11:42</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">I've searched through JSAPI headers and it doesnt look like there are a lot of places where inline <code>js_free</code> (that's mapped to <code>free()</code>) is called</td></tr>
+  <tr class="msg" id="L2"><td class="ts-cell"><a class="ts" href="#L2" alt="Sat Jan 16 2021 03:43:56 GMT-0800 (Pacific Standard Time)">11:43</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">A brute-force programming fix of replacing <code>free()</code> with <code>moz_arena_free(js::MallocArena, p)</code> in <code>js_free()</code> in headers removed the crash, but I'm sure that it's not a proper fix and will cause all sort of problems later.</td></tr>
+  <tr class="msg" id="L3"><td class="ts-cell"><a class="ts" href="#L3" alt="Sat Jan 16 2021 03:52:18 GMT-0800 (Pacific Standard Time)">11:52</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell"><blockquote>
+<p>I've searched through JSAPI headers and it doesnt look like there are a lot of places where inline js_free (that's mapped to free()) is called</p>
+</blockquote>
+<p>to be more specific:</p>
+<ul>
+<li>AllocPolicy.h: AllocPolicyBase and TempAllocPolicy: they use moz_arena_* functions to alloc, safe to use moz_arena_free</li>
+<li>CharacterEncoding.h: JS_free() for strings: no idea since the memory is allocated inside SM.</li>
+<li>MemoryMetrics.h: NotableClassInfo/NotableStringInfo/NotableScriptSourceInfo: no idea since the memory is allocated inside SM.</li>
+<li>SourceText.h: ~SourceText: used on <code>Unit* units</code> which is passed via <code>init()</code> method from outside, hence no idea.</li>
+<li>TraceLogger.h: ~TraceLoggerCollectorBuffer(): allocated via js_pod_malloc, safe to use moz_arena_free</li>
+</ul>
+</td></tr>
+  <tr class="msg" id="L4"><td class="ts-cell"><a class="ts" href="#L4" alt="Sat Jan 16 2021 03:57:10 GMT-0800 (Pacific Standard Time)">11:57</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">oh, and that's all based on esr68 sources</td></tr>
+  <tr class="msg" id="L5"><td class="ts-cell"><a class="ts" href="#L5" alt="Sat Jan 16 2021 03:57:28 GMT-0800 (Pacific Standard Time)">11:57</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">esr68.9 to be more specific</td></tr>
+  <tr class="msg" id="L6"><td class="ts-cell"><a class="ts" href="#L6" alt="Sat Jan 16 2021 04:01:02 GMT-0800 (Pacific Standard Time)">12:01</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">another solution would be to make <code>js_free()</code> non-inline, so that <code>free()</code> call would be actually inside SM binary, but I understand that it would be less than ideal, because this code is used in non-public parts of SM as well (so it might have performance implications).</td></tr>
+  <tr class="msg" id="L7"><td class="ts-cell"><a class="ts" href="#L7" alt="Sat Jan 16 2021 05:18:26 GMT-0800 (Pacific Standard Time)">13:18</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">on that note, I can't, for the life of me, find the definition of <code>moz_arena_free</code> in SM sources, could anyone help me, please? =)</td></tr>
+  <tr class="msg" id="L8"><td class="ts-cell"><a class="ts" href="#L8" alt="Sat Jan 16 2021 05:30:01 GMT-0800 (Pacific Standard Time)">13:30</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">oh, so my "hacky" solution is a actually working solution (still hacky though): I'm building SM with --disable-je-malloc, which makes moz_arena_free to be defined as a call to <code>free()</code>, so it's actually exactly what I need</td></tr>
+  <tr class="msg" id="L9"><td class="ts-cell"><a class="ts" href="#L9" alt="Sat Jan 16 2021 05:32:06 GMT-0800 (Pacific Standard Time)">13:32</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-15" title="@evilpie:mozilla.org">evilpie</span>&gt;</div></td><td class="msg-cell"><a href="https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md#disabling-jemalloc">https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md#disabling-jemalloc</a></td></tr>
+  <tr class="msg" id="L10"><td class="ts-cell"><a class="ts" href="#L10" alt="Sat Jan 16 2021 05:37:16 GMT-0800 (Pacific Standard Time)">13:37</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">-snip-</td></tr>
+  <tr class="msg" id="L11"><td class="ts-cell"><a class="ts" href="#L11" alt="Sat Jan 16 2021 05:37:45 GMT-0800 (Pacific Standard Time)">13:37</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell"><mx-reply><blockquote> <a href="https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md#disabling-jemalloc">https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/esr78/docs/Building%20SpiderMonkey.md#disabling-jemalloc</a></blockquote></mx-reply>I'm not sure what this is answer to :D</td></tr>
+  <tr class="msg" id="L12"><td class="ts-cell"><a class="ts" href="#L12" alt="Sat Jan 16 2021 05:39:07 GMT-0800 (Pacific Standard Time)">13:39</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">Since the problem mentioned above happens even <em>with</em> --disable-je-malloc</td></tr>
+  <tr class="msg" id="L13"><td class="ts-cell"><a class="ts" href="#L13" alt="Sat Jan 16 2021 05:39:40 GMT-0800 (Pacific Standard Time)">13:39</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">and as I've said I <em>do</em> build with --disable-je-malloc</td></tr>
+  <tr class="msg" id="L14"><td class="ts-cell"><a class="ts" href="#L14" alt="Sat Jan 16 2021 08:17:04 GMT-0800 (Pacific Standard Time)">16:17</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell"><code>moz_arena_free</code> is a macro, <a href="https://searchfox.org/mozilla-central/rev/03224522336f60a1a61a87e1fcd4feb0a0315a9b/memory/build/malloc_decls.h#136">https://searchfox.org/mozilla-central/rev/03224522336f60a1a61a87e1fcd4feb0a0315a9b/memory/build/malloc_decls.h#136</a></td></tr>
+  <tr class="msg" id="L15"><td class="ts-cell"><a class="ts" href="#L15" alt="Sat Jan 16 2021 08:20:47 GMT-0800 (Pacific Standard Time)">16:20</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell">I don't know that it still works, but in theory you can always define <code>JS_USE_CUSTOM_ALLOCATOR</code> and then provide your own <code>jscustomallocator.h</code>. I didn't think it was supposed to be needed for what you're trying to do, though.</td></tr>
+  <tr class="msg" id="L16"><td class="ts-cell"><a class="ts" href="#L16" alt="Sat Jan 16 2021 08:25:56 GMT-0800 (Pacific Standard Time)">16:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell">it does look like the thing to fix here would be bug 1243367 as you originally said</td></tr>
+  <tr class="msg" id="L17"><td class="ts-cell"><a class="ts" href="#L17" alt="Sat Jan 16 2021 08:25:57 GMT-0800 (Pacific Standard Time)">16:25</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-3" title="@botzilla:mozilla.org">botzilla</span>&gt;</div></td><td class="msg-cell"><a href="https://bugzil.la/1243367">https://bugzil.la/1243367</a> — NEW (nobody) — Deal with remaining js_free instances inlined into JSAPI</td></tr>
+  <tr class="msg" id="L18"><td class="ts-cell"><a class="ts" href="#L18" alt="Sat Jan 16 2021 08:26:33 GMT-0800 (Pacific Standard Time)">16:26</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-12" title="@sfink:mozilla.org">sfink</span>&gt;</div></td><td class="msg-cell">it sounds like making them non-inline would be the most straightforward fix. Not that I'm really understanding everything going on here.</td></tr>
+  <tr class="msg" id="L19"><td class="ts-cell"><a class="ts" href="#L19" alt="Sat Jan 16 2021 08:35:39 GMT-0800 (Pacific Standard Time)">16:35</a></td><td class="nick-cell"><div class="m-ov">&lt;<span class="nick nick-13" title="@theqwertiest:mozilla.org">TheQwertiest</span>&gt;</div></td><td class="msg-cell">Do you mean that you don't understand the problem or do you mean the SM code? :D<br>If it's the former I can try to make a more structured description.</td></tr>
+
+</tbody></table></div></div></div>
+</body></html>

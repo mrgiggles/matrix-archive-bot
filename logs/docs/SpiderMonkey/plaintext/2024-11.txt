@@ -1,0 +1,4094 @@
+2024-11-01
+[09:36:32.0297] <mayankleoboy1>
+Is bug 1724236 "active/enabled" on Nightly? Is it expected to improve page loading metrics like FCP etc. ?
+
+[09:37:16.0704] <mayankleoboy1>
+ * Is bug 1724236 "active/enabled" on Nightly? Is it expected to have an impact on page loading metrics like FCP etc. ?
+
+[09:51:22.0078] <arai>
+the change is not behind any flag. do you mean you observe performance regression for the revision?
+
+[09:53:28.0191] <mayankleoboy1>
+> <@arai:mozilla.org> the change is not behind any flag. do you mean you observe performance regression for the revision?
+
+https://treeherder.mozilla.org/perfherder/alerts?id=42404&hideDwnToInv=0. Not verified by perf-sheriffs yet, but looks like bug 1724236  is the regressor.
+
+[09:55:44.0521] <arai>
+sounds like the bytecode encoding is broken?
+
+[09:56:30.0416] <arai>
+(right now we don't have tests for bytecode encoding, because of some other reason)
+
+[09:59:23.0660] <arai>
+Bryan Thrall [:bthrall]: can you take a look?
+
+[10:00:08.0853] <mayankleoboy1>
+just a little headsup before the actual regression bug is filed.
+
+[10:00:24.0512] <arai>
+thanks!
+
+[10:54:02.0388] <Bryan Thrall [:bthrall]>
+Yes, I'll take a look
+
+[15:02:53.0210] <mgaudet>
+confession: Well... I got rid of nursery allocations. Which got rid of minor collections. But my microbenchmark got 2x slower so... hey at least it's done something
+
+[15:03:07.0034] <mgaudet>
+and now, The Weekend. 
+
+
+2024-11-02
+[20:05:00.0264] <dragonslayer>
+sorry for the late replies
+
+[20:05:13.0446] <dragonslayer>
+the error is heap coming back like double memory
+
+[20:05:20.0278] <dragonslayer>
+being used
+
+[20:06:14.0051] <dragonslayer>
+I am on a project that takes embedded spidemonkey as a scripting enegine for e c++ core
+
+[20:06:42.0750] <dragonslayer>
+here is the github
+
+https://github.com/UOX3DevTeam/UOX3/tree/feature/spidermonkey-esr115
+
+[20:07:11.0058] <dragonslayer>
+so any one good with spidermonkey embedding
+
+[20:07:29.0888] <dragonslayer>
+my test was because we are trying to upgrade are engine to 115 esr https://github.com/UOX3DevTeam/UOX3/tree/feature/spidermonkey-esr115
+
+[20:07:52.0956] <dragonslayer>
+but issue remains calling a string back 
+
+[20:08:00.0377] <dragonslayer>
+throws heap error or double memory
+
+[22:20:31.0433] <arai>
+is it the same issue as the previous thread above?  if so, can you provide the backtrace and the error details?  can you run it under denugger?
+
+[22:35:10.0129] <arai>
+can you please provide the exact error or the behavior you observe?  such as the output you get when running the application, the backtrace retrieved with debugger, etc.  "heap coming back" is too vague and hard to see what you actually observe 
+
+[23:17:59.0152] <arai>
+* is it the same issue as the previous thread above? if so, can you provide the backtrace and the error details? can you run it under debugger?
+
+
+2024-11-04
+[17:51:37.0273] <dragonslayer>
+yes
+
+[17:53:11.0192] <dragonslayer>
+here what happens
+
+[19:25:38.0038] <arai>
+okay, let's continue in the thread above.
+
+[19:29:43.0519] <arai>
+thanks. can you also run it with debugger and get the backtrace (call stack)?  the error is happening inside windows runtime, and it's unclear what caused it with the screenshot.  backtrace will tell us where it happens inside your application 
+
+[23:30:35.0590] <arai>
+ * thanks. can you also run it with debugger and get the backtrace (stack trace, call stack)?  the error is happening inside windows runtime, and it's unclear what caused it with the screenshot.  backtrace will tell us where it happens inside your application
+
+[02:39:49.0941] <smaug>
+jonco: I've been playing with the idea to have a a bit different scheduling in case we've detected that previous GC/CC cycle wasn't utilizing only idle time. In such case, the next cycle would try to find idle time more eagerly and possibly overuse the idle time a tiny bit. That way more of the GC/CC would still happen roughly around idle time, and not at random time when a timer runs. Also, the interrupt mechanism, which GC, has would be disabled in this mode. 
+
+[02:42:19.0952] <smaug>
+Seems to be working quite well.
+
+[04:19:11.0147] <gaporf>
+Hello, I filed the bug (https://bugzilla.mozilla.org/show_bug.cgi?id=1928966) to add JS::ParseInt and JS::ParseFloat, and I believe I have working code for this implementation.
+
+Additionally, I think it would be better to split this task into two parts: first, I’ll add JS::ParseInt and submit it for review, and after a successful review, I’ll add JS::ParseFloat and submit it for review as well.
+
+[05:55:31.0669] <yulia>
+Under which circumstances might this not be true? https://searchfox.org/mozilla-central/source/js/src/jit/TrialInlining.cpp#286 -- the reader not advancing as expected? The op in this case is CacheOp::CallInlinedFunction, argLength is 8, argStart is (mozilla::DebugOnly<const unsigned char *>)  (value = "\U00000001"), reader.currentposition is (const uint8_t *) 0x000000010703d19e "\U00000002"
+
+[06:03:57.0004] <yulia>
+it looks like it is off by one...
+
+[06:20:07.0475] <yulia>
+fffound it. 
+
+[07:26:37.0586] <davidj361>
+Is there a reason why `myObj.toObjectOrNull()` could segfault even when it doesn't when `!myObj.isObject()` was checked beforehand?
+
+[07:36:36.0141] <arai>
+what's the details of the segfault?  also, how does the branch for the check look like?
+
+[07:39:00.0846] <arai>
+does the  segfault happen inside toObjectOrNull call, or after that?
+
+[07:39:09.0627] <davidj361>
+```
+#0  0x000055fe84841771 in JS::Rooted<JSObject*>::~Rooted (this=0x7f32837f4e20, __in_chrg=<optimized out>) at mozjs-102/js/RootingAPI.h:1192
+No locals.
+```
+
+[07:39:38.0683] <davidj361>
+> <@arai:mozilla.org> does the  segfault happen inside toObjectOrNull call, or after that?
+
+it says the line it's on but I see no mention of `toObjectOrNull()` in the backtrace
+
+[07:40:48.0517] <arai>
+how does you code look like, and what's the backtrace around that?
+
+[07:42:25.0684] <davidj361>
+i'll have to take a look at it some more, it's very convoluted with promises and grabbed via `.retrieve(..)`
+
+[07:43:19.0157] <arai>
+and what's the details of segfault?  is it assertion failure, or accessing random memory, or something else?
+
+[07:43:53.0002] <davidj361>
+i mistakenly called it a segfault, but i guess i should say it's a crash
+
+[07:44:12.0635] <arai>
+do you catch it with debugger?
+
+[07:45:48.0320] <arai>
+if so, can you pastebin the debugger output (that should say how it crashes) for the crash , and the backtrace for the frame?
+
+[07:46:08.0224] <davidj361>
+what you mean the debugger output?
+
+[07:48:21.0865] <arai>
+if you run the program with lldb or gdb, and when your program crashes, it will say something that tells what happens.  such as the program tries to read this address, or invalid instruction, etc
+
+[08:15:54.0381] <yulia>
+does anyone have any hints as to why adding a new type here causes things to be de-optimized? https://searchfox.org/mozilla-central/source/js/src/jit/BaselineICList.h#15
+
+[08:46:36.0335] <yulia>
+Hm. ok -- in isolation modifying that doesn't cause a de-opt. Looks like i have spooky action at a distance 🙃
+
+[08:47:23.0614] <iain>
+yulia: What do you mean by deoptimized?
+
+[08:48:10.0497] <yulia>
+well, for example mandreel goes from around 35000 -> 3000
+
+[08:49:43.0081] <iain>
+Are you adding a new op? Without knowing anything about your changes, my first guess would be that you've accidentally disabled Ion by including an opcode that warp doesn't support.
+
+[08:49:57.0765] <yulia>
+ah
+
+[08:50:06.0535] <yulia>
+yes, I would actually like warp to not support it
+
+[08:53:44.0212] <yulia>
+is there a way for warp to ignore certain ICs?
+
+[08:54:56.0151] <iain>
+So you want an IC for the op in baseline, but no IC in Ion?
+
+[08:55:32.0602] <iain>
+We currently do that with a few ICs (call ICs, most prominently)
+
+[08:55:41.0019] <yulia>
+yeah
+
+[08:55:53.0417] <yulia>
+I thought i followed the pattern for call ICs, but maybe im missing something
+
+[08:56:12.0423] <iain>
+Did you add any ops to [this list](https://searchfox.org/mozilla-central/source/js/src/jit/WarpBuilder.h#24-60)?
+
+[08:58:09.0440] <yulia>
+no
+
+[08:58:58.0488] <yulia>
+.. should I ?
+
+[08:59:12.0461] <iain>
+No, that will disable Warp. If you run with `IONFLAGS=warp-transpiler`, do you see any messages?
+
+[09:01:26.0520] <iain>
+Oh, actually, running mandreel locally without your changes I see a bunch of messages about fallbacks with no stubs. I guess mandreel has a bunch of unreachable code?
+
+[09:12:53.0193] <yulia>
+do i need to do a debug build?
+
+[09:14:11.0784] <yulia>
+probly, just a sec
+
+[09:14:37.0342] <iain>
+You need jitspew turned on, which you can enable even in opt builds
+
+[09:14:53.0748] <iain>
+With `ac_add_options --enable-jitspew` in your mozconfig
+
+[09:15:53.0782] <yulia>
+yeah i see a ton of messages but none related to my addition
+
+[09:23:11.0074] <yulia>
+ill try reimplementing piece by piece again
+
+[09:30:04.0280] <yulia>
+this is the change that makes it 10x slower for me, no idea why it only happens on top of my patches..
+
+[09:31:17.0042] <iain>
+Is it supposed to be calling NewObjectFallback?
+
+[09:32:04.0575] <yulia>
+yeah to minimize stuff that might be going wrong
+
+[09:32:14.0258] <yulia>
+noteably, this is never called from anywhere
+
+[09:32:50.0152] <yulia>
+its not attached via a jsop
+
+[09:33:02.0029] <yulia>
+but if i do it on central its fine
+
+[09:33:18.0801] <iain>
+I can only assume it's some sort of weird interaction with your other code
+
+[09:46:04.0827] <davidj361>
+is it possible to check if a rooted value is a decimal vs an integer?
+
+[09:50:34.0545] <yulia>
+maybe these are what you are looking for? https://searchfox.org/mozilla-central/source/js/public/Value.h#808-823
+
+[09:55:47.0950] <davidj361>
+I'm confused what numbers isDouble() works for, if it's integer numbers too
+
+[09:56:10.0537] <davidj361>
+or if `isInt32()` my only best bet for checking if a Number is a decimal
+
+[10:16:48.0102] <debadree25>
+is there a try run preset for all that tests that run on autoland when a patch lands on it? which i can run on the try server?
+
+[10:24:11.0823] <jon4t4n>
+I'm not sure, but I think `mach try auto` is as close as you get. https://firefox-source-docs.mozilla.org/tools/try/selectors/auto.html
+
+[10:25:13.0917] <debadree25>
+ah! giving it a try thanks!!
+
+[12:07:53.0882] <itms>
+Hello everyone! I am a 0 A.D. developer, and we are (late, as usual!) upgrading our embedded SpiderMonkey. We are facing an issue with both ESR 102 and 115 (we have not tried 128 yet, and there is a chance we stay on 115 until it's EOL)
+The issue we're having is with `JS_DeepFreezeObject`. Whenever this is called from a JS file loaded with `JS::Evaluate`, the **next** loading of a script with `JS::Evaluate` will crash in `NearestEnclosingExtensibleLexicalEnvironment`, as if it failed to parse the scopes.
+
+[12:08:03.0830] <itms>
+Does that ring a bell to anybody?
+
+[12:08:21.0065] <itms>
+Thanks in advance for the help :)
+
+[12:09:21.0484] <itms>
+Note that the issue does not happens with `JS_FreezeObject`.
+
+[12:09:33.0072] <itms>
+ * Note that the issue does not happen with `JS_FreezeObject`.
+
+[12:16:03.0009] <mgaudet>
+Well, I will say we have very small amounts of use of JS_DeepFreezeObject. Would not be surprised if there was a bug in there right now. 
+
+Could you ( itms ) open a bug with the backtrace from a debug build?  
+
+[12:16:27.0681] <mgaudet>
+Also valuable would be any information you could share about the structure of your use of DeepFreezeObject 
+
+[12:19:03.0981] <itms>
+Sure, I'll do that. And I'll try and reduce the crash to a minimal reproduction example
+
+[12:26:34.0715] <yulia>
+> <@davidj361:matrix.org> or if `isInt32()` my only best bet for checking if a Number is a decimal
+
+isInt32 will check if a number is an integer. isDouble which check if it is potentially a decimal.
+
+[12:27:13.0942] <mgaudet>
+> <@itms:mozilla.org> Sure, I'll do that. And I'll try and reduce the crash to a minimal reproduction example
+
+That would be fantastic too :) 
+
+[12:51:11.0138] <yulia>
+iain: to wrap up the mystery: apparently clobbering fixed it. 
+
+[12:54:42.0315] <mgaudet>
+yulia: Hrmmm. https://bugzilla.mozilla.org/show_bug.cgi?id=1929057 
+
+[12:54:58.0922] <mgaudet>
+(and relatedly https://bugzilla.mozilla.org/show_bug.cgi?id=1896446 ) 
+
+[12:55:10.0485] <yulia>
+oh that is very interesting... thanks for the heads up
+
+[12:55:46.0569] <yulia>
+Huh... i've noticed similar things. The build not doing what I expect to. It is very annoying with perf stuff
+
+[12:56:56.0600] <mgaudet>
+yulia: Yeah... I finally had the build system dead-to-rights today hence today's bug 
+
+[12:57:19.0903] <yulia>
+_stares into the void_ this explains so much
+
+[12:58:03.0711] <mgaudet>
+😬
+
+[13:02:23.0959] <iain>
+You know, I considered "inconsistent build artifacts" as an explanation, but I figured the build system should be pretty good at telling when clobbering is necessary.
+
+[13:04:24.0260] <iain>
+mgaudet: Any chance sccache is involved? I notice that it's still enabled in your mozconfig, and I can vaguely imagine that it's somehow doing content-aware hashing and is smart enough to notice that simply touching the file doesn't require a rebuild.
+
+[13:05:10.0529] <mgaudet>
+it could well be; though I think if I had edited the mozconfig it would have done a full rebuild. I'm not 100% sure how to debug sccache 
+
+[15:06:04.0919] <sfink>
+That makes sense, and seems promising. I've been staring at a lot of profiles of my artificial Worker GC loads, and something I see a lot of is that the internal SpiderMonkey triggers are hit quite often and end up running more of the GC when non-idle. Have you noticed that happening in whatever you're profiling?
+
+[15:06:42.0414] <sfink>
+I think they would show up as slices with reason=ALLOC_TRIGGER or TOO_MUCH_MALLOC as opposed to INTER_SLICE_GC
+
+[15:07:43.0143] <sfink>
+I was pondering having a mechanism where the GC measures how much time it's getting. If the "good" triggers (like idle time) are giving it enough slice time, then it would use higher thresholds.
+
+[15:08:14.0155] <sfink>
+but obviously that only matters if it's happening, and I'm not sure whether it's only happening for me because I have an artificial test case that does a *lot* of allocation.
+
+
+2024-11-05
+[18:40:59.0029] <gaporf>
+Hello, I filed the bug (https://bugzilla.mozilla.org/show_bug.cgi?id=1928966) to add JS::ParseInt and JS::ParseFloat, and I believe I have working code for this implementation.
+
+Additionally, I think it would be better to split this task into two parts: first, I’ll add JS::ParseInt and submit it for review, and after a successful review, I’ll add JS::ParseFloat and submit it for review as well.
+
+[11:44:04.0073] <iain>
+Is our weird python dialect for moz.configure actually documented anywhere? It's a mess of decorators and implicit magic, and every time I interact with it I just cargo-cult from something vaguely similar until it looks like it's working.
+
+[11:50:35.0513] <iain>
+Right now my question is: suppose I have an option "--disable-foo". If I have another function: 
+```
+@depends("--disable-foo")
+def cares_about_foo(value)
+   ...
+```
+If `value` is True, does that mean that foo is enabled or disabled?
+
+[11:59:39.0840] <Ryan Hunt>
+> <@iain:mozilla.org> Right now my question is: suppose I have an option "--disable-foo". If I have another function: 
+> ```
+> @depends("--disable-foo")
+> def cares_about_foo(value)
+>    ...
+> ```
+> If `value` is True, does that mean that foo is enabled or disabled?
+
+my understanding is that in that case, value == True means that foo is enabled
+
+[12:00:03.0257] <Ryan Hunt>
+which seems too magic for it's own good
+
+[12:08:40.0443] <iain>
+Yeah, looking around at other code it seems like that's true because the decorator is [parsing the name of the option and looking for "enable/disable/with/without"](https://searchfox.org/mozilla-central/source/python/mozbuild/mozbuild/configure/options.py#179-183)
+
+[12:09:11.0850] <iain>
+Which is a level of witchcraft that I think could be more obviously documented
+
+[12:15:56.0597] <Ryan Hunt>
+Oh you were able to even find the source for the decorator. I tried for a bit and just gave up and copied what everyone else was doing..
+
+[14:14:52.0135] <itms>
+> <@itms:mozilla.org> Sure, I'll do that. And I'll try and reduce the crash to a minimal reproduction example
+
+Hello, I haven't been successful at reducing our crash to a minimal example, but I notice only some of our calls to the deepfreeze function are causing a crash. in both cases, we are assigning a deepfrozen object to a global variable. could that be an issue? could there be a conflict between the global object and the deepfreeze logic?
+
+[14:16:17.0999] <itms>
+I'll keep trying to reproduce the crash with only a couple lines of JS. In the meantime I'll keep an eye here to see if my issue rings a bell for someone :)
+
+[14:25:43.0492] <kfjvj>
+I have once again encountered this assert statement, which appears to mean that my rooted objects are being constructed/destructed in the incorrect order:
+
+```
+  ~Rooted() {
+    MOZ_ASSERT(*this->stack == this);
+    *this->stack = this->prev;
+  }
+
+```
+
+Does anyone know what situations may cause this?
+
+[14:26:35.0297] <kfjvj>
+ * I have once again encountered this assert statement, which appears to mean that my rooted objects are being constructed/destructed in the incorrect order:
+
+```
+  ~Rooted() {
+    MOZ_ASSERT(*this->stack == this);
+    *this->stack = this->prev;
+  }
+
+```
+
+Does anyone know what situations may cause this?
+
+Also, is this strictly a result of JS::Rooted constructor/destructor misuse, or can misuse of JS::Handle also cause this problem?
+
+[14:42:50.0797] <iain>
+kfjvj: Are you creating a Rooted anywhere besides the stack? That's the most likely cause.
+
+[14:48:00.0413] <kfjvj>
+> <@iain:mozilla.org> kfjvj: Are you creating a Rooted anywhere besides the stack? That's the most likely cause.
+
+I've looked all over for something like that, but I haven't found it.  Any other scenarios you've seen where this might happen?
+
+[14:50:50.0313] <iain>
+If you only create Rooted on the stack, I'm not sure it's possible to trigger that assertion. Are you possibly putting a Rooted in a lambda without noticing?
+
+[14:51:17.0916] <kfjvj>
+That was my other thought as well, but I haven't found anything like that.
+
+[14:52:39.0032] <kfjvj>
+However, I did notice something just now in a unit test:
+
+I have some JS code that calls back to some C++ code.
+
+If the C++ code being called by JS throws an exception, I can't catch that exception from C++.
+
+[14:53:41.0461] <iain>
+SM is not designed to work with exceptions enabled.
+
+[14:57:09.0836] <kfjvj>
+Here's an example of my code.  That boost describe and JsDescribedWrapper stuff just wraps the C++ class and methods in JS.
+
+```
+class ErrorConditionTestClass {
+public:
+    ErrorConditionTestClass() {
+        // Nothing special in the constructor
+    }
+
+    void ThrowCppException() {
+        LOGINFO() << "Before throwing runtime error";
+        throw std::runtime_error("C++ runtime error.");
+    }
+
+    static JSContext* staticCtx;
+};
+
+BOOST_DESCRIBE_STRUCT(ErrorConditionTestClass, (), (ThrowCppException))
+
+TEST_F(TestDescribedBindings, errorConditions) {
+    ASSERT_TRUE(JsDescribedWrapper<ErrorConditionTestClass>::DefineClass(ctx(), global()));
+
+    char testCode[] = R"js(
+        let ErrorConditionTestClass = ErrorConditionTestClass;
+        var e = new ErrorConditionTestClass();
+        e.ThrowCppException();
+    )js";
+
+    try {
+        LOGINFO() << "Attempting code execution";
+        ExecuteCode(ctx(), testCode);
+    } catch (const std::runtime_error& err) {
+        LOGINFO() << "Caught error: " << err.what();
+    } catch (const std::exception& ex) {
+        LOGINFO() << "Received an even different exception: " << ex.what();
+    }
+}
+```
+
+And I'm getting the following assertion error:
+
+Assertion failure: *this->stack == this, at /home/kwheel28/host_workspace/external-mozjs-102/build/eblinux/Debug/include/mozjs-102/js/RootingAPI.h:1192
+
+[14:59:31.0374] <kfjvj>
+Apparently, exceptions can trigger that same assertion error somehow.
+
+[14:59:48.0243] <iain>
+SM is not compatible with C++ exceptions.
+
+[15:00:26.0186] <kfjvj>
+What exactly does that mean?  Like, if an exception tries to propagate up the stack, and there's SM functions on the stack, things will go wrong?
+
+[15:03:19.0645] <iain>
+We don't build or test with exceptions. The exception-handling mechanism in C++ doesn't know anything about jit code. At the very least, if you throw an exception and you unwind past jit frames, any work that those frames expected to do after returning from the calls (which may be necessary to preserve invariants) won't happen.
+
+[15:04:09.0653] <kfjvj>
+If we unwind in our own code, but don't unwind JIT frames, should we be OK?
+
+[15:04:36.0273] <iain>
+I do not immediately see how that would go wrong.
+
+[15:04:55.0202] <iain>
+But I can't guarantee anything
+
+[15:05:10.0719] <kfjvj>
+OK.  Thanks for the help.
+
+
+2024-11-06
+[22:03:21.0862] <sfink>
+It makes sense that unwinding a mozjs stack frame would hit that error. If an exception unwinds an `-fno-exceptions` frame, it's undefined behavior and compilers in practice apparently either call `std::terminate` or skip over any destructors in the unwound frame. It sounds like you're seeing the latter, and any `Rooted` variables on the stack aren't getting removed. The next one that does get removed will notice that it's not the one on top of the `Rooted` stack, and give that assertion.
+
+[22:08:46.0075] <sfink>
+I suspect it should probably work ok to mix exception-using and `-fno-exceptions` code as long as you never unwind an `-fno-exceptions` frame (which effectively includes JIT frames). But I'm not sure; I could imagine there being wrinkles with using RAII classes whose constructors and/or destructors are implemented in mozjs. 
+
+[22:10:54.0773] <sfink>
+Constructors compiled with `-fno-exceptions` will assume that they will never call their destructors from within the constructor. I can't see how that would cause issues; if you throw an exception from within code called by the constructor, you'll have to catch it before it can abort the constructor anyway (under the "never unwind `-fno-exceptions` code" rule). But I might lack the cleverness to see how it could be bad.
+
+[22:45:19.0098] <sfink>
+Destructors compiled with `-fno-exceptions` can inline their guts into the calling function, though I can't come up with a scenario where that would be a problem.
+
+[08:24:15.0112] <Bryan Thrall [:bthrall]>
+[Mayank asked why incremental bytecode encoding brings large improvements](https://bugzilla.mozilla.org/show_bug.cgi?id=1929227#c3 ), and I don't know, so I thought I would ask here.
+TLDR; turning off incremental encoding makes some google-slides performance metrics improve (such as largestContentfulPaint, fcp, FirstVisualChange) and others to regress (such as loadtime, SpeedIndex, PerceptualSpeedIndex).
+
+[08:32:27.0808] <mccr8>
+just detect which test we're running, easy! /s
+
+[08:35:40.0274] <arai>
+visual-related score totally depends on the scheduling, due to race between resources and something, and it depends on how long each mainthread/offthread task take.   even if single task takes more, that can *improve* the visual score
+
+[08:36:29.0084] <iain>
+Yeah, I think unfortunately it's probably one of those cases where the answer boils down to "we're doing a bunch of stuff at the same time and small differences in scheduling can have big effects". In general, if the net effect across a bunch of different noisy benchmarks is good, then I try not to worry about a few data points in the other direction.
+
+[08:42:46.0416] <iain>
+This is kind of a problem for all performance tracking. One of my formative experiences in my days working on IBM's COBOL compiler was spending the better part of a week trying to figure out why one of our benchmarks had regressed from a very simple codegen improvement, and it turned out that generating smaller code in one part of the function changed the cache-line alignment of the code for an unrelated (but important) loop in a way that the hardware didn't like. Eventually you just have to shrug and say "welp, this change should be good in the aggregate even if these specific benchmarks don't happen to like it" and ship it.
+
+[08:50:42.0477] <mgaudet>
+Yeah.... it does make me wonder how orgs manage to get anything done with strict "no regression" policies 
+
+[08:51:21.0365] <iain>
+By overfitting on a particular set of machines and producing bad work, I assume
+
+[09:06:31.0214] <mayankleoboy1>
+Like sp3? :D 
+
+[09:08:00.0540] <mgaudet>
+The good news about SP3 is that we have evidence that it helps more than just SP3: https://hacks.mozilla.org/2023/10/down-and-to-the-right-firefox-got-faster-for-real-users-in-2023/ 
+
+[09:35:31.0418] <sfink>
+or at least, the initial wave of optimizations for sp3 produced real-world improvements. Hopefully the continued work won't slide into the overfitting category yet.
+
+[09:36:07.0431] <sfink>
+"Fortunately" there seems to be a fair amount of headroom before we hit a global optimum, so (I think?) we're still in a relatively target-rich environment.
+
+[12:17:58.0590] <sefeng>
+arai: I get a failure for [unrooted incumbentGlobal live across GC calls](https://treeherder.mozilla.org/jobs?repo=autoland&group_state=expanded&selectedTaskRun=BlGoHo1jRA-yRPD0F1dkiw.1&resultStatus=success%2Ctestfailed%2Cbusted%2Cexception%2Crunnable&searchStr=linux%2Cx64%2Cdebug%2Chazard-linux64-haz%2Fdebug%2Ch&revision=a5b67007fef784f72829151e51325f6ff335bce0) error, do you have an idea about this?
+
+
+2024-11-07
+[17:02:13.0020] <arai>
+It's about this one `JSObject* incumbentGlobal = global->GetGlobalJSObject();`
+
+[17:02:54.0022] <arai>
+the variable is not rooted, and it's used across `JS_NewObject` call
+
+[17:03:52.0116] <arai>
+`JS_NewObject` can GC, which means the object pointed by `incumbentGlobal` can be moved by GC, and the `incumbentGlobal` pointer can become dangling pointer when used in `JS_SetReservedSlot(objResult, INCUMBENT_SETTING_SLOT, JS::ObjectValue(*incumbentGlobal));`
+
+[17:04:20.0561] <arai>
+So, it needs to be `JS::Rooted<JSObject*> incumbentGlobal(cx, global->GetGlobalJSObject());`
+
+[17:23:59.0377] <arai>
+sefeng: added comment to https://phabricator.services.mozilla.com/D224959
+
+[21:05:35.0294] <gaporf>
+Hi, I'm working on https://bugzilla.mozilla.org/show_bug.cgi?id=1928966. Right now, I'm refactoring the jsnum.cpp file because my plan is to have JS::ParseInt call js::ParseIntSlow. For performance reasons, I want to implement fast paths in js::ParseIntSlow similar to those in num_parseInt. To avoid code duplication, I discussed with Yulia yesterday the idea of creating a common function.
+
+I'm interested in finding the best name for this function. It would handle fast-track operations similar to num_parseInt before calling js::NumberParseInt. My current ideas is something like js::FastParseInt or js::ParseIntAccelerated, but I'm afraid it could be confusing names.
+
+[21:07:50.0125] <arai>
+Do you mean [this](https://searchfox.org/mozilla-central/source/js/src/jsnum.cpp#580-629) part ?
+
+[21:11:48.0135] <gaporf>
+> <@arai:mozilla.org> Do you mean [this](https://searchfox.org/mozilla-central/source/js/src/jsnum.cpp#580-629) part ?
+
+Yes, you're right. However, I also think it might be a bit redundant, since `JS::ParseInt` will be called when `console.log` is invoked. Given that I/O operations take considerable time, we might not see much difference between the optimized and non-optimized versions.
+
+[21:19:25.0274] <arai>
+If that part is going to be moved to a common function, I would expect it to have either `Try` or `Is` prefix
+
+[21:19:46.0640] <arai>
+actually I think there's similar example where `Is` prefix is used. let me check
+
+[21:23:02.0905] <arai>
+other option I can think of is not to move that part to a common function, but templatize the entire function with "inline fast path + call for slow path" structure, with making the input/output controllable with the template parameter.  so that you don't have to think about the function name for the fast path part
+
+[21:25:25.0134] <gaporf>
+Let's go to the thread
+
+[21:25:55.0880] <gaporf>
+My idea is that we call this function what tries to do fast tracks, and if it is impossible, calls js::NumberParseInt, 
+
+The structure is the next
+
+bool js::FastParseInt(JSContext* cx, HandleValue v, int32_t radix,
+                      
+```
+MutableHandleValue result) {
+<fast tracks>
+...
+// Step 1.
+  RootedString inputString(cx, ToString<CanGC>(cx, v));
+  if (!inputString) {
+    return false;
+  }
+
+  // Steps 2-5, 7-16.
+  return NumberParseInt(cx, inputString, radix, result);
+```
+
+
+[21:26:08.0627] <gaporf>
+ * My idea is that we call this function what tries to do fast tracks, and if it is impossible, calls js::NumberParseInt,
+
+The structure is the next
+```
+bool js::FastParseInt(JSContext\* cx, HandleValue v, int32\_t radix,
+
+
+MutableHandleValue result) {
+<fast tracks>
+...
+// Step 1.
+  RootedString inputString(cx, ToString<CanGC>(cx, v));
+  if (!inputString) {
+    return false;
+  }
+
+  // Steps 2-5, 7-16.
+  return NumberParseInt(cx, inputString, radix, result);
+```
+
+[21:26:28.0620] <gaporf>
+ * My idea is that we call this function what tries to do fast tracks, and if it is impossible, calls js::NumberParseInt,
+
+The structure is the next
+
+```
+bool js::FastParseInt(JSContext\* cx, HandleValue v, int32\_t radix,
+MutableHandleValue result) {
+<fast tracks>
+...
+// Step 1.
+  RootedString inputString(cx, ToString<CanGC>(cx, v));
+  if (!inputString) {
+    return false;
+  }
+
+  // Steps 2-5, 7-16.
+  return NumberParseInt(cx, inputString, radix, result);
+```
+
+[21:26:34.0701] <arai>
+hm, the case I was thinking of with `Is` prefis was [JSLinearString::isIndex](https://searchfox.org/mozilla-central/rev/5b288ed276a9580f2bedd4f67543940667d6a8c0/js/src/vm/StringType.h#2376) and  [js::IdIsIndex](https://searchfox.org/mozilla-central/rev/5b288ed276a9580f2bedd4f67543940667d6a8c0/js/src/builtin/Array.h#26), but it also has the slow path inside it. so it's different structure
+
+[21:28:16.0473] <gaporf>
+I also think about the helper function will try to do fast paths and call slow implementation if optimizations are impossible. This option is good because we will be able just to write smth like
+
+```
+return js::FastParseInt(cx, v, radix, args.rval())
+```
+
+[21:28:51.0708] <arai>
+oh, the "Fast" function also performs the slow path?
+
+[21:29:03.0043] <sfink>
+If your function handles all cases, why isn't it just called `ParseInt`? The structure you posted looks fine.
+
+[21:29:52.0912] <gaporf>
+So this is why I'm asking about calling, because it tries to do fast path, but it's more comfortable if it also calls slow implementation
+
+[21:31:45.0711] <arai>
+I was thinking the following structure:
+
+```
+bool JS::ParseInt(..) {
+  ...
+  if (TryParseIntFast(...)) {
+    return true;
+  }
+
+  return ParseIntSlow(...);
+}
+
+bool num_parseInt(..) {
+  ...
+  if (TryParseIntFast(...)) {
+    return true;
+  }
+
+  return ParseIntSlow(...);
+}
+```
+
+
+[21:32:42.0801] <gaporf>
+> <@sfink:mozilla.org> If your function handles all cases, why isn't it just called `ParseInt`? The structure you posted looks fine.
+
+right now js::NumberParseInt is about the ECMA standard, and in ECMA it's said that the argument is a string.
+
+But because we want to have optimizations, we need to do some checks in other functions
+
+[21:33:45.0042] <arai>
+so, you want a new function that performs `NumberParseInt` but with extra fast path performed before the spec-ed operation ?
+
+[21:33:57.0695] <sfink>
+I will defer to arai, who has more context here.
+
+[21:35:29.0735] <gaporf>
+> <@arai:mozilla.org> I was thinking the following structure:
+> 
+> ```
+> bool JS::ParseInt(..) {
+>   ...
+>   if (TryParseIntFast(...)) {
+>     return true;
+>   }
+> 
+>   return ParseIntSlow(...);
+> }
+> 
+> bool num_parseInt(..) {
+>   ...
+>   if (TryParseIntFast(...)) {
+>     return true;
+>   }
+> 
+>   return ParseIntSlow(...);
+> }
+> ```
+
+Hmm, that's an interesting solution.
+
+However, I also have some concerns. `JS::ParseInt` will only be called in cases involving I/O operations, so trying to speed up parsing might be unnecessary. Additionally, by adding a new call in `num_parseInt`, the compiler might **not** inline it, leading to potential performance degradation.
+
+[21:35:48.0896] <arai>
+if the function does both fast path and slow path, then the function shouldn't have any prefix/suffix
+
+[21:36:48.0278] <arai>
+you can use [MOZ_ALWAYS_INLINE](https://searchfox.org/mozilla-central/rev/5b288ed276a9580f2bedd4f67543940667d6a8c0/mfbt/Attributes.h#14-38) if you want the function to always be inlined
+
+[21:38:24.0252] <arai>
+oh, just to make sure, the above fast + slow calls are my initial understanding of what you were trying to do.  I don't mean that best fits the bug's case
+
+[21:38:58.0263] <sfink>
+I'll only mention that you're adding a public function, so you can't assume that yours will be the only caller. Somebody else might end up using it later. So don't overfit based on your current use case.
+
+[21:39:59.0043] <gaporf>
+Ok, about performance, I could try to find jstests to test performance before and after
+
+[21:40:59.0545] <arai>
+If having a single shared function with both fast and slow path fits both consumers, then that would be better
+
+[21:42:22.0242] <gaporf>
+> <@arai:mozilla.org> oh, just to make sure, the above fast + slow calls are my initial understanding of what you were trying to do.  I don't mean that best fits the bug's case
+
+I'm trying to add JS::ParseInt to JSAPI public interface for c++. I can do it like JS::ToInt32, when I just check that the argument is int type, I return it, otherwise I call js::NumberParseInt.
+
+But I want to do all my best, and one of the idea is to perform more fast paths, however it leads to code duplication
+
+[21:43:38.0492] <arai>
+So, the design would depend on how much duplication there are, or how the common part look like between them
+
+[21:45:41.0716] <arai>
+if the difference is only about input and output, then the most of the function body can be moved to the shared function.  and the shared function can have the same name as the current slow path.  the parameter type should be sufficient to distinguish between them
+
+[21:46:49.0073] <arai>
+then, for example, if the fast path is common but the slow path is heavily different between those 2 consumers, then you'll want a shared function to be only for the fast path.  in that case, the shared function should have a function name that explains "this is only fast path", "you need to fallback to slow path on failure", etc
+
+[21:46:51.0407] <gaporf>
+> <@sfink:mozilla.org> I'll only mention that you're adding a public function, so you can't assume that yours will be the only caller. Somebody else might end up using it later. So don't overfit based on your current use case.
+
+You're right that making the function flexible as soon as possible is a good idea. However, this function is specifically about how JS parses integers (in a rather unusual way), and currently, the only use case is in `console.log` invocations. As I discussed with Yulia yesterday, it's fine to go with a constrained implementation for now.
+
+[21:48:41.0983] <gaporf>
+> <@arai:mozilla.org> if the difference is only about input and output, then the most of the function body can be moved to the shared function.  and the shared function can have the same name as the current slow path.  the parameter type should be sufficient to distinguish between them
+
+The difference between JS::ParseInt and num_parseInt is only about input/output.
+
+In JS::ParseInt we have `HandleValue v` to parse and `radix` is always equal to 10.
+In num_parseInt we have `CallArgs args`, `args[0]` is similar to `v`, and `args[1]` is similar to `radix`
+
+[21:48:47.0821] <arai>
+so, if you're thinking about deduplication, it would be nice to first write the "duplicated" version.  then we can discuss based on it
+
+[21:50:16.0596] <gaporf>
+It's a good point to see the duplicated version and after that to decide how we can enhance the code. I'm going to do it
+
+[21:50:38.0605] <gaporf>
+Thank you a lot for the assistance, arai and sfink !
+
+[21:50:52.0528] <arai>
+okay, so the input is mostly just `JS::Value`.  and the output is `JS::Value` vs `int64_t`.  which means you need to handle the difference between non-`int32_t` range part.  you'll need some
+
+[21:51:02.0618] <arai>
+ * okay, so the input is mostly just `JS::Value`.  and the output is `JS::Value` vs `int64_t`.  which means you need to handle the difference between non-`int32_t` range part.  you'll need some abstraction about how to handle the result
+
+[21:57:07.0764] <arai>
+oh, if the `uint64_t` result is just converted from `JS::Value`, then there's no need to handle that part in shared function
+
+[21:57:34.0944] <gaporf>
+My revision is not correct, I need to return double, not int64_t (we need to detect NaN)
+
+[21:59:41.0629] <arai>
+okay, I'll wait for the updated and "duplicated" version :)
+
+[22:00:24.0428] <gaporf>
+Working on it, what's the best way to provide "duplicated" version?
+
+[22:01:57.0430] <arai>
+you can submit it to phabricator, or pastebin the diff to https://pastebin.mozilla.org/
+
+[22:02:51.0259] <arai>
+submiting with `--wip` option marks the revision as "work in progress".  that revision doesn't trigger any notification
+
+[22:11:22.0217] <gaporf>
+https://phabricator.services.mozilla.com/D228280
+
+[22:16:19.0759] <arai>
+looking
+
+[22:38:32.0817] <arai>
+gaporf: added comments
+
+[22:39:33.0384] <arai>
+so, the structure is actually different between them, and absorbing all of them may require some amount of abstraction with template etc
+
+[22:43:14.0987] <arai>
+and I'm not sure if the de-duplication worth the extra complexity, especially with the template way
+
+[22:44:20.0790] <arai>
+also, one more question, don't we need ParseInt with non-10 radix?
+
+[22:44:57.0199] <arai>
+if that's also necessary, the situation becomes different
+
+[22:45:31.0675] <gaporf>
+IMHO, template function seems too complex in current case.
+
+In num_parseInt we can firstly to extract radix, and call shared_function with value to parse and radix, so we don't need to have templates
+
+[22:46:35.0401] <gaporf>
+> <@arai:mozilla.org> also, one more question, don't we need ParseInt with non-10 radix?
+
+From the standard (https://console.spec.whatwg.org/#logger):
+
+
+
+[22:48:03.0627] <arai>
+`num_parseInt`'s order cannot be changed.   it's defined by [the spec](https://tc39.es/ecma262/#sec-parseint-string-radix), and both `ToString` and `ToInt32` are observable from user code.  changing the order makes the implementation not spec-compliant
+
+[22:48:50.0269] <gaporf>
+But right now we firstly do step 6, and only after that we do steps 2-5
+
+[22:49:27.0725] <arai>
+it's because the early return path is for the case all operations are not observed
+
+[22:50:53.0268] <arai>
+if the `string` is int32/double/string and radix is undefined/int32, none of ToString and `ToInt32` are observable.  so we can perform the early return without any side effect
+
+[22:51:39.0754] <gaporf>
+Honestly I don't see any problems why we can't extract radix firstly? We can only fails if radix value is incorrect, but fast paths are executed if radix value is absent or correct int
+
+[22:52:13.0246] <arai>
+can you define the detail of "extract radix" ?
+
+[22:52:27.0546] <arai>
+Do you mean `ToInt32(radix)`, or something else?
+
+[22:53:03.0247] <gaporf>
+Step 6
+
+[22:53:22.0654] <gaporf>
+https://searchfox.org/mozilla-central/source/js/src/jsnum.cpp#637-643
+
+[22:53:41.0992] <arai>
+`ToString(string)` and `ToInt32(radix)` are observable.  performing `ToInt32(radix)` before `ToString(string)` doesn't conform to the spec
+
+[22:54:29.0959] <arai>
+err, maybe we should define more clearly about the problem
+
+[22:54:46.0768] <arai>
+Do you mean moving `ToInt32(cx, args[1], &radix)` call ?  or something else?
+
+[22:55:33.0320] <arai>
+`ToInt32(cx, args[1], &radix)` is observable operation unless `args[1]` is known to have no side-effect with it
+
+[22:55:40.0044] <gaporf>
+I want to move it before between line 584 and 586
+
+[22:55:43.0945] <gaporf>
+ * I want to move it between line 584 and 586
+
+[22:55:56.0584] <arai>
+yeah, that doesn't work
+
+[22:56:08.0961] <arai>
+let me prepare some example
+
+[22:57:07.0263] <gaporf>
+Got your point, so I think that template function is complicated for understanding, and it's better to use functions `TryFastParseInt` and `ParseIntSlow`
+
+[22:57:12.0387] <arai>
+```
+parseInt({
+  toString() { console.log("toString"); }
+}, {
+  valueOf() { console.log("valueOf"); }
+});
+```
+
+[22:57:37.0284] <arai>
+This is supposed to print the following
+```
+toString
+valueOf
+```
+
+[22:58:03.0135] <arai>
+which means, `ToString<CanGC>(cx, args[0])` should be performed before `ToInt32(cx, args[1], &radix)`
+
+[22:59:32.0775] <arai>
+okay, then now we need to think about the name for the "fast path only" function :)
+
+[23:01:17.0081] <arai>
+Then, for the fast path here, there's similar structure in functions with "Pure" suffix, for example [js::GetPropertyPure](https://searchfox.org/mozilla-central/rev/5b288ed276a9580f2bedd4f67543940667d6a8c0/js/src/vm/JSObject.cpp#1809)
+
+[23:01:42.0373] <arai>
+It's a kind of GetProperty operation, but works only when there's no side effect
+
+[23:02:12.0222] <arai>
+the caller is supposed to fallback to regular operation when there's possible side-effect
+
+[23:02:49.0675] <arai>
+So, the "Pure" suffix might fit here  (not yet sure if that's the best)
+
+[23:03:24.0915] <arai>
+Then, if we go with "Fast" in the name, I think it should be suffix, to follow the existing "Slow" suffix rule
+
+[23:03:44.0408] <arai>
+so, "TryParseIntFast" for instance
+
+[23:05:40.0362] <gaporf>
+I like `TryParseIntFast`, however it can be confusing, that it returns **true** if it's possible to do fast track, **false** otherwise, but in `ParseIntSlow`** true** if we can parse the value, **false** otherwise.
+
+[23:06:19.0036] <arai>
+Yeah, I'm not sure if there's any existing function that follows "Fast" suffix with that return value semantics
+
+[23:06:48.0223] <arai>
+(the "Pure" suffix function uses the return value semantics tho)
+
+[23:07:13.0580] <arai>
+other option would be to use `bool*` out parameter for "successfully taken the fast path or not"
+
+[23:08:58.0241] <arai>
+given the "TryParseIntFast" doesn't cause any runtime error, there's no need to track it, but it just need to return whether the fast path is taken or not.  so it can be `void TryParseIntFast(input, output, bool* result);` or something
+
+[23:10:35.0328] <arai>
+or, it can have a dedicate enum class as return value, so that it's clear the return value is not about pending exception
+
+[23:28:39.0575] <gaporf>
+Maybe we can use Maybe monade like in https://searchfox.org/mozilla-central/source/js/src/jit/ShuffleAnalysis.cpp#466-497
+
+[23:28:56.0191] <gaporf>
+ * Maybe we can use Maybe like in https://searchfox.org/mozilla-central/source/js/src/jit/ShuffleAnalysis.cpp#466-497
+
+[23:45:24.0857] <gaporf>
+However [here](https://searchfox.org/mozilla-central/source/js/src/builtin/Object.cpp#1064-1142) we have function `TryAssignNative` returning **bool** value
+
+[23:49:04.0951] <arai>
+Yeah, the TryAssignNative's return value is about the pending exception.  and the `bool*` out parameter is for the result of "try"
+
+[23:51:47.0826] <arai>
+Maybe is for the case where `Nothing` is for a kind of failure, and the `Some` is for successful case with a value.  so I don't think that also fits, given there's only 2 cases for ParseInt fast path
+
+[23:52:21.0469] <gaporf>
+I'll try to implement similar to TryAssignNative
+
+[01:28:02.0564] <gaporf>
+```
+$ ./mach jstests
+[46348|    0|    0| 5818] 100% ======================================>| 205.9ss
+PASS
+```
+
+```
+$ ./mach jit-test
+[12293|    0|    0|  445] 100% ======================================>| 172.0ss
+PASSED ALL
+```
+
+```
+$ ./jsapi-tests.exe
+<...>
+Passed: ran 862 tests.
+```
+
+Also I send it to Phabricator (https://phabricator.services.mozilla.com/D228292) and I will be thankful if you looked at it, arai
+
+[06:58:42.0487] <sefeng>
+that makes perfect sense, thanks! 
+
+[09:19:54.0136] <denispal>
+Is there a way to get `./mach jit-test` to show me the command that was invoked?  `./mach --verbose jit-test` doesn't seem to change anything.
+
+[09:22:07.0525] <denispal>
+nevermind, it looks like it's `./mach jit-test -s basic/bug1875795.js`
+
+[09:35:38.0269] <mgaudet|out>
+jonco: [Here's the compare report](https://share.firefox.dev/48BJEpf) (I worry a bit about the fact that ArraySliceDense gets a new function name tho) 
+
+Seems like everything is 
+
+[09:35:47.0490] <mgaudet|out>
+ * jonco: [Here's the compare report](https://share.firefox.dev/48BJEpf) (I worry a bit about the fact that ArraySliceDense gets a new function name tho)
+
+
+[09:53:57.0831] <mgaudet>
+(And here's the microbenchmark: https://gist.github.com/mgaudet/8787576dd31b95a7d59ef1aabf971946) 
+
+[09:55:57.0503] <jonco>
+mgaudet: what is the size of the array slices in that benchmark?
+
+[09:56:19.0443] <mgaudet>
+100 elements I think
+
+[09:56:28.0491] <mgaudet>
+(not sure what the original benchmark used) 
+
+[09:57:14.0680] <jonco>
+Oh, OK. 
+
+[09:57:20.0905] <mgaudet>
+Slices are randomly selected subslices of that
+
+[09:58:28.0416] <jonco>
+Like up to 100 elements?
+
+[09:58:49.0391] <jonco>
+I'm surprised to not see any malloc in the original profile if we are tenuring the slices
+
+[09:59:44.0413] <jonco>
+(It looks like the JIT allocates a zero element array from a template object and calls into the VM to extend it as necessary and fill it with slice data)
+
+[10:04:28.0946] <mgaudet>
+In the original one I guess because they're nursery allocated we're not using malloc -- just as you said in the meeting. (Or would you expect to see malloc, but called from tenuring?)
+
+[10:05:04.0819] <mgaudet>
+iain: Wrote up the size class feedback idea https://bugzilla.mozilla.org/show_bug.cgi?id=1929935 if we ever want to pull more on that string
+
+[10:07:01.0829] <jonco>
+When we tenure the objects we would malloc the elements buffer if the elements couldn't fit inside an object
+
+[10:09:44.0566] <mgaudet>
+But if it's small enough to fit in the object then we wouldn't? 
+
+Sort of feeling like this is a twofold problem: 1) It's not clear that this optimization is helping in general (I can't really show any improvement on real world benchmarks) 2) Part of the problem is that this microbenchmark is showing off all the worst of this opt -- extra tenuring = slower allocation -and- slower slot allocation 
+
+[10:12:33.0191] <jonco>
+Yeah, it's defeating an optimisation built into tenuring where we try and move elements inline in the tenured object if we can
+
+[10:12:36.0569] <mgaudet>
+In general, it sort of seems like this actually may end up being slightly counterproductive -- while we do want to reduce tenuring in general, if we're manipulating elements while the object is in the nursery, then pre-tenuring actually hurts us because it moves us off the fastpath of element allocation, even if we have to then pay a tenuring cost
+
+[10:15:12.0979] <jonco>
+If we could make the JIT allocate sensible sized objects for the slices then I think it would help. But at the moment it seems counterproductive.
+
+[10:19:02.0694] <jonco>
+I'm not actually sure why we have the JIT allocate the slice object and and then call into the VM to populate it (CodeGenerator::visitArraySlice). It might be better to do this all in the VM and then you could allocate an appropriately sized object more easily
+
+[10:20:12.0268] <mgaudet>
+Hmm. That's a good point. 
+
+[10:20:29.0124] <mgaudet>
+Lemme play around a bit 
+
+[10:42:28.0999] <mgaudet>
+iain: I'm totally blanking. Can we just do direct call to a JSNative signature from JIT code with simple masm (e.g. `bool array_slice(JSContext* cx, unsigned argc, Value* vp)` ) 
+
+[10:43:06.0142] <iain>
+mgaudet: In a meeting, ping me again in a bit if I don't respond
+
+[11:14:37.0817] <tcampbell>
+mgaudet: well the good news is that 100+ of these intermittents are all the same "random SIGTRAP happening on ARM64 MacOS". The bad news is I'm not sure why they happen..
+
+[11:47:58.0930] <sfink>
+tcampbell: this might be totally irrelevant, but missing entitlements will cause a SIGTRAP you try to use the feature that requires it.
+
+[11:48:08.0058] <sfink>
+ * tcampbell: this might be totally irrelevant, but missing entitlements will cause a SIGTRAP when you try to use the feature that requires it.
+
+[11:51:41.0480] <tcampbell>
+hmm
+
+[12:04:54.0317] <mgaudet>
+One would sort of expect those to be not intermittent? Right? 
+
+[12:25:40.0450] <iain>
+mgaudet: You can call a JSNative signature from jitcode, but it makes me suspect that you're doing something unnecessary. The JSNative signature is designed to be similar to the JS-to-JS calling convention so that eg baseline code doesn't have to care whether the array_slice implementation is native or scripted. If you have full control, why not just do a callWithABI / callVM? (Probably callVM in this case because you're allocating.)
+
+[12:39:38.0379] <tcampbell>
+although these SIGTRAP intermittents are rare per-testcase, it seems that 50% of the `test-macosx1100-aarch64-shippable-qr/opt-jittest-1proc` runs fail for _some_ test
+
+[12:48:37.0469] <mgaudet>
+Yikes. 
+
+
+2024-11-08
+[01:11:14.0162] <Aryx>
+Hi, any idea what started these [@ js::IsProxy] [crashes](https://crash-stats.mozilla.org/report/index/c5eb6203-1fff-4ae8-8b2e-041920241108) in Nightly?
+[Pushlog](https://hg.mozilla.org/integration/autoland/pushloghtml?fromchange=7ac8585e3c02763662a597f94e0676111667aa60&tochange=785541f0311a90d71ea29959cc5092b1b0fa6f2b) cc jonco jandem 
+
+[01:22:34.0054] <arai>
+sounds like bug 1928412 
+
+[01:22:35.0187] <botzilla>
+https://bugzil.la/1928412 — RESOLVED (sefeng) — Implement `HostDefined` object
+
+[01:23:32.0964] <Aryx>
+Thank you very much
+
+[01:27:03.0531] <arai>
+I think we should backout the patch
+
+[07:16:48.0212] <davidj361>
+How can I check if a BigInt will only fit a uint64 vs an int64?
+
+[07:22:14.0338] <davidj361>
+ah i see `BigIntIsInt64`
+
+[07:22:18.0622] <davidj361>
+ * ah i see `BigIntIsInt64(..)`
+
+[07:24:25.0507] <davidj361>
+Though I'm confused why the 2nd arg is a `int64` or `uint64` when I want to know whether it fits or not before giving it a value.
+
+[07:24:51.0372] <davidj361>
+ * ah i see `BigIntIsInt64(..)` and `BigIntIsUint64(..)`
+
+[07:25:13.0963] <davidj361>
+ * ah i see `BigIntIsInt64(..)` and `BigIntIsUint64(const BigInt* bi, uint64_t* result)`
+
+[07:27:03.0665] <arai>
+it returns true with the converted value if it fits.  otherwise it returns false
+
+[07:28:08.0537] <arai>
+so you can perform the test and conversion at once, instead of separate 2 steps
+
+[07:50:35.0659] <sefeng>
+arai: compare to the [old code[(https://searchfox.org/mozilla-central/rev/af714b0fe5223bff962ddc04d1f71593bb79e22d/js/src/builtin/Promise.cpp#1553-1557), looks like I didn't do that `nonCCWGlobal();` call. 
+
+[07:51:25.0444] <sefeng>
+Do you think I should do it at the same place, like get the unwrapped host defined data, and then get the `nonCCWGblobal`, and then override the slot..?
+
+[07:51:48.0859] <sefeng>
+or Should I do extra checks in`CycleCollectedJSContext::enqueuePromiseJob`?
+
+[07:52:11.0521] <sefeng>
+ * arai: compare to the [old code](https://searchfox.org/mozilla-central/rev/af714b0fe5223bff962ddc04d1f71593bb79e22d/js/src/builtin/Promise.cpp#1553-1557), looks like I didn't do that `nonCCWGlobal();` call.
+
+[07:52:41.0384] <arai>
+SpiderMonkey internal shouldn't touch the object except for wrap/unwrap
+
+[07:54:48.0556] <sefeng>
+right..I see
+
+[07:56:39.0117] <arai>
+then. the crash seems to be caused by type confusion or something
+
+[07:57:24.0188] <sefeng>
+yeah, I checked a few crash reports, they all started with `EnqueuePromiseReactionJob`
+
+[07:57:30.0901] <sefeng>
+so I think that was the cause
+
+[08:01:44.0280] <sefeng>
+arai: but..is `nonCCWGlobal` a JS thing? Calling this method requires CycleCollectedJSContext to know the definitation of JSContext
+
+[08:02:35.0010] <arai>
+if necessary, it can be done with `JS::GetNonCCWObjectGlobal`
+
+[08:02:53.0206] <arai>
+but I don't think it's necessary, because the global object is stored into an object in the same global
+
+[08:03:10.0333] <arai>
+and there's no need to wrap/unwrap the global object itself
+
+[08:03:59.0151] <arai>
+the wrap/unwrap is done by SpiderMonkey.  The Gecko side receives the unwrapped HostDefined object, and extracting the slot doesn't need any extra operation
+
+[08:04:00.0196] <sefeng>
+arai: hmm, so I shouldn't call `xpc::NativeGlobal` here? I am a bit confused about the issue honestly 
+
+[08:04:50.0679] <arai>
+You need to call `xpc::NativeGlobal`.  it's a way to convert JSObject to nsIGlobalObject
+
+[08:05:17.0570] <arai>
+but yeah, if we're to directly store the nsIGlobalObject itself (instead of storing the corresponding JSObject), the conversion isn't necessary
+
+[08:05:32.0337] <arai>
+but I guess that's separate thing than the current issue
+
+[08:06:08.0594] <arai>
+what I can think of is either the slot contains unexpected value, or an unexpected object is passed as hostDefinedData object
+
+[08:06:49.0600] <sefeng>
+so you don't think that [nonCCWGlobal](https://searchfox.org/mozilla-central/rev/af714b0fe5223bff962ddc04d1f71593bb79e22d/js/src/builtin/Promise.cpp#1557) from the JS side matters? 
+
+[08:06:58.0106] <sefeng>
+(which is something I didn't do in my code)
+
+[08:07:31.0510] <arai>
+given the crash volume isn't high, it could be some minor code path.  perhaps the FinalizationRegistry things
+
+[08:08:37.0814] <sefeng>
+okay I see, so it should be high if this is the cause 
+
+[08:08:39.0439] <arai>
+the `nonCCWGlobal` part was done before because SpiderMonkey was receiving a global object from the embedding, where the global object comes from different global than the reaction record object
+
+[08:09:03.0469] <sefeng>
+okay
+
+[08:09:22.0897] <arai>
+object's slot cannot store an object from different global, and wrapping a global object isn't trivial.  So, instead of storing the global object, we were using an object inside the global
+
+[08:09:48.0917] <arai>
+so, store an object inside the global to the slot, and when extracting from the slot, we get the object's global
+
+[08:09:49.0059] <sefeng>
+ok!
+
+[08:09:54.0464] <arai>
+that's `nonCCWGlobal call
+
+[08:10:09.0456] <arai>
+so, that part is no longer necessary with the patch's setup
+
+[08:11:39.0451] <arai>
+hmm, the backtrace doesn't imply anything about FinalizationRegistry.
+
+[08:12:24.0180] <sefeng>
+yeah that's why I was looking at `EnqueuePromiseReactionJob`..
+
+[08:16:19.0998] <arai>
+I'll check how the `0x0007800000000000` value in the crash report can be generated
+
+[08:16:47.0833] <arai>
+I wonder if non-object value becomes that pointer
+
+[08:18:10.0950] <sefeng>
+another question - is this still the[object inside the global](https://searchfox.org/mozilla-central/rev/b1cd7e191ac57f8dfe31806be2539e51843c03eb/xpcom/base/CycleCollectedJSContext.cpp#262)? 
+
+[08:18:20.0421] <sefeng>
+ * another question - is this still the [object inside the global](https://searchfox.org/mozilla-central/rev/b1cd7e191ac57f8dfe31806be2539e51843c03eb/xpcom/base/CycleCollectedJSContext.cpp#262)?
+
+[08:19:03.0173] <arai>
+it should be the global object itself
+
+[08:19:16.0731] <sefeng>
+so that's wrong then?
+
+[08:19:31.0263] <arai>
+why?
+
+[08:19:54.0293] <arai>
+err, maybe I'm not following
+
+[08:19:59.0849] <sefeng>
+oh I thought you mean that code is wrong and it should be the global object itself
+
+[08:20:18.0765] <arai>
+I haven't yet figured out where it goes wrong
+
+[08:26:27.0824] <arai>
+I'll look into it next week
+
+[08:28:24.0954] <sefeng>
+sure, thanks! I am still looking at it :) 
+
+[10:26:35.0242] <jlink>
+While looking at a memory report (the second memory report from [this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1894286)) earlier, Markus and I noticed a lot duplicated strings. For example, in the parent process there are 60 copies of a string for an icon for a total of 2.35MB, in the first youtube process there are 778 copies of a text string for 6.10MB, in the second youtube process there are 21065 copies of a string for 21.05MB, and in the third youtube process there are 21108 copies of a string for 21.09MB.
+It doesn't seem like it's the main issue being reported here but there are a number of strings that have thousands or even tens of thousands of copies.
+This level of duplication isn't expected, is it?
+Also is this the right place to ask this question? Or is this more of a DOM thing? Or both?
+
+[10:29:03.0938] <mccr8>
+The JS engine does some kind of string deduplication. I'm not sure what the heuristics are for when it applies. Maybe we don't do it if the strings are too long.
+
+[10:35:56.0149] <l11d>
+I'd like to confine SM s.t. it cannot interact with other parts of the browser or the OS in any manner, unless the interaction passes through a dedicated interface. is this doable in a somewhat realistic time period or would this require tremendous changes? I know this is a bit vague a question, but any input is appreciated
+
+[11:01:00.0087] <jlink>
+Yeah, the string situation in the browser seems very complicated. I know that some strings, at least in JS and maybe DOM contexts, get atomized so there shouldn't be duplicates in those contexts, but I've also heard about "string de-duplication" and I don't really know much about that, other than what is obvious about the name, or how it all fits together.
+
+[11:05:53.0628] <sfink>
+We explicitly deduplicate most strings when tenuring during minor GCs, which sort of provides a filter between the nursery generation and the tenured generation that reduces the number of duplicates being created to one per minor GC. Relatedly, any nursery string that has been atomized will be replaced with the atom during tenuring. But neither of those apply to all types of strings.
+
+[11:08:23.0623] <sfink>
+Duplicate strings in the tenured heap mostly persist, I think? Tenured strings that are atomized will get converted to AtomRefs, which will free the duplicate data.
+
+[11:10:00.0830] <sfink>
+External strings, which very well might be the ones here, are not nursery-allocated so will skip the filter.
+
+[11:11:27.0965] <sfink>
+Hm... I'm wondering about strings whose data is stored in a StringBuffer. I wonder if we report those as duplicates when there are multiple JSString headers that share StringBuffer data?
+
+[11:13:01.0761] <iain>
+l11d: You can trivially sandbox SM away from the browser by only building the shell, but I assume that's not what you want. What do you mean by preventing OS interaction? That seems a little trickier. 
+
+[11:14:22.0846] <sfink>
+you can compile SpiderMonkey to wasm, which gives you a sandbox. But I don't know if that'll be valid for your use case.
+
+[11:15:07.0396] <l11d>
+OS interactions = "all calls to external libs and syscalls". its not that the SM should work without these (in fact it cannot work w/o e.g. mmap), its that I'd like to re-route all calls through a dedicated interface between SM and the rest of the OS/browser
+
+[11:16:25.0789] <l11d>
+mostly with the goal to make it easier to reason about security properties of SM and confine adversaries
+
+[11:17:18.0834] <sfink>
+for production use, or testing, or research?
+
+[11:17:46.0170] <iain>
+Would LD_LIBRARY_PATH help? I have the vague notion that it lets you shim external libraries (including libc?), but I have never used it myself
+
+[11:17:47.0618] <l11d>
+first of all, research
+
+[11:19:54.0139] <l11d>
+I'm currently writing a text of future directions of JS security so I was thinking about sandboxing strategies
+
+[11:20:08.0003] <l11d>
+I probably have to give it some more thought
+
+[11:20:29.0234] <iain>
+I actually don't know whether SM uses any syscalls directly, or only via libc. I'm not aware of any direct syscalls off the top of my head, but that guarantees nothing.
+
+[11:26:00.0350] <sfink>
+jlink: I think the duplicate string reporting uses [the code here](https://searchfox.org/mozilla-central/rev/b1cd7e191ac57f8dfe31806be2539e51843c03eb/js/src/vm/MemoryMetrics.cpp#63-97), which suggests that different JSStrings that point to the same data (eg in a StringBuffer) would be reported as duplicates. So it's possible that some of the reported duplication is mostly a false alarm. But I don't know.
+
+[11:26:39.0969] <sfink>
+in answer to your original question, I don't have a good sense for what is expected these days. The last time I remember looking at it, I saw similar things to what you're seeing, but didn't investigate. jandem might have a better sense.
+
+[11:31:17.0520] <sfink>
+l11d: I would expect there to be something out there to do a pretty generic virtualization within a process. ptrace could do it, somewhat slowly. Look at `PTRACE_SYSEMU` [for example](https://www.man7.org/linux/man-pages/man2/ptrace.2.html).
+
+[11:32:19.0561] <sfink>
+or something based on seccomp-bpf
+
+[11:33:14.0996] <sfink>
+oh, huh -- it looks like Chromium already uses seccomp-bpf
+
+[11:34:04.0074] <sfink>
+[so has Firefox](https://bugzilla.mozilla.org/show_bug.cgi?id=790923)
+
+[11:34:39.0216] <sfink>
+jld would be a very good person to brainstorm this sort of thing with
+
+[11:35:54.0080] <sfink>
+https://wiki.mozilla.org/Security/Sandbox/Seccomp
+
+[11:51:00.0671] <l11d>
+many thanks for all the pointers :)
+
+[12:37:37.0529] <sfink>
+Jed really is the right person to talk to. He's very knowledgeable about sandboxing, and not just on Linux. He also has the battle scars from real experience using it in anger, so to speak.
+
+[13:09:10.0070] <itms>
+> <@mgaudet:mozilla.org> Well, I will say we have very small amounts of use of JS_DeepFreezeObject. Would not be surprised if there was a bug in there right now. 
+> 
+> Could you ( itms ) open a bug with the backtrace from a debug build?
+
+Hello! I managed to reduce our crash situation with `JS_DeepFreezeObject` to a minimal example. I attached it to bug 1930258
+
+[13:09:13.0014] <botzilla>
+https://bugzil.la/1930258 — UNCONFIRMED (nobody) — JS_DeepFreezeObject triggers environment crash when freezing function objects
+
+[13:11:37.0138] <mgaudet|out-until-nov-12>
+I am off today but this will get triaged next week! Thank you!
+
+[14:19:20.0966] <kfjvj>
+Is there a way to create my own subclass of JobQueue and use it?
+
+[14:22:27.0207] <jlink>
+> <@sfink:mozilla.org> jlink: I think the duplicate string reporting uses [the code here](https://searchfox.org/mozilla-central/rev/b1cd7e191ac57f8dfe31806be2539e51843c03eb/js/src/vm/MemoryMetrics.cpp#63-97), which suggests that different JSStrings that point to the same data (eg in a StringBuffer) would be reported as duplicates. So it's possible that some of the reported duplication is mostly a false alarm. But I don't know.
+
+Thanks for pointing me there. I'm not sure how exactly we calculate the total memory usage for a string but that makes me wonder - if we _are_ considering two JStrings that use the same underlying StringBuffer as distinct copies, does that mean that we're counting more memory usage for them than we should? mccr8 Do you happen to know?
+
+[14:26:22.0969] <jlink>
+Interestingly I just started up a fresh copy of Nightly (locally built) and I see exactly 60 copies of a different and smaller icon in my parent process as well. (I had not navigated anywhere yet.)
+
+[14:27:40.0759] <jlink>
+And then I waited a minute and generated a report again and now it's gone.
+
+[14:30:29.0274] <mccr8>
+> <@jlink:mozilla.org> Thanks for pointing me there. I'm not sure how exactly we calculate the total memory usage for a string but that makes me wonder - if we _are_ considering two JStrings that use the same underlying StringBuffer as distinct copies, does that mean that we're counting more memory usage for them than we should? mccr8 Do you happen to know?
+
+I'm not sure. That seems like a big thing to overlook so I'd be surprised if it was missed, but maybe the string implementation has changed and the reporter wasn't? If a single block of memory is reported twice it will show up in a DMD report.
+
+[14:35:08.0769] <kfjvj>
+Does anyone know of a way I can make a subclass of the internal job queues with minor modifications and use it?
+
+[14:38:42.0726] <iain>
+kfjvj: No, short of editing your own local copy of the code. If you want custom job queue behaviour, all the hooks are available.
+
+[14:41:30.0934] <jlink>
+> <@mccr8:mozilla.org> I'm not sure. That seems like a big thing to overlook so I'd be surprised if it was missed, but maybe the string implementation has changed and the reporter wasn't? If a single block of memory is reported twice it will show up in a DMD report.
+
+I'm also seeing that _some_ (but not all) strings are reporting about twice as much memory as I would expect given their length, copies, and bytes-per-char:
+│  │   ├──6.10 MB (24.75%) -- string(length=2204, copies=778, "Hashtags/n/uD83D/uDCFA ..."
+│  │   │  ├──6.08 MB (24.68%) ── malloc-heap/two-byte
+│  │   │  └──0.02 MB (00.07%) ── gc-heap/two-byte
+Is there something else that I'm neglecting to take into account when checking these numbers that makes this make sense?
+
+[14:47:14.0861] <mccr8>
+> <@jlink:mozilla.org> I'm also seeing that _some_ (but not all) strings are reporting about twice as much memory as I would expect given their length, copies, and bytes-per-char:
+> │  │   ├──6.10 MB (24.75%) -- string(length=2204, copies=778, "Hashtags/n/uD83D/uDCFA ..."
+> │  │   │  ├──6.08 MB (24.68%) ── malloc-heap/two-byte
+> │  │   │  └──0.02 MB (00.07%) ── gc-heap/two-byte
+> Is there something else that I'm neglecting to take into account when checking these numbers that makes this make sense?
+
+I think that includes allocator slop. So if it tries to allocate say 154 bytes of characters and jemalloc has buckets at, say, 120bytes and 256bytes, then the 154 bytes will actually take 256. (those numbers are pulled out of a hat, I should look up the actual buckets)
+
+[14:47:49.0664] <mccr8>
+> <@jlink:mozilla.org> I'm also seeing that _some_ (but not all) strings are reporting about twice as much memory as I would expect given their length, copies, and bytes-per-char:
+> │  │   ├──6.10 MB (24.75%) -- string(length=2204, copies=778, "Hashtags/n/uD83D/uDCFA ..."
+> │  │   │  ├──6.08 MB (24.68%) ── malloc-heap/two-byte
+> │  │   │  └──0.02 MB (00.07%) ── gc-heap/two-byte
+> Is there something else that I'm neglecting to take into account when checking these numbers that makes this make sense?
+
+The chart is here: https://searchfox.org/mozilla-central/rev/450aacd753c98b3200f120ed4340e1ed53b7ff47/memory/build/mozjemalloc.cpp#58
+
+[14:49:14.0698] <mccr8>
+Looks like the "large" ones there are 4kB and in this case the strings take 4408 bytes each, so it is almost 100% allocator slop there.
+
+[14:49:29.0462] <mccr8>
+because it'll get rounded up to the next size with is 8kB
+
+[15:20:19.0723] <jlink>
+Ahh yes, that makes perfect sense. Thank you! 
+
+[15:29:52.0032] <mccr8>
+Good catch, though. It took me a bit to remember what was probably going on.
+
+[15:31:21.0694] <mccr8>
+Not the case here, but we had a number of places in Firefox where somebody tried to be clever and fit a data structure entirely within a bucket, but then forgot about some extra bytes needed for the header, causing it to go into the next bucket size and end up with almost 50% allocator slop.
+
+
+2024-11-09
+[16:47:35.0344] <jlink>
+Ah yes, I remember that from the MemShrink blog. 🙂
+
+[18:10:13.0829] <arai>
+the `0x0007800000000000` comes from interpreting `UndefinedValue` as `ObjectValue`.  that means `INCUMBENT_SETTING_SLOT` slot is undefined for the object passed as `hostDefinedData`.  Either the `INCUMBENT_SETTING_SLOT` slot is not somehow initialized, or somehow set to undefined later, or the object being wrong
+
+[08:52:45.0007] <sfink>
+ahal just posted an [excellent writeup](https://ahal.ca/blog/2024/jujutsu-mercurial-haven/) on jujutsu as a mercurial replacement for mozilla developers
+
+
+2024-11-11
+[06:46:32.0056] <Ms2ger>
+Where was that a decade ago :)
+
+[11:40:18.0070] <kfjvj>
+> <@iain:mozilla.org> kfjvj: No, short of editing your own local copy of the code. If you want custom job queue behaviour, all the hooks are available.
+
+What are the hooks?
+
+[11:41:56.0276] <iain>
+I mean [this stuff](https://searchfox.org/mozilla-central/source/js/public/Promise.h#22-124)
+
+[11:47:35.0179] <kfjvj>
+> <@iain:mozilla.org> I mean [this stuff](https://searchfox.org/mozilla-central/source/js/public/Promise.h#22-124)
+
+Somehow the link is not working
+
+[11:48:46.0431] <iain>
+I linked to the JobQueue virtual class in Promise.h
+
+[11:48:47.0074] <kfjvj>
+Oh never mind, it finally loaded
+
+[11:50:10.0747] <kfjvj>
+> <@iain:mozilla.org> I linked to the JobQueue virtual class in Promise.h
+
+OK, that's the thing that confuses me.  I can see the virtual class, but I don't know where to use it.  I can't find a function like "setJobQueue" that would take an instance of JobQueue.
+
+[11:51:13.0568] <kfjvj>
+I... vastly apologize as I just saw SetJobQueue right there
+
+[11:51:49.0224] <kfjvj>
+Related question: Do you have any tips on how to debug the human brain?🧠
+
+
+2024-11-12
+[01:40:37.0270] <l11d>
+how expensive are DOM access from spidermonkey and is there a huge difference between DOM writes and DOM reads? more specifically, how bad would performance degrade when each DOM write/read would cost additional 300 cycles CPU cycles?
+
+[01:41:11.0631] <l11d>
+would you expect benchmarks to nosedive or is this in the area of "barely noticeable"?
+
+[01:52:08.0115] <arai>
+what kind of read/write is it?  a property access on the DOM object, such as `link.href` ?
+
+[01:52:58.0177] <l11d>
+exactly
+
+[01:54:04.0071] <l11d>
+or something like `window.preamble.textContent;`
+
+[01:55:43.0061] <Ms2ger>
+I would ask bz, but that'll be hard now. Maybe peterv or smaug has the order of magnitude in their head
+
+[01:56:14.0828] <Ms2ger>
+But some of those are definitely very hot
+
+[01:58:26.0877] <arai>
+in most case they're accessors defined on the prototype, and those accessors generated by the bindgen has JitInfo ([example](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/NodeBinding.cpp#809)
+
+[01:59:53.0276] <arai>
+where would the additional 300 cycles happen ?  inside the binding (e.g. [Node_Binding::set_textContent](https://searchfox.org/mozilla-central/source/__GENERATED__/dom/bindings/NodeBinding.cpp#768)), or inside the underlying implemnetation ([nsINode::SetTextContent](https://searchfox.org/mozilla-central/rev/f732a1651018b7c32002981a9c8b8613975ffbf9/dom/base/nsINode.h#1751)) or somewhere else?
+
+[02:00:38.0918] <evilpie>
+I was going to say, if bz was still here he might have a heart attack.
+
+[02:00:38.0952] <l11d>
+inside the binding
+
+[02:03:14.0658] <l11d>
+the fact that specialized JIT paths exist indicate high performance sensitivity :D I was wondering whether DOM writes anyways cause so much other work that 300 cycles would be dwarfed, relatively speaking
+
+[02:03:46.0689] <Ms2ger>
+Depends on the case
+
+[02:03:53.0734] <evilpie>
+Yeah.
+
+[02:03:55.0343] <arai>
+so, the additional cycles happen on most of the get/set bindings?  then I would expect it to be somewhat noticeable  (not sure how much tho)
+
+[02:03:56.0382] <l11d>
+as always :D 
+
+[02:04:30.0644] <evilpie>
+"Dom Writes" is a bad term, either use setter or method please. Unless you literally mean changes the DOM?
+
+[02:07:20.0420] <l11d>
+noted. I meant "SM reading/writing properties of objects which are part of the DOM", if that makes more sense?
+
+[02:08:05.0705] <arai>
+so, that excludes the actual underlying behavior that's performed on the DOM side when the read/write is triggered?
+
+[02:08:33.0301] <l11d>
+yes
+
+[02:08:56.0147] <evilpie>
+sounds really bad to me, imo. I remember bz optimizing the bindings on the order of nanoseconds
+
+[02:09:59.0485] <evilpie>
+this sounds like a constant overhead for anything that isn't just pure JS object code
+
+[02:10:58.0600] <l11d>
+things would be so much easier if it weren't for performance -.-
+
+[02:11:43.0037] <arai>
+does the additional operation need to be performed on all getter/setter call?
+
+[02:11:48.0878] <arai>
+ * does the additional operation need to be performed on all getter/setter calls?
+
+[02:12:38.0354] <arai>
+(all properties? both first, and subsequent calls on single property?)
+
+[02:15:12.0088] <l11d>
+not necessarily all getters/setters. just setters would be sufficient. but all subsequent calls on the same property setter would add cost
+
+[02:17:23.0930] <arai>
+yeah, that would be something we would want to avoid in general.  maybe we should look into the details of the operation, if we're to discuss further
+
+[02:21:17.0315] <emilio>
+What are you trying to do exactly? Can it be optimized so it only happens once or so?
+
+[03:14:56.0098] <peterv>
+bz at some point started counting cycles for specific getters/setters, so 300 sounds like a no
+
+[03:48:41.0352] <l11d>
+I hope not to tread on anyone's toes when saying that mere mortals cannot write bulletproof JIT compilers, at least not with the technology available today. Even a complete rewrite of SM in Rust would do little to rectify the situation, as logical flaws in JIT compilers can escalate to memory corruption. Hence, I'm thinking about future research directions in JS security, particularly more principled ways. My thoughts center on VM-based security, but if 300 cycles overhead (minimum cost of vmenter/vmexit) are a no-go already, this might not be viable
+
+[04:27:24.0275] <arai>
+according to the crash reports, all crashes (afaics) happen when fulfilling a promise that was created with pending state and the onFulfilled handler added before the resolution
+
+[05:03:52.0970] <arai>
+so, the hostDefinedObject is first stored into the `PromiseReactionRecord`'s HostDefinedData slot, and then kept there for a while, and then passed to `CycleCollectedJSContext::enqueuePromiseJob` later
+
+[05:05:02.0444] <arai>
+given the other cases (e.g. adding reaction on already-resolved promise) don't hit the crash, it would be something specific to that scenario
+
+[05:11:57.0733] <arai>
+possibility is either the hostDefinedObject's slot is modified while it's stored into the reaction record, or a wrong object is returned from the reaction record
+
+[05:13:05.0530] <arai>
+ * possibility is either the hostDefinedObject's slot is modified while it's stored into the reaction record and the `INCUMBENT_SETTING_SLOT` slot is set to undefined value, or a wrong object is returned from the reaction record where the object has undefined in the 0-th reserved slot
+
+[05:22:17.0997] <arai>
+yet another possibility is that it's pre-existing issue which appears as different crash signature, but I'm not aware of the case
+
+[07:23:41.0613] <davidj361>
+> <@yulia:mozilla.org> isInt32 will check if a number is an integer. isDouble which check if it is potentially a decimal.
+
+`isInt32()` fails for uint32 max value and `isDouble()` is true
+
+[07:27:34.0108] <davidj361>
+Do I have to do `toNumber()` and manually see if it's a decimal and fits into uint32?
+
+[07:27:48.0874] <davidj361>
+ * Do I have to do `toNumber()` and manually see if it's not a decimal and fits into uint32?
+
+[07:32:56.0687] <yulia | PTO>
+hm... what is it that you are trying to do, and in which part of the code base?
+
+[07:33:34.0519] <davidj361>
+storing a uint32 in JS then bringing back into the C++ side
+
+[07:33:41.0270] <davidj361>
+ * storing a uint32 in JS then bringing it back into the C++ side
+
+[07:34:07.0894] <yulia | PTO>
+ok, so it is coming in from js code, and you are calling into the engine. do you want to store it as a uint32 for memory efficiency sake?
+
+[07:35:13.0000] <davidj361>
+in C++ outside of JS?
+
+[07:35:33.0098] <davidj361>
+ * in C++ outside of JS? yeah, shortest bitwidth
+
+[07:37:21.0976] <yulia | PTO>
+Ok, the engine afaik (maybe someone correct me if i am wrong) only distinguishes between int32 and double. if you are storing a uint32 it will overflow the int32 check, and normally we store that as a double even if it can be stored potentially as a uint32, as it is coming from JS, and it is technically signed. 
+
+[07:38:06.0887] <yulia | PTO>
+ * Ok, the engine afaik (maybe someone correct me if i am wrong) only distinguishes between int32 and double. if you are storing a uint32 it will overflow the int32 check, and normally we store that as a double even if it can be stored potentially as a uint32, as it is coming from JS, and it is technically signed (it has a positive sign). There isn't enough room inside of word to represent that accurately 
+
+[07:38:25.0792] <yulia | PTO>
+ * Ok, the engine afaik (maybe someone correct me if i am wrong) only distinguishes between int32 and double when it comes from JS. if you are storing a uint32 it will overflow the int32 check, and normally we store that as a double even if it can be stored potentially as a uint32, as it is coming from JS, and it is technically signed (it has a positive sign). There isn't enough room inside of word to represent that accurately 
+
+[07:38:38.0879] <yulia | PTO>
+ * Ok, the engine afaik (maybe someone correct me if i am wrong) only distinguishes between int32 and double when it comes from JS. if you are storing a max uint32 it will overflow the int32 check, and normally we store that as a double even if it can be stored potentially as a uint32, as it is coming from JS, and it is technically signed (it has a positive sign). There isn't enough room inside of word to represent that accurately 
+
+[07:39:18.0701] <yulia | PTO>
+if you want to approach it in a way that might not be natural in terms of thinking about it, rather than using uint32 max, you can use -1
+
+[07:39:26.0916] <davidj361>
+a double can hold a uint32 however
+
+[07:39:31.0160] <yulia | PTO>
+yep
+
+[07:39:46.0056] <yulia | PTO>
+but recall, its coming from JS -- because of that, it is not a uint32
+
+[07:39:49.0200] <yulia | PTO>
+it just looks like one
+
+[07:40:23.0571] <yulia | PTO>
+if you want to represent uint32_max it would really be -1. those values are equivalent
+
+[07:40:37.0123] <yulia | PTO>
+in the end it all depends on what you are trying to do though
+
+[07:42:51.0688] <davidj361>
+uint32_max wouldn't be -1 in the double however, so if I do `toNumber()` I would get the appropriate value
+
+[07:43:35.0024] <yulia | PTO>
+thats correct
+
+[07:44:54.0283] <yulia | PTO>
+ * if you want to approach it in a way that might not be natural in terms of thinking about it in order to fill a word, rather than using uint32 max, you can use -1
+
+
+2024-11-13
+[06:33:31.0414] <Ms2ger>
+Hi spidermonkey peoples, does phabricator support abandoning a revision in the middle of a stack?
+
+[06:35:06.0135] <jjaschke>
+Ms2ger: I think I did that a while ago.
+
+[06:35:46.0877] <arai>
+yes, you can abandon, but iiuc you need to fix the stack to exclude the revision
+
+[06:37:06.0558] <arai>
+I mean, in order to land the stack
+
+[06:37:46.0125] <Ms2ger>
+I think it worked 🤞
+
+[06:37:48.0205] <Ms2ger>
+Thanks
+
+[07:00:00.0549] <nbp>
+l11d: What might be possible for your approach would be to squash DOM changes. Except for few changes which are requiring a direct recomputation/invalidations, changes could be squashed in a "waiting" space to be applied before recomputing the layout. The operations which are requiring the recomputation of are also expensive, and this might be a way to aggregate changes ahead of applying the changes. I do not know much about the DOM, and I bet there are more corner cases that I am not aware of, but this could be an interesting direction for trying vmenter/vmexit opcodes.
+
+[07:00:49.0828] <nbp>
+ * l11d: What might be possible for your approach would be to squash DOM changes. Except for few changes which are requiring a direct recomputation/invalidations, changes could be squashed in a "waiting" space to be applied before recomputing the layout. The operations which are requiring the recomputation of are also expensive, and this might be a way to hide the cost ahead of applying the changes. I do not know much about the DOM, and I bet there are more corner cases that I am not aware of, but this could be an interesting direction for trying vmenter/vmexit opcodes.
+
+[07:03:12.0430] <l11d>
+thanks for this idea, I'll keep that in mind. if the research project actually takes off I'll come back with many more questions and issue
+
+[11:04:37.0063] <mgaudet>
+sfink: there's no reason to hold on to JS::EnableNurseryStrings, JS::EnableNurseryBigInts & disable versions of those right? 
+
+[11:13:25.0523] <fkilic>
+It is probably a stupid question, but is there any way of converting JS::Value to bytes/string? (I'm assuming numbers and string would be easy to do, but not sure about objects)
+
+[11:15:45.0099] <mccr8>
+> <@fkilic:mozilla.org> It is probably a stupid question, but is there any way of converting JS::Value to bytes/string? (I'm assuming numbers and string would be easy to do, but not sure about objects)
+
+What do you mean by "bytes/string"?
+
+[11:16:02.0640] <mccr8>
+Do you just want to get some vague idea for debugging, or do you want a perfect reversible serialization etc?
+
+[11:17:26.0931] <fkilic>
+I want to extend AUTO_PROFILER_LABEL_DYNAMIC_FAST for my local build and want to export more stuff into profiler. I basically want to export all arguments passed into class constructors, methods, setters etc. So I just for debugging, no need for perfect reversible serialization
+
+[11:17:49.0875] <fkilic>
+ * I want to extend AUTO\_PROFILER\_LABEL\_DYNAMIC\_FAST for my local build and want to export more stuff into profiler. I basically want to export all arguments passed into class constructors, methods, setters etc. So just for debugging, no need for perfect reversible serialization
+
+[11:18:43.0810] <fkilic>
+ * I want to extend AUTO\_PROFILER\_LABEL\_DYNAMIC\_FAST for my local build and want to export more stuff into profiler for some testing. I basically want to export all arguments passed into class constructors, methods, setters etc. So just for debugging, no need for perfect reversible serialization
+
+[11:18:55.0605] <mccr8>
+> <@fkilic:mozilla.org> I want to extend AUTO\_PROFILER\_LABEL\_DYNAMIC\_FAST for my local build and want to export more stuff into profiler for some testing. I basically want to export all arguments passed into class constructors, methods, setters etc. So just for debugging, no need for perfect reversible serialization
+
+There's JS_ValueToSource but it kind of misses like anything from the last decade so it can miss stuff which is annoying.
+
+[11:20:04.0499] <sfink>
+mgaudet: Hm. The only use I can think of those is for testing. I think it's fine to get rid of them, as long as we can still disable them via prefs.
+
+[11:21:02.0090] <sfink>
+> <@fkilic:mozilla.org> I want to extend AUTO\_PROFILER\_LABEL\_DYNAMIC\_FAST for my local build and want to export more stuff into profiler for some testing. I basically want to export all arguments passed into class constructors, methods, setters etc. So just for debugging, no need for perfect reversible serialization
+
+Nothing is going to provide perfect fidelity, but I guess you could use JSON. It might dump more than you want, though.
+
+[11:22:45.0514] <arai>
+yes, [JS_ValueToSource](https://searchfox.org/mozilla-central/rev/55837bbe3e47f9b4fa91ef83a44b53823626f01d/js/src/jsapi.h#123) or [JS::ToString](https://searchfox.org/mozilla-central/rev/55837bbe3e47f9b4fa91ef83a44b53823626f01d/js/public/Conversions.h#256) for converting random value to some printable string with JSString type, and then [JS_EncodeStringToUTF8](https://searchfox.org/mozilla-central/rev/55837bbe3e47f9b4fa91ef83a44b53823626f01d/js/public/CharacterEncoding.h#426) to convert JSString type to char array
+
+[11:23:57.0405] <mccr8>
+nsContentUtils::StringifyJSON() can produce something at least somewhat usable. Sometimes.
+
+[11:25:10.0775] <arai>
+note that the conversion can execute JS if the value has getter or toString method
+
+[11:25:52.0250] <fkilic>
+Hmm I see. Alright, thanks everyone!
+
+[12:09:33.0759] <julienw>
+fkilic: depending where you're trying to do, maybe the devtools jstracer functionality might be useful to you. You can enable it in the profiler in about:profiling. A little bit experimental still 
+
+[12:12:21.0843] <fkilic>
+yep that's exactly what I'm trying to extend. I want to get what values are set to and method arguments etc. So I'm trying to modify dom/bindings/Codegen.py to print out arguments and stuff, then I'll try to plumb it to TraceLabel or some other function. Just trying to extend it for some testing
+
+[12:13:29.0635] <fkilic>
+ * yep that's exactly what I'm trying to extend. I want to get what values are set to and method arguments etc. So I'm trying to modify `dom/bindings/Codegen.py` to print out arguments and stuff, then I'll try to plumb it to TraceLabel or some other function. Just trying to extend it for some testing
+
+[12:45:15.0383] <mgaudet>
+> <@sfink:mozilla.org> mgaudet: Hm. The only use I can think of those is for testing. I think it's fine to get rid of them, as long as we can still disable them via prefs.
+
+So currently we can only set this via the shell options. Removing these API functions wouldn't be a regression at least
+
+[12:53:49.0808] <sfink>
+ok, well it looks like we can use at least startup prefs without exposing public functions, so I'm still good with removing them.
+
+[12:57:14.0587] <mgaudet>
+KK. Will write PR eventually :) 
+
+[13:44:14.0614] <sefeng>
+arai: thanks! element didn't notify your messages... I checked the code, incumbent global should be non-null when host defined object exists 
+
+[13:48:24.0106] <sefeng>
+I think I could add a null check to avoid the crash or I could add some diagnostic assertions to try to locate where it becomes null, what do you think?
+
+[13:49:13.0088] <mgaudet>
+sfink: Is the reasoning behind discardingJitCode on discard written down somewhere? 
+
+[13:50:29.0785] <sfink>
+"on discard"? On GC? On compaction?
+
+[13:50:59.0596] <mgaudet>
+erm on compaction
+
+[13:51:21.0586] <mgaudet>
+sorry -- something bingled as I was typing and clearly I tossed my thought through a grinder
+
+[13:53:21.0259] <sfink>
+I don't think it's written down anywhere. I could write it down in dis card, but then you wouldn't be able to read it because it's here and you're not. I mean, I think the idea is that when compacting we're trying to minimize memory use (even if the actually used stuff is going to be regenerated). But it's also a trigger for a non-minor moving GC, and I don't know if jitcode can update itself for that?
+
+[13:53:29.0008] <sfink>
+in short, you're right that it should be written down
+
+[13:53:33.0777] <sfink>
+afaik, it is not
+
+[13:54:34.0095] <sefeng>
+and how did you tell that address came from interpreting UndefinedValue as ObjectValue? 
+
+[13:54:46.0319] <mgaudet>
+I guess partially I'm trying to figure out if it's possible to fail if we compact without discarding JIT code. (I'm looking into JIT discard heuristics, and want to try and draw the line between "must discard for functional reasons" and "this was a discard heuristic" 
+
+[13:54:50.0618] <mgaudet>
+ * I guess partially I'm trying to figure out if it's possible to fail if we compact without discarding JIT code. (I'm looking into JIT discard heuristics, and want to try and draw the line between "must discard for functional reasons" and "this was a discard heuristic" )
+
+[13:56:13.0730] <sfink>
+I'm not sure. jit people, do you know? ( iain jandem ). jonco would know.
+
+[13:56:51.0590] <mgaudet>
+(The functional evidence I have at the moment is that I commented out the discard and have been running jit-tests, and thus-far haven't actually found a crash, but it could just be that the jit-flags I'm using won't generally do it) 
+
+
+2024-11-14
+[16:51:17.0827] <iain>
+I think there are Ion things that depend on discard, although I'm struggling to remember any off the top of my head
+
+[16:52:09.0563] <mccr8>
+If it has pointers to things that can get moved and the pointers aren't updated that would cause problems. It would only show up after a  compacting GC.
+
+[16:52:32.0584] <mccr8>
+ * If it has pointers to GC things that can get moved and the pointers aren't updated that would cause problems. It would only show up after a compacting GC.
+
+[17:20:37.0319] <jlink>
+I'm looking at [a memory bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1918065) that has fairly high usage under "js-realm" / "classes" / "class(ArrayBuffer)/objects" / "non-heap/elements/wasm":
+──711.91 MB (92.22%) -- window-objects/top(http://localhost/, id=6)
+│  ├──676.73 MB (87.66%) -- active/window(http://localhost/)
+│  │  ├──676.46 MB (87.63%) -- js-realm(http://localhost/)
+│  │  │  ├──660.76 MB (85.59%) -- classes
+│  │  │  │  ├──590.25 MB (76.46%) -- class(ArrayBuffer)/objects
+│  │  │  │  │  ├──458.88 MB (59.44%) ── non-heap/elements/wasm
+│  │  │  │  │  ├──131.37 MB (17.02%) -- malloc-heap
+What exactly does that mean? Assuming there's not a leak on the SM side, does that mean that the script is creating a whole bunch of something and then them around? And is it wasm-specific?
+
+[20:03:16.0213] <arai>
+if the volume is really low, I agree with landing with more diagnostic asserts.  so I think we first need to check the total crash volume or something for nightly user base
+
+[20:04:16.0104] <arai>
+if the volume is not very low, then we should investigate the issue before re-landing.  maybe we could check the crash reports' comments?  (I don't have access)
+
+[20:12:41.0854] <arai>
+oh, I was wrong about UndefinedValue
+
+[20:12:59.0815] <arai>
+UndefinedValue becomes `0x0003800000000000`
+
+[20:13:30.0599] <arai>
+err, maybe I'm still missing something
+
+[20:13:49.0648] <arai>
+`toObjectOrNull` on `UndefinedValue` yields `0x0003800000000000`
+
+[20:14:16.0068] <arai>
+I should check `toObject` instead
+
+[20:15:40.0250] <arai>
+ah, never mind. `toObject` on `UndefinedValue` yields `0x0007800000000000`
+
+[20:16:52.0455] <arai>
+so... I just calculated manually.  I guess we should have a tool or table that allows shows common cases
+
+[20:17:54.0387] <arai>
+sefeng: do you have access to the crash reports' comments?  is there any hint for the reproduction steps?
+
+[20:24:42.0739] <gaporf>
+Hi, I'm working on jsapi tests, and I'm wondering if there's a better way to test strings without using `JS_NewUCStringCopyZ`. Also, I sometimes need to concatenate strings, but the code is quite cumbersome:
+
+
+```
+JS_ConcatStrings(cx, JS::RootedString(cx, JS_NewUCStringCopyZ(cx, str1)),
+                   JS::RootedString(cx, JS_NewUCStringCopyZ(cx, str2)));
+```
+
+I could use `#define` to simplify the code in tests, but I might be "reinventing the wheel".
+
+Additionally, how can we verify if a value is `NaN`? The jsapi-tests README suggests using `isNaN`, but the compiler doesn’t recognize it. Currently, I'm using `std::isnan(a) && !std::signbit(a`) to check for a positive NaN value, but I'm afraid that it's also not a good way.
+
+[20:37:14.0163] <arai>
+gaporf: do you have a WIP patch or something that demonstrates the entire test scenario?
+
+[20:59:59.0595] <arai>
+if you want to create JSString or string value, [JS_NewStringCopyZ](https://searchfox.org/mozilla-central/rev/c473fbfb32cd42de108f9723aff9bd95f7ec0816/js/public/String.h#66) would be the easiest way for ASCII/Latin1 range, and [JS_NewStringCopyUTF8Z](https://searchfox.org/mozilla-central/rev/c473fbfb32cd42de108f9723aff9bd95f7ec0816/js/public/String.h#68-69) for UTF-8
+
+[21:01:26.0043] <arai>
+then, about the concatenation, it would depend on what you're trying to test.  unless you really need to test the details around "concatenated string" representation, I think it's not the best option
+
+[21:03:13.0767] <arai>
+also, [JS::Rooted](https://searchfox.org/mozilla-central/rev/c473fbfb32cd42de108f9723aff9bd95f7ec0816/js/public/RootingAPI.h#1164) is supposed to be allocated as local variable (it's RAII class)
+
+[21:05:22.0060] <arai>
+about isNan, looks like the README is extremely outdated :P
+
+[21:06:58.0417] <arai>
+(it's talking about `jsval` type, which went away 14 years ago...)
+
+[21:08:13.0400] <arai>
+ * about isNaN, looks like the README is extremely outdated :P
+
+[21:08:35.0270] <arai>
+anyway, yeah, std::isnan should be the correct way
+
+[21:13:17.0989] <gaporf>
+https://phabricator.services.mozilla.com/D228935
+
+[21:14:19.0500] <gaporf>
+Here's a WIP rev, let's discuss in this thread
+
+[21:14:23.0875] <arai>
+thanks! I'll look into it
+
+[21:40:31.0526] <arai>
+gaporf: added comments
+
+[21:40:48.0503] <gaporf>
+Thank you, arai, I'll look at them later
+
+[21:40:50.0276] <arai>
+(Draft revision doesn't trigger notifications)
+
+[21:57:41.0584] <arai>
+ * ~oh, I was wrong about UndefinedValue~~
+
+[21:57:53.0745] <arai>
+ * <del>oh, I was wrong about UndefinedValue</del>
+
+[21:58:03.0515] <arai>
+ * <del>UndefinedValue becomes `0x0003800000000000`</del>
+
+[21:58:21.0790] <arai>
+ * so... I just calculated manually.  I guess we should have a tool or table that  shows common cases
+
+[23:19:23.0799] <gaporf>
+Am I right, that we just need to check that the value is not nullptr if we want to be sure that `JS_NewStringCopyZ` returns a pointer to a valid string?
+
+```
+JSString* inputString = JS_NewUCStringCopyZ(cx, rawInputString);
+      CHECK(inputString);
+```
+
+[01:10:19.0765] <arai>
+yes, it's always better checking the result of allocation
+
+[01:10:47.0088] <arai>
+and if the allocation fails, it returns nullptr
+
+[01:17:49.0407] <Tarek>
+Hi all, I am trying to share a WebAssembly.Module through IPC but I am not sure how one gets serialized.
+Below is the snippet I have, which compiles the module that is collected in Remote Settings. Once compiled I am planning to have it cached into IndexDB and pass it around as an (Shared)ArrayBuffer. But I am missing the Module => ArrayBuffer step, not sure how to do it
+
+```
+const { buffer } = await client.attachments.download(wasmRecord);
+
+const headers = { headers: { "Content-Type": "application/wasm" } };
+const wasmModule = await WebAssembly.compileStreaming(new Response(buffer, headers));
+```
+
+
+
+
+[01:25:16.0947] <Tarek>
+ * Hi all, I am trying to share a WebAssembly.Module through IPC but I am not sure how one gets serialized.
+Below is the snippet I have, which compiles the module that is collected in Remote Settings. Once compiled I am planning to have it cached into IndexDB and pass it around as an (Shared)ArrayBuffer. But I am missing the Module => ArrayBuffer step, not sure how to do it
+
+```
+const { buffer } = await client.attachments.download(wasmRecord);
+const wasmModule = await WebAssembly.compile(buffer);
+```
+
+[01:26:42.0585] <Tarek>
+oh mmm or is the module directly transferrable?
+
+[04:54:33.0940] <gerard-majax>
+there's some code wraping fd with cdatafinalizer to ensure close is called, is there a way i can get back to the fd itself from the CDataFinalizer?
+
+[04:55:00.0468] <gerard-majax>
+https://searchfox.org/mozilla-central/source/toolkit/modules/subprocess/subprocess_shared_unix.js#114-116
+
+[04:55:10.0861] <gerard-majax>
+what i have is the result of `unix.Fd(...)`
+
+[04:57:33.0548] <gerard-majax>
+oh `toString()` does something?
+
+[05:00:05.0872] <arai>
+basically, no.  but `toSource()` may stringify the data https://searchfox.org/mozilla-central/search?q=symbol:F_%3CT_js%3A%3Actypes%3A%3ACDataFinalizer%3A%3APrivate%3E_code&redirect=false
+
+[05:22:09.0400] <gerard-majax>
+well toString does it for me here
+
+[07:14:01.0633] <sefeng>
+do you mean protected data? I don't have access to those
+
+[07:38:49.0569] <Ryan Hunt>
+> <@tarek:mozilla.org> Hi all, I am trying to share a WebAssembly.Module through IPC but I am not sure how one gets serialized.
+> Below is the snippet I have, which compiles the module that is collected in Remote Settings. Once compiled I am planning to have it cached into IndexDB and pass it around as an (Shared)ArrayBuffer. But I am missing the Module => ArrayBuffer step, not sure how to do it
+> 
+> ```
+> const { buffer } = await client.attachments.download(wasmRecord);
+> const wasmModule = await WebAssembly.compile(buffer);
+> ```
+
+Hmm, I don't believe we support sharing a WebAssembly.Module across an IPC boundary. We only support it in-process across workers using postMessage
+
+[07:39:30.0494] <Ryan Hunt>
+There's no WA.Module => buffer step. If you need the buffer after compilation you'll need to hold on to it
+
+[07:39:52.0722] <Tarek>
+interesting. How would I store the result of the compilation in indexdb in that case?
+
+[07:39:54.0352] <Ryan Hunt>
+I also don't know if we support storing a WA.Module in IndexedDB directly either. We used to, but that support was removed by a W3C TAG review
+
+[07:40:27.0301] <Tarek>
+in an ideal world I compile it just once and store it, and serve it back.
+
+[07:40:34.0108] <Ryan Hunt>
+Yeah..
+
+[07:40:43.0764] <Tarek>
+I have started a patch 
+
+[07:41:08.0544] <Tarek>
+I guess it's possible if that was removed :) 
+
+[07:41:39.0551] <Tarek>
+and also if Module can use postMessage, it's serialized somehow
+
+[07:41:44.0403] <Tarek>
+I will investigate :) 
+
+[07:43:17.0444] <tcampbell>
+We did have some on-disk wasm cache that used serialization at some point https://searchfox.org/mozilla-central/rev/30afd6631333bf83d5c62ca48c313d96a21b4bbd/js/src/wasm/WasmJS.h#89-100
+
+[07:44:17.0247] <Ryan Hunt>
+SpiderMonkey definitely can serialize and cache modules after they're compiled. There's nothing technically impossible with storing it in IndexedDB, but the TAG said from a design perspective caching of user scripts should be automatically handled by the network cache, not manually by users. So we support caching when you pass fetch() to WA.compileStreaming() and store the result in the network cache. That doesn't make sense for your use-case though of chrome/web-extension code
+
+[07:45:29.0944] <Ryan Hunt>
+There is a DOM Cache API that could be used for manual caching of WA modules, but I tested it out and it doesn't work yet. I filed a bug for it here: https://bugzilla.mozilla.org/show_bug.cgi?id=1927926
+
+[07:45:45.0592] <Ryan Hunt>
+The snippet on the bug shows how I was thinking it could work
+
+[07:46:13.0319] <Ryan Hunt>
+It's possible the best thing for your use-case would be to add a special chrome-only API
+
+[07:46:43.0768] <mccr8>
+> <@tarek:mozilla.org> Hi all, I am trying to share a WebAssembly.Module through IPC but I am not sure how one gets serialized.
+> Below is the snippet I have, which compiles the module that is collected in Remote Settings. Once compiled I am planning to have it cached into IndexDB and pass it around as an (Shared)ArrayBuffer. But I am missing the Module => ArrayBuffer step, not sure how to do it
+> 
+> ```
+> const { buffer } = await client.attachments.download(wasmRecord);
+> const wasmModule = await WebAssembly.compile(buffer);
+> ```
+
+Please be very careful if you do this. Sharing executable code across processes can potentially be very dangerous.
+
+[07:46:54.0739] <Tarek>
+> user scripts should be automatically handled by the network cache,
+yeah my wasm module comes as an array buffer from Remote settings, not an url
+
+[07:46:59.0960] <Tarek>
+ * > user scripts should be automatically handled by the network cache,
+
+yeah my wasm module comes as an array buffer from Remote settings, not an url
+
+[07:47:39.0093] <Tarek>
+> <@mccr8:mozilla.org> Please be very careful if you do this. Sharing executable code across processes can potentially be very dangerous.
+
+it's the inference runtime, only happening inside the inference process using the wasm we store in remote settings. this is not an open ended API
+
+[07:47:45.0399] <nika>
+> <@tarek:mozilla.org> Hi all, I am trying to share a WebAssembly.Module through IPC but I am not sure how one gets serialized.
+> Below is the snippet I have, which compiles the module that is collected in Remote Settings. Once compiled I am planning to have it cached into IndexDB and pass it around as an (Shared)ArrayBuffer. But I am missing the Module => ArrayBuffer step, not sure how to do it
+> 
+> ```
+> const { buffer } = await client.attachments.download(wasmRecord);
+> const wasmModule = await WebAssembly.compile(buffer);
+> ```
+
+Yeah, you can't do this - there's no serialization backend for wasm modules in part due to the security concerns mccr8 mentioned
+
+[07:48:24.0887] <nika>
+You want to compile the module in the process which will use it
+
+[07:49:02.0289] <Tarek>
+yeah that is what I do, and then share it across the workers. but I would liek to do it just once, not everytime the process is started
+
+[07:49:50.0595] <Tarek>
+since it's going to be the same operation everytime
+
+[07:49:58.0065] <Tarek>
+and it very expensive
+
+[07:50:13.0682] <Tarek>
+ * and is very expensive
+
+[07:51:31.0333] <Tarek>
+so I guess postMessage(module) works, and it's just how to avoid calling compile more than once
+
+[07:51:54.0799] <yury>
+> <@mccr8:mozilla.org> Please be very careful if you do this. Sharing executable code across processes can potentially be very dangerous.
+
+What are the risks?
+
+[07:52:50.0405] <mccr8>
+> <@yury:mozilla.org> What are the risks?
+
+The danger would be a less privileged process controlling code run in a more privileged process which could lead to sandbox escapes and loss of process isolation.
+
+[07:54:03.0731] <yury>
+> <@mccr8:mozilla.org> The danger would be a less privileged process controlling code run in a more privileged process which could lead to sandbox escapes and loss of process isolation.
+
+So, if the security contexts are the same (like using the cache), it is okay?
+
+[07:54:25.0678] <mccr8>
+I don't know.
+
+[07:57:48.0285] <nika>
+In general receiving built machine code over IPC and then putting it into executable memory is a bit scary. Maybe there is some kind of cache that SpiderMonkey could implement/support on that level, but I don't think we'd want to do it naively (nor am I even sure if that would be possible)
+
+[08:51:09.0474] <Tarek>
+ok thanks all. I guess for now doing one compilation every time that process is started and sharing it across its workers is already a gain for me. Storing the result in cache even if it's not tied to a url would be nice later. (maybe a hash of the wasm binary?)
+
+[09:31:10.0914] <Ryan Hunt>
+> <@tarek:mozilla.org> ok thanks all. I guess for now doing one compilation every time that process is started and sharing it across its workers is already a gain for me. Storing the result in cache even if it's not tied to a url would be nice later. (maybe a hash of the wasm binary?)
+
+Yeah that seems like the easiest thing for right now. Hopefully with lazy tiering that can be good enough for a bit
+
+[09:31:51.0389] <Tarek>
+oh by the way Ryan, is there a way for me to force `lazy tiering` when I call compile? so not rely on the about :config option
+
+[09:33:14.0381] <Ryan Hunt>
+No, not right now. We generally only allow enabling experimental features through the pref system
+
+[09:33:54.0762] <Ryan Hunt>
+We could add a way to do it just for chrome code, but I hope that we'll be able to ship lazy tiering quick enough that it's not a big deal to just wait for that
+
+[09:44:21.0062] <mgaudet>
+> <@mgaudet:mozilla.org> I guess partially I'm trying to figure out if it's possible to fail if we compact without discarding JIT code. (I'm looking into JIT discard heuristics, and want to try and draw the line between "must discard for functional reasons" and "this was a discard heuristic" )
+
+jonco: I'm still puzzling a bit over this. Because we do have support for tracing pointers in generated code... I'm still not sure if we have to toss jit code
+
+[09:47:34.0576] <jonco>
+mgaudet: I don't remember what the final situation was here. Originally discarding JIT code was required because we couldn't update all pointers in JIT code. But that may have been fixed. I seem to remember object element pointers were a problem.
+
+[09:48:07.0717] <mgaudet>
+Ok (this may need to wait for Jan to truly nail down). I'll keep on documenting the state of the world :) 
+
+[09:52:16.0490] <iain>
+I remembered Alex and I getting in trouble with this, and finally pinned it down. We had to back out a change in [this bug](https://phabricator.services.mozilla.com/D164261) because it turns out shapes aren't traced in Ion code.
+
+[09:52:28.0843] <iain>
+Original patch [here](https://phabricator.services.mozilla.com/D161962)
+
+[09:53:34.0443] <jonco>
+mgaudet: Bug 1146867 implies the elements problem was fixed
+
+[09:53:35.0315] <botzilla>
+https://bugzil.la/1146867 — NEW (nobody) — Add a mode to test compacting GC without discarding JIT code
+
+[09:54:58.0234] <jonco>
+iain: It would be preferable to trace these if possible... is there a bug for this?
+
+[09:55:12.0439] <iain>
+Not to the best of my knowledge
+
+[09:57:01.0565] <mgaudet>
+To fix that would mostly be a case of just changing ImmPtr(shapePtr) to ImGCPtr(shapePtr) rigt? 
+
+[09:58:42.0152] <iain>
+The [codegen for LGuardShape](https://searchfox.org/mozilla-central/source/js/src/jit/CodeGenerator.cpp#4472-4479) calls [branchTestObjShape](https://searchfox.org/mozilla-central/source/js/src/jit/MacroAssembler-inl.h#714-731) which uses ImmGCPtr, so I assume something more than that is necessary
+
+[09:59:09.0436] <iain>
+I have unfortunately paged out the details here
+
+[10:02:52.0251] <mgaudet>
+Alright :) I shall continue on my quest 
+
+[10:05:14.0732] <jonco>
+Filed bug 1931394
+
+[10:05:15.0636] <botzilla>
+https://bugzil.la/1931394 — NEW (nobody) — Some shapes in JIT code are not traced
+
+[10:18:15.0647] <mgaudet>
+I will say... if I use the same test case from https://bugzilla.mozilla.org/show_bug.cgi?id=1804626, and comment out the 'discardJitCode' call inside of prepareForCompactingGC I don't seem to see any failure 
+
+[11:56:49.0078] <kfjvj>
+Is there any way at all to get a pointer to the InternalJobQueue?
+
+[12:03:25.0217] <kfjvj>
+ * Is there any way at all to get a pointer to the InternalJobQueue?
+
+I would really like to create my own job queue but not needlessly copy code.  I know InternalJobQueue is not defined in any public headers, so I can't inherit from it.
+
+The next best thing would be to hold an instance to the original JobQueue and use it as a proxy.
+
+[12:48:12.0232] <mgaudet>
+Uh. Currently no. 
+
+[12:48:53.0707] <mgaudet>
+I would personally need a bit of convincing to do that for our current version (though we're thinking a bit about queues at the moment architecturally, so maybe a future might be better). What kind of overrides from the internal job queue are you looking for? 
+
+I do worry a bit about letting InternalJobQueue escape
+
+[12:50:19.0933] <kfjvj>
+> <@mgaudet:mozilla.org> I would personally need a bit of convincing to do that for our current version (though we're thinking a bit about queues at the moment architecturally, so maybe a future might be better). What kind of overrides from the internal job queue are you looking for? 
+> 
+> I do worry a bit about letting InternalJobQueue escape
+
+It doesn't really matter.  We're using an older version anyway, so I'll use some kind of work-around.
+
+
+2024-11-15
+[00:31:04.0653] <arai>
+yeah, iiuc the comments are protected data.  then we'll need to ask someone else
+
+[07:15:09.0165] <sefeng>
+I filed an request to get those yesterday, so hopefully I can get those data soon 
+
+[08:31:52.0474] <Tarek>
+Ryan Hunt: nika so I created a worker dedicated to compiling the wasm module, that the inference process runs. But when the worker calls postMessage to send it back to the main thread, I get `console.error: ML:EngineChild: "Could not initalize the engine" (new Error("DataCloneError: DedicatedWorkerGlobalScope.postMessage: invalid transferable array for structured clone", "chrome://global/content/ml/WASMCompile.worker.mjs", 48))` 
+
+Is `postMessage` of `WebAssembly.Module` only allowed from main thread to workers? Because if I compile it from the main thread I get a CSP error. 
+
+[08:33:13.0176] <Tarek>
+lmk if you want to see the patch (I used a BasePromiseWorker with the transferrable stuff I recently added there to allow bi-directional communication)
+
+[08:33:57.0266] <Tarek>
+The message is not the Module alone, it's a more complex object comtaining the Module
+
+[08:35:06.0973] <Ryan Hunt>
+> <@tarek:mozilla.org> Ryan Hunt: nika so I created a worker dedicated to compiling the wasm module, that the inference process runs. But when the worker calls postMessage to send it back to the main thread, I get `console.error: ML:EngineChild: "Could not initalize the engine" (new Error("DataCloneError: DedicatedWorkerGlobalScope.postMessage: invalid transferable array for structured clone", "chrome://global/content/ml/WASMCompile.worker.mjs", 48))` 
+> 
+> Is `postMessage` of `WebAssembly.Module` only allowed from main thread to workers? Because if I compile it from the main thread I get a CSP error.
+
+are you sending the WA.Module in the `message` or `transfer` part of the postMessage call?
+
+[08:35:29.0793] <Ryan Hunt>
+I can look at the patch if you'd like
+
+[08:35:53.0078] <nika>
+(also I'm trying to remember what solution you ended up going with for allowing SAB in the inference process)
+
+[08:36:02.0978] <Tarek>
+let me push it
+
+[08:37:04.0153] <Ryan Hunt>
+I think from skimming some code that the module needs to be in the message part, not the transfer part
+
+[08:37:49.0790] <Tarek>
+It's in both (that's what I saw in some code) if not in transferrable, it chokes
+
+[08:38:00.0981] <Tarek>
+https://phabricator.services.mozilla.com/D229165
+
+[08:38:51.0524] <Tarek>
+see ```const res = new lazy.PromiseWorker.Meta([compiledModule], {
+      transfers: [compiledModule],
+    });```
+
+[08:39:38.0120] <Tarek>
+of course it would be easier to compile it directly in the main thread because that's where I'll keep it and send it around on each new worker
+
+[08:40:52.0269] <Tarek>
+nika: yeah the architecture is kind of weird. the inference process starts with an empty HTML just to use the JSActor stuff, and then the Child creates a chrome worker 
+
+[08:41:03.0432] <Tarek>
+ * nika: yeah the architecture is kind of weird. the inference process starts with an empty HTML just to use the JSActor stuff, and then the Actor Child creates a chrome worker
+
+[08:48:18.0067] <Ryan Hunt>
+> <@tarek:mozilla.org> It's in both (that's what I saw in some code) if not in transferrable, it chokes
+
+what sort of error are you seeing if it's not in transferrable? The tests I see for postMessage of wasm module don't send it in transferrable
+
+[08:48:41.0019] <Tarek>
+let me remove it from `transfers` and run again
+
+[08:48:43.0713] <Ryan Hunt>
+https://searchfox.org/mozilla-central/source/testing/web-platform/tests/wasm/serialization/module/resources/test-incrementer.js#41
+
+[08:49:15.0924] <Ryan Hunt>
+but also I don't know how PromiseWorker.Meta is doing things, I'm not familiar with the chrome only interfaces
+
+[08:50:50.0237] <Tarek>
+Promise.Meta is just a trick to decide how to call postMessage when using the PromiseWorker class that dispatches messages to class methods
+
+[08:51:42.0590] <Tarek>
+that class detects if it's a Meta and converts it to a postMessage call
+
+[08:52:12.0788] <Tarek>
+https://searchfox.org/mozilla-central/source/toolkit/components/promiseworker/PromiseWorker.sys.mjs#246-267
+
+[09:08:02.0452] <davidj361>
+> Storing a JS::Rooted<T> on the heap. It would be very easy to violate the LIFO constraint if you did this. Use JS::Heap<T> (see below) if you store a GC thing pointer on the heap.
+Does this mean the C++ heap? So I cannot have a unique_ptr C++ object that holds a RootedObject?
+
+[09:08:06.0620] <davidj361>
+ * > Storing a JS::Rooted\<T> on the heap. It would be very easy to violate the LIFO constraint if you did this. Use JS::Heap\<T> (see below) if you store a GC thing pointer on the heap.
+Does this mean the C++ heap? So I cannot have a unique\_ptr C++ object that holds a RootedObject?
+
+[09:08:10.0054] <davidj361>
+ * > Storing a JS::Rooted\<T> on the heap. It would be very easy to violate the LIFO constraint if you did this. Use JS::Heap\<T> (see below) if you store a GC thing pointer on the heap.
+
+Does this mean the C++ heap? So I cannot have a unique\_ptr C++ object that holds a RootedObject?
+
+[09:12:12.0026] <Tarek>
+can't get it to work yet, the worker posts the message then nothing gets back to the main thread. I am trying to debug, but so far no luck  
+
+[09:13:16.0713] <iain>
+davidj361: Correct.
+
+[09:15:01.0457] <iain>
+If the lifetime of your heap-allocated object is guaranteed not to depend on any garbage-collected objects, then you can use PersistentRooted, which will unconditionally root something for the lifetime of the PersistentRooted.
+
+[09:17:09.0639] <iain>
+The problem with PersistentRooted is that cycles can cause memory leaks. If your C++ object points to a JSObject that (directly or indirectly) points back to your C++ object (in a way that keeps it alive), then that cycle will never be collected even if it's otherwise unreachable.
+
+[09:17:33.0397] <iain>
+In that case you need to look into JS::Heap<T> and setting up tracing methods.
+
+[10:26:10.0489] <nika>
+> <@tarek:mozilla.org> nika: yeah the architecture is kind of weird. the inference process starts with an empty HTML just to use the JSActor stuff, and then the Actor Child creates a chrome worker
+
+You made a change to allow it to be considered `CrossOriginIsolated` right?
+
+[10:26:49.0985] <nika>
+I have a vague memory that you might've only done that for workers or something like that, and maybe the module somehow is violating the sab restrictions (this is probably nonsense)
+
+[10:48:03.0486] <Tarek>
+nika: that was here https://bugzilla.mozilla.org/show_bug.cgi?id=1916465
+
+[10:48:25.0605] <Tarek>
+Yeah I would not mind being about to do it directly in the main thread, less nack and forth :)
+
+[10:48:42.0767] <Tarek>
+ * Yeah I would not mind being about to do it directly in the main thread, less back and forth :)
+
+[10:55:40.0080] <Tarek>
+ * Yeah I would not mind being able to do it directly in the main thread, less back and forth :)
+
+[11:00:11.0616] <nika>
+Tarek It might actually be something to do with the fact you're using chrome workers.
+
+[11:00:31.0486] <nika>
+Because a chrome worker IIRC isn't bound to a parent document, so a `postMessage` from the chrome worker probably doesn't have a proper place to go
+
+[11:07:40.0248] <Tarek>
+Oh mmm. I will try with a normal worker 
+
+[12:20:19.0928] <Tarek>
+same behavior with a plain Worker. The postMessage() sends the data, but the main thread never gets it. (messages without Module are going through). So it seems to be specific to WebAssembly.Module it's weird because I don't get any errors or logs. I might need to on the C++ side to log.. 
+
+[13:32:26.0545] <mgaudet>
+Somehow I'd not run into https://bugzilla.mozilla.org/show_bug.cgi?id=1817092 in the last 1.5 years... but wow. hazards.html is pretty awesome
+
+[14:51:52.0586] <sfink>
+I have a patch that stops compressing it, so that you can go to it straight from the artifacts pane.
+
+[14:52:05.0958] <sfink>
+at least, I don't think I pushed that yet
+
+
+2024-11-18
+[07:28:39.0710] <Tarek>
+Ryan Hunt: nika back to my attempt to send back the compiled WASM module from the worker to the main thread (I used a message channel in the last attempt) -- padenot|off was kind enough to run it on his box and upload a pernosco profile https://pernos.co/debug/KVaNGAyX6UIizLMDhDTRrQ/index.html#f{m[Ahst,7wI_,t[0w,70A_,f{e[Ahst,7vU_,s{afAtwoAAA,bAZY,uKwTKGg,oKxueNw___/
+
+[07:29:32.0027] <Tarek>
+the failure happens on [assertion](https://searchfox.org/mozilla-central/source/dom/messagechannel/MessagePort.cpp#115)
+
+[07:31:13.0379] <Tarek>
+on a side note, Paul also suggested to create an URL with the array buffer and pass it through. Ryan Hunt in that case would this make it cacheable across the board for all workers with zero extra prep work ?
+
+[07:43:00.0758] <nbp>
+Don't we have alternate data to provide some caching for WebAssembly? I would expect it to work if we have no service worker, and that the alternate data is saved in Necko.
+
+[07:43:14.0161] <nbp>
+Tarek: how do you serve the WebAssembly code?
+
+[07:43:48.0606] <Tarek>
+it's an array buffer I pull directly from remote settings
+
+[07:44:20.0011] <nbp>
+and the array buffer contains the WebAssembly code?
+
+[07:47:42.0197] <Tarek>
+yes
+
+[07:56:41.0812] <davidj361>
+Do we have anything like godbolt for sharing SpiderMonkey examples?
+
+[07:58:41.0980] <padenot|off>
+we used to, but it wasn't used much so it was decomissinoed
+
+[07:58:45.0446] <padenot|off>
+ * we used to, but it wasn't used much so it was decomissionned
+
+[08:00:05.0445] <jandem>
+do you mean JS code snippets? or SM embedding examples?
+
+[08:00:06.0094] <nbp>
+Tarek: I do not know if using the file API would help. Necko provides the alternate data stream to save the compiled bytes, but the File API not being persistent, we probably have not implemented the alternate data api for it.
+
+[08:00:48.0724] <Tarek>
+I think that'd be a problem from a security POV
+
+[08:01:25.0814] <nbp>
+Well, the alternate data is anything made by the browser for it-self.
+
+[08:01:52.0246] <Ryan Hunt>
+> <@tarek:mozilla.org> Ryan Hunt: nika back to my attempt to send back the compiled WASM module from the worker to the main thread (I used a message channel in the last attempt) -- padenot|off was kind enough to run it on his box and upload a pernosco profile https://pernos.co/debug/KVaNGAyX6UIizLMDhDTRrQ/index.html#f{m[Ahst,7wI_,t[0w,70A_,f{e[Ahst,7vU_,s{afAtwoAAA,bAZY,uKwTKGg,oKxueNw___/
+
+Just above that assertion I see this: https://searchfox.org/mozilla-central/source/dom/ipc/SharedMessageBody.cpp#73-77
+
+[08:01:52.0400] <nbp>
+I am not sure anymore, but maybe service workers provide the alternate data API.
+
+[08:02:18.0737] <Ryan Hunt>
+so it looks like the message channel intentionally is disallowing wasm moudles
+
+[08:02:24.0567] <Ryan Hunt>
+ * so it looks like the message channel intentionally is disallowing wasm modules
+
+[08:02:55.0497] <Ryan Hunt>
+> <@tarek:mozilla.org> on a side note, Paul also suggested to create an URL with the array buffer and pass it through. Ryan Hunt in that case would this make it cacheable across the board for all workers with zero extra prep work ?
+
+what do you mean by creating a URL with the array buffer? how would that work?
+
+[08:03:51.0638] <Ryan Hunt>
+our caching system works by storing the optimized code in the network 'alt data' cache (as nbp mentioned). So if the URL thing you're talking about connects to that, it would work. But I'm not an expert here
+
+[08:04:06.0927] <padenot|off>
+arraybuffer -> Blob -> URL
+
+[08:04:10.0560] <nbp>
+https://searchfox.org/mozilla-central/source/dom/fetch/FetchDriver.cpp#1255-1266
+
+[08:04:13.0030] <padenot|off>
+but I don't know if it's been considered
+
+[08:04:37.0347] <padenot|off>
+it's something we do often in media land for various reasons so I suggested it, but I haven't tested
+
+[08:05:02.0237] <Ryan Hunt>
+I'm guessing that would not connect to the network alt data cache? but TBH I don't know
+
+[08:05:43.0729] <nbp>
+Apparently this has not been implemented in ServiceWorker either :/
+https://searchfox.org/mozilla-central/query/default?q=inheritance-diagram%3A%27nsICacheInfoChannel%27%20depth%3A4
+
+[08:06:11.0047] <nbp>
+ * <del>Apparently this has not been implemented in ServiceWorker either :/</del>
+https://searchfox.org/mozilla-central/query/default?q=inheritance-diagram%3A%27nsICacheInfoChannel%27%20depth%3A4
+
+[08:06:40.0717] <Ryan Hunt>
+I guess I'm curious why message channel is disallowing wasm modules
+
+[08:06:56.0259] <nbp>
+`IntercepterHttpChannel` are service workers, but I am not sure if it provides the alternate data storage in case of manually registered WebAssembly code.
+
+[08:07:16.0976] <Ryan Hunt>
+if it's all in the same process, we should be able to share a wasm module
+
+[08:07:30.0601] <padenot|off>
+SAB certainly works though so I'm not sure about the comment
+
+[08:07:59.0873] <padenot|off>
+would that comment refer to something cross _process_ ? tarek mentioned something weird with his workload
+
+[08:08:08.0038] <padenot|off>
+the pernosco link will show what's up with that
+
+[08:09:49.0925] <nbp>
+padenot|off: (first, arenþ you "off") second, do you happen to know what channel implementation is used for these URL objects?
+
+[08:09:56.0746] <nbp>
+ * padenot|off: (first, aren't you "off") second, do you happen to know what channel implementation is used for these URL objects?
+
+[08:10:09.0996] <Ryan Hunt>
+oh I see more comments in there about allowing wasm modules when they're in the same agent cluster. I should have read more
+
+[08:10:32.0566] <Ryan Hunt>
+I'm not able to access the pernosco trace. It says I'm not authorized
+
+[08:11:35.0696] <padenot|off>
+not off anymore
+
+[08:12:56.0409] <padenot>
+Ryan Hunt: I think you need to authorize pernosco via github's auth, and the github account needs to be linked to the moz SSO
+
+[08:14:19.0225] <padenot>
+but that should be fairly straightforward it should redirect to the right pages, not sure what's up
+
+[08:15:13.0807] <nbp>
+I guess this is likely to be a [`BlobURLChannel`](https://searchfox.org/mozilla-central/query/default?q=inheritance-diagram%3A%27nsIChannel%27+depth%3A4), which does not implement the [`nsICacheInfoChannel`](https://searchfox.org/mozilla-central/query/default?q=inheritance-diagram%3A%27nsICacheInfoChannel%27%20depth%3A4). So I suspect there would be no caching of the generated code on it, unless it is registered in a ServiceWorker.
+
+[08:23:23.0326] <mgaudet>
+> <@sfink:mozilla.org> at least, I don't think I pushed that yet
+
+Yeah, it's still compressed, but I think that's fine? 
+
+[08:28:09.0361] <mgaudet>
+> <@padenot:mozilla.org> Ryan Hunt: I think you need to authorize pernosco via github's auth, and the github account needs to be linked to the moz SSO
+
+I -think- just need a confirmed @mozilla.com email on your github profile
+
+[08:28:22.0146] <Ryan Hunt>
+> <@padenot:mozilla.org> Ryan Hunt: I think you need to authorize pernosco via github's auth, and the github account needs to be linked to the moz SSO
+
+Ah, I was authenticated with moz SSO, but I didn't have a confirmed @Mozilla.com email
+
+[08:29:04.0233] <Ryan Hunt>
+I have not used pernosco since 2018... let's see if I remember
+
+[08:29:09.0574] <padenot>
+lmk if you need help navigating pernosco
+
+[08:30:51.0511] <padenot>
+you might be interested in `All processes` tool to confirm/infirm the process thing
+
+[08:49:27.0433] <Ryan Hunt>
+Tarek padenot : It looks like this line [1] is not running and so when we decode the message we're not able to decode wasm. the issue is that global->getAgentClusterId() on line 87 is returning nothing because it the global object this message is read on is a BackstagePass which doesn't have an agent cluster ID. The source of this message does have an ID.
+
+[1] https://searchfox.org/mozilla-central/source/dom/ipc/SharedMessageBody.cpp#90
+
+[08:49:51.0382] <mgaudet>
+(I too can pair pernosco wise should the need be there :) )
+
+[08:50:34.0902] <Ryan Hunt>
+Tarek: where are you reading this message from? Is a global of BackstagePass expected here?
+
+[08:51:56.0949] <Ryan Hunt>
+BackstagePass is some sort of XPConnect thing that I never bothered learning about
+
+[08:53:14.0281] <Ryan Hunt>
+oh wait, the BackstagePass global is coming from a call to  xpc::CurrentNativeGlobal(aCx);
+
+[08:55:11.0693] <Ryan Hunt>
+which is getting its value from MessagePort::getparentobject
+
+[09:18:58.0351] <Tarek>
+sorry I am back now
+
+[09:20:13.0775] <Tarek>
+BackstagePass ? not sure. I am sending the Module through postMessage
+
+[09:21:34.0260] <Tarek>
+the worker is mostly doing:
+```
+    const wasmModule = await WebAssembly.compile(arrayBuffer);
+    port.postMessage({ module: wasmModule });
+```
+
+[09:23:10.0690] <Tarek>
+and the main thread:
+```
+    const worker = new Worker(
+      "chrome://global/content/ml/WASMCompile.worker.mjs"
+    );
+
+    const messageChannel = new MessageChannel();
+    messageChannel.port1.onmessage = event => {
+      if (event.data.error) {
+        reject(event.data.error);
+        worker.terminate();
+      } else {
+        resolve(event.data.module);
+        worker.terminate();
+      }
+    };
+
+    worker.postMessage(
+      {
+        arrayBuffer,
+        port: messageChannel.port2,
+      },
+      [arrayBuffer, messageChannel.port2]
+    );
+```
+
+[09:23:25.0482] <Tarek>
+ * and the main thread:
+
+```
+    const worker = new Worker(
+      "chrome://global/content/ml/WASMCompile.worker.mjs"
+    );
+
+    const messageChannel = new MessageChannel();
+    messageChannel.port1.onmessage = event => {
+      if (event.data.error) {
+        reject(event.data.error);
+        worker.terminate();
+      } else {
+        resolve(event.data.module);
+        worker.terminate();
+      }
+    };
+    worker.postMessage(
+      {
+        arrayBuffer,
+        port: messageChannel.port2,
+      },
+      [arrayBuffer, messageChannel.port2]
+    );
+```
+
+[09:28:03.0215] <mccr8>
+> <@rhunt:mozilla.org> BackstagePass is some sort of XPConnect thing that I never bothered learning about
+
+Backstage pass is roughly the class of chrome JS globals
+
+[09:28:20.0241] <mccr8>
+The name is pretty bad.
+
+[09:29:13.0042] <Ryan Hunt>
+oh thanks, that helps
+
+[15:10:04.0770] <sefeng>
+arai: I don't have the access yet, but I am told that many urls look like`moz-extension://69a57da7-a4b5-4c24-ac9e-132fd72dc335/popup/index.html?uilocation=popout&singleActionPopout=auth_unlockExtension#/lock`
+
+[15:10:31.0352] <sefeng>
+extension + popup? not sure if it rings any bell..
+
+[15:11:48.0969] <iain>
+sefeng: Do you have a link to a crash report? I have access to crash data, some experience digging in, and some free time while my tests run
+
+[15:12:39.0208] <iain>
+Is it this one? https://crash-stats.mozilla.org/report/index/33592329-04f5-4205-83a7-ce7820241108
+
+[15:17:18.0516] <sefeng>
+iain: thanks, yeah!
+
+[15:17:58.0245] <sefeng>
+/me is logging off
+
+[15:19:35.0018] <iain>
+Okay, yeah, I can confirm that the URL for the crashes (based on sampling ~20 crashes in IsProxy with crash address 0x0007800000000000) is almost always an extension. about:blank showed up once in my sample, and there were some reports that didn't include a URL.
+
+[15:27:22.0314] <iain>
+Unfortunately, it looks like none of those crashes has any user comments.
+
+
+2024-11-19
+[19:01:58.0439] <arai>
+thanks! extension code often interacts with ccw and xray, and also the "popup" may suggest multiple globals. we'll need to look into those handlings
+
+[19:25:16.0031] <arai>
+perhaps some "access denied" scenario can hit it?
+
+[19:26:45.0374] <arai>
+ah... DeadWrapper maybe?
+
+[19:53:50.0470] <gaporf>
+Hello, if I have an accepted patch (https://phabricator.services.mozilla.com/D228292) and in the next revision I want to add tests, do I need to do anything besides just creating a new revision? Should I add links or tags to the old and/or new revisions?
+
+[19:58:12.0082] <arai>
+please commit part 2 onto the current part 1, and then perform `moz-phab submit`.  the command will mention both part 1 and part 2, where the part 1 points the existing revision's number D228292, which part 2 being "NEW".  then it will make the part 2 depends on part 1 automatically.  if it doesn't work well, you can manually link them from "Edit Related Revisions..." menu in the phabricator revision page
+
+[19:59:30.0611] <gaporf>
+I'll try to do it, thank you for the answer
+
+[20:04:26.0292] <arai>
+posted comment to https://phabricator.services.mozilla.com/D224959
+
+[20:06:06.0477] <gaporf>
+Did I do anything right?
+
+[20:09:43.0205] <arai>
+yes!
+
+[22:37:05.0412] <Tarek>
+nika: Ryan has updated https://bugzilla.mozilla.org/show_bug.cgi?id=1930844 with his findings on the pernosco dump. Do you mind you checking it out ? 
+
+[23:09:40.0467] <nika>
+can you leave a ni? for me so I get to it tomorrow?
+
+[07:59:41.0018] <Ms2ger>
+anba: so should I read https://github.com/tc39/test262/pull/4329 as saying that you've got *nearly* complete coverage?
+
+[10:21:21.0731] <debadree25>
+how does one work to identify what one can do to identify a AWSY regression in base content js the link in bug report points to [here](https://firefox-source-docs.mozilla.org/testing/perfdocs/awsy.html#base-content-js) which says " can indicate leaks in the JS engine, optimizations that take performance into consideration at the expense of more memory, or problems with the garbage collector" which is quite a lot of possibilities 😅😅😅😅 any tips on how can one start debugging this locally?
+
+[10:26:47.0789] <nbp>
+`about:memory` can be a first start, which is where AWSY gets its metric from.
+
+[10:27:15.0356] <nbp>
+ * `about:memory` can be a first start, which is where AWSY gets its metric from. (IIRC)
+
+[10:30:12.0071] <mccr8>
+> <@debadree25:mozilla.org> how does one work to identify what one can do to identify a AWSY regression in base content js the link in bug report points to [here](https://firefox-source-docs.mozilla.org/testing/perfdocs/awsy.html#base-content-js) which says " can indicate leaks in the JS engine, optimizations that take performance into consideration at the expense of more memory, or problems with the garbage collector" which is quite a lot of possibilities 😅😅😅😅 any tips on how can one start debugging this locally?
+
+I think the first step is to download the memory report before and after from perfherder and then use the diff feature in about:memory to see what changed. Sometimes you'll have to look at the before and after reports separately to make sense of it.
+
+[10:48:49.0673] <debadree25>
+> <@mccr8:mozilla.org> I think the first step is to download the memory report before and after from perfherder and then use the diff feature in about:memory to see what changed. Sometimes you'll have to look at the before and after reports separately to make sense of it.
+
+hmm how does one download this? i find the alert summary [here](https://treeherder.mozilla.org/perfherder/alerts?id=42719) no link to any 😅😅😅😅
+
+[10:52:11.0063] <mccr8>
+> <@debadree25:mozilla.org> hmm how does one download this? i find the alert summary [here](https://treeherder.mozilla.org/perfherder/alerts?id=42719) no link to any 😅😅😅😅
+
+Click on the "open graph" button (a little graph icon) which gets you here: https://treeherder.mozilla.org/perfherder/graphs?timerange=1209600&series=autoland,3806445,1,4
+Then click on the measurement point you want, and select "job" on the little pop up window.
+Then click on the "Artifacts and Debugging Tools" on the Treeherder window, on the job that was selected.
+Download the file memory-report-TabsOpenForceGC-0.json.gz
+I recommend that you call one something like memory-report-before.json.gz and memory-report-after.json.gz or whatever.
+Lot of steps!
+
+[11:06:12.0908] <debadree25>
+> <@mccr8:mozilla.org> Click on the "open graph" button (a little graph icon) which gets you here: https://treeherder.mozilla.org/perfherder/graphs?timerange=1209600&series=autoland,3806445,1,4
+> Then click on the measurement point you want, and select "job" on the little pop up window.
+> Then click on the "Artifacts and Debugging Tools" on the Treeherder window, on the job that was selected.
+> Download the file memory-report-TabsOpenForceGC-0.json.gz
+> I recommend that you call one something like memory-report-before.json.gz and memory-report-after.json.gz or whatever.
+> Lot of steps!
+
+thank you so much!
+
+[11:14:49.0055] <anba>
+Ms2ger: line coverage for the code in <https://searchfox.org/mozilla-central/source/js/src/builtin/temporal> is already at 81.56% when running the tests from built-ins/Temporal. The PR just improves the coverage to 82.72% 
+
+[11:19:08.0260] <anba>
+And line coverage is at 91.01% when additionally running the tests from intl402/Temporal.
+
+[11:36:03.0976] <ptomato>
+anba: are you running staging/Temporal as well?
+
+[11:40:45.0950] <anba>
+staging/Temporal only improves the line coverage to 91.02%
+
+[12:37:44.0242] <nika>
+> <@tarek:mozilla.org> nika: Ryan has updated https://bugzilla.mozilla.org/show_bug.cgi?id=1930844 with his findings on the pernosco dump. Do you mind you checking it out ?
+
+Can you try out https://bugzilla.mozilla.org/show_bug.cgi?id=1932221 and see if it helps?
+
+[13:00:10.0299] <sefeng>
+thanks for help, iain, arai 
+
+[14:05:54.0567] <beth>
+out of curiousity, how far along is the explicit resource management proposal implementation? I am really excited to use it to rewrite a bunch of awful tests at some point
+
+[14:07:41.0329] <iain>
+beth: The metabug is [here](https://bugzilla.mozilla.org/show_bug.cgi?id=1569081).
+
+[14:08:07.0126] <iain>
+I'm pretty sure we have a fully functional implementation, although IIUC we haven't done a lot of performance work on it.
+
+[14:08:21.0100] <beth>
+yeah that metabug doesnt have open deps
+
+[14:08:39.0438] <beth>
+Is it behind a pref or a build flag or?
+
+[14:09:26.0225] <mgaudet>
+Well it may blow up devtools -- so that's one thing :P https://bugzilla.mozilla.org/show_bug.cgi?id=1902966 
+
+[14:09:38.0299] <iain>
+Looks like a [build flag](https://searchfox.org/mozilla-central/source/js/moz.configure#176-192)
+
+[14:10:14.0830] <mgaudet>
+Yeah, I don't think it's built in by default yet 
+
+[14:10:52.0347] <mgaudet>
+debadree25 is the contributor extraordinaire who has implemented it all, and can probably weigh in on shipping plans 
+
+[14:10:58.0363] <iain>
+It looks like it should be available in Nightly, actually
+
+[14:11:09.0773] <iain>
+But it doesn't work in the console
+
+[14:11:14.0337] <iain>
+Maybe there's an additional pref
+
+[14:11:15.0186] <beth>
+yeah there doesnt seem to be anything in tree with it outside `js/`
+
+[14:11:35.0533] <mgaudet>
+`javascript.options.experimental.explicit_resource_management`
+
+[14:12:28.0097] <mgaudet>
+Probably can't use it outside of JS (even through explicit preffing on in tests) until -building- it rides the trains
+
+[14:13:08.0056] <iain>
+It's tested [here](https://searchfox.org/mozilla-central/source/js/xpconnect/tests/chrome/test_xrayToExplicitResourceManagement.html#17)
+
+[14:17:49.0117] <beth>
+cheers thanks
+
+
+2024-11-20
+[18:48:08.0681] <debadree25>
+> <@mgaudet:mozilla.org> Well it may blow up devtools -- so that's one thing :P https://bugzilla.mozilla.org/show_bug.cgi?id=1902966 
+
+oh yes devtools impl is pending tbd soon!
+
+[01:12:51.0941] <Tarek>
+do we support WASM 64Bit ? I have a model that seems to hit the WASM 32bit addressing space (4GB limit). Also, is there a way for me to check this is what is happening?
+
+[01:28:57.0813] <jandem>
+Tarek: there's the Memory64 proposal that we're shipping in 134 (current nightly)
+
+[01:30:35.0199] <Tarek>
+Oh cool, is there documentation on this? 
+
+[01:32:20.0498] <jandem>
+the spec repo has some information [here](https://github.com/WebAssembly/memory64/blob/main/proposals/memory64/Overview.md)
+
+[01:32:39.0043] <jandem>
+I think in FF the current limit is 8 GB for 64-bit memories but we're working on increasing that to 16
+
+[01:32:46.0980] <Tarek>
+Is it as simple as toggling a pref in nightly ?
+
+[01:33:17.0721] <jandem>
+I think you need a build of your Wasm module that has this enabled
+
+[01:33:25.0393] <Tarek>
+I see
+
+[01:33:35.0371] <Tarek>
+Thanks 
+
+[01:34:08.0945] <Tarek>
+Is there a way for me to assert I have reached that limit ?
+
+[01:34:49.0669] <jandem>
+I was just going to ask why you think it's hitting the 4 GB limit :)
+
+[01:38:13.0065] <Tarek>
+it's my theory, I have done a profile but the debugger dies inside the wasm code, https://bugzilla.mozilla.org/show_bug.cgi?id=1932307
+
+[01:38:42.0306] <Tarek>
+would a pernosco profile help identifying this?
+
+[01:40:05.0881] <jandem>
+ah the 1.9 GB model is loaded into the Wasm memory?
+
+[01:40:18.0927] <Tarek>
+Yes 
+
+[01:42:24.0235] <jandem>
+I don't know if there's a good way to confirm it's hitting the Wasm memory limit. Ryan can tell us in a few hours
+
+[01:47:56.0480] <jandem>
+Tarek: there are no exceptions in the web console?
+
+[01:48:49.0992] <jandem>
+ * Tarek: there are no exceptions in the web/browser console?
+
+[01:50:11.0426] <Tarek>
+The wasp returns an int which I suspect is an error code . It’s hard to debug because when I step in the wasm it’s freezing 
+
+[01:50:23.0259] <Tarek>
+* The wasm returns an int which I suspect is an error code . It’s hard to debug because when I step in the wasm it’s freezing
+
+[02:48:40.0356] <smaug>
+jonco: hmm, any ideas why the number of compartments would be going up while running sp3.  Never looked at that number before - it is reported in the profiles.
+
+[02:48:42.0081] <smaug>
+oh, addons
+
+[02:50:58.0517] <smaug>
+I had useragent switcher addon (for testing), and saw up to 130 compartments. Disabled that and there is now 4.
+
+[02:51:27.0298] <jonco>
+I don't know. I guess related to the general increase in memory usage.
+
+[02:51:58.0758] <jonco>
+Oh, right. Do addons create a new compartment for every global or something like that then?
+
+[02:54:15.0399] <smaug>
+looks like those extra compartments are collected afterwards
+
+[02:59:56.0839] <smaug>
+jonco: the generic mem usage issue is, I think, just that GC/CC don't quite keep up with the amount of garbage generated. The faster we get elsewhere, the faster we create garbage, but CC/GC scheduling isn't quite dynamic enough for this kind of (unrealistic) situation.  Lots and lots of garbage is created between each GC/CC cycle.
+
+[08:27:59.0210] <iain>
+jonco: Have you tested your allocator patches on Android yet? Malloc lock contention seems worse there. If you put them up on try, we can get Denis to do a comparison report.
+
+[09:10:57.0347] <jonco>
+iain: not yet, it's on my todo list
+
+[10:30:34.0839] <jonco>
+iain: I pushed android builds for comparison: https://treeherder.mozilla.org/perfherder/compare?originalProject=try&originalRevision=92ca9236e21408bf5f6963635c192dbd86855442&newProject=try&newRevision=96c6486cbae8bc68fb0b6f0f8e4a578986582c9f&framework=4&page=1
+
+
+2024-11-21
+[21:21:29.0812] <gaporf>
+Hello, arai ! I updated the rev, could you please review it if possible (https://phabricator.services.mozilla.com/D229445)? 
+
+[21:25:51.0997] <gaporf>
+Also it seems that I find the funny thing:
+
+In Mozilla Firefox and Google Chrome the next commands in the console are the same and have the right output:
+
+```
+> Number.parseInt(-0)
+< 0
+> Number.parseInt("-0")
+< -0
+```
+
+But if I try to use `console.log` in Google Chrome, it prints the wrong line:
+
+```
+> console.log("%d", -0)
+0
+< undefined
+
+> console.log("%d", "-0")
+0
+< undefined
+```
+
+[21:27:57.0057] <arai>
+what's the expected output?
+
+[21:29:05.0140] <gaporf>
+From here (https://console.spec.whatwg.org/#formatter)
+
+```
+Otherwise, let converted be the result of Call(%parseInt%, undefined, « current, 10 »).
+```
+
+So It seems, that the second console.log should print -0, but I'm not sure
+
+[21:29:24.0646] <gaporf>
+ * From here (https://console.spec.whatwg.org/#formatter)
+
+> Otherwise, let converted be the result of Call(%parseInt%, undefined, « current, 10 »).
+
+So It seems, that the second console.log should print -0, but I'm not sure
+
+[21:31:48.0915] <arai>
+sounds reasonable.  it would be nice to add a testcase once the DevTools side is fixed :)
+
+[21:33:16.0004] <gaporf>
+I'd like to clarify whether it's a real bug, or Google did it intentionally. 
+If it's not expected I will add a comment in the 1846606 bug (https://bugzilla.mozilla.org/show_bug.cgi?id=1846606)
+
+[21:40:01.0112] <arai>
+yeah, it's possible that printing "0" is better in the actual use cases.   I think we can file a spec bug about the inconsistency between the spec and the impls
+
+[22:04:48.0794] <gaporf>
+Safari does the same as Google Chrome
+
+```
+> console.log("%d", -0)
+[Log] 0
+< undefined
+> console.log("%d", "-0")
+[Log] 0
+< undefined
+
+> Number.parseInt("-0")
+< -0
+> Number.parseInt(-0)
+< 0
+```
+
+[22:04:49.0396] <mayankleoboy1>
+TagisRangeTag is something i hadnt seen before in profiles.
+
+[22:09:35.0447] <arai>
+okay, then it's likely that we'll want to modify the spec to special case the `-0` in the %d/%i branch
+
+[22:09:45.0860] <arai>
+good find :)
+
+[22:42:35.0581] <gaporf>
+I posted my notes in the corresponding bug for future reference.
+
+[02:43:42.0866] <jonco>
+mayankleoboy1: that should get inlined, it's just a comparison
+
+[03:20:19.0406] <mayankleoboy1>
+Some profiles i captured today had that function in a gc-marking heavy part of the profile.  
+
+[03:22:09.0669] <mayankleoboy1>
+* Some profiles i captured today had that function in a gc-marking heavy part of the profile. 
+Bug 1925065 comment 6 if you are curious. 
+
+[03:22:10.0639] <botzilla>
+https://bugzil.la/1925065 — NEW (nobody) — Nightly is 2.4x slower than Chrome on an online demo (https://www.compresh.dev/) and uses more memory
+
+[10:12:46.0179] <nbp>
+Is there a way with `mach try perf` to push a desired local-git commit as a base comparison?
+
+[10:16:00.0704] <mgaudet>
+Sooo there's a complicated --comparator thing. Or you could do what I do which is push once with --single-run then push again with --single-run, and just put the revisions into perfcompare yourself
+
+[10:16:37.0803] <mgaudet>
+(It's been a while since I've done this, but IIRC --single-run is kind of badly named; really it should be --no-baseline-push) 
+
+[10:17:28.0422] <julienw>
+it might be good to file a bug about this need, if it's a common need :)
+
+[10:18:27.0801] <julienw>
+ * it might be good to file a bug about this need, if it's a common need :) https://bugzilla.mozilla.org/enter_bug.cgi?product=Testing&component=Performance
+
+[10:32:25.0515] <hsivonen>
+What should I read to understand why https://searchfox.org/mozilla-central/source/js/public/StableStringChars.h#42 exists and when it needs to be used instead of https://searchfox.org/mozilla-central/source/js/src/vm/StringType.h#1142 ?
+
+[10:33:44.0301] <hsivonen>
+Given a string, I'd like to ensure that it is two-byte linear and then create a bunch of dependent strings ensuring that it cannot get GCed during my operation.
+
+[10:35:36.0660] <arai>
+if there's any chance of GC call while the raw chars are used,  you need `AutoStableStringChars`
+
+[10:36:15.0179] <arai>
+if there's no GC call, then you can use `twoByteChars`, with [JS::AutoRequireNoGC](https://searchfox.org/mozilla-central/rev/75de397838825ba741820fec27225342ba15fd5b/js/public/GCAPI.h#1036)
+
+[10:37:30.0438] <hsivonen>
+How do I know if there's a chance of GC that AutoRequireNoGC won't prevent?
+
+[10:37:41.0528] <iain>
+hsivonen: `twoByteChars` returns a pointer to the characters of the string. If a GC occurs, the string might move, so that pointer is invalid. Allocating a dependent string can trigger GC, so you can't keep a pointer to `twoByteChars` alive across the call.
+
+[10:38:11.0914] <arai>
+`AutoRequireNoGC` doesn't prevent.  it just asserts no GC
+
+[10:38:48.0772] <arai>
+then, 
+
+[10:39:07.0572] <hsivonen>
+How can anything use RopeBuilder if creating dependents of the long string being examined won't work?
+
+[10:39:49.0448] <arai>
+the list of functions that can GC is calculated by the hazard analysis job (H or SM(H))
+
+[10:41:07.0949] <iain>
+Note that GC only prevents you from holding on to a direct pointer to the string's characters. You can keep the string itself alive by rooting it.
+
+[10:42:08.0788] <hsivonen>
+If AutoStableStringChars copies, is it worthwhile to create a rope of dependent strings of the original as opposed to writing yet another buffer?
+
+[10:42:42.0937] <iain>
+I think you can probably accomplish your goals without needing AutoStableStringChars
+
+[10:43:07.0305] <sfink>
+AutoStableStringChars won't copy long strings. They'll be allocated with malloc, and even if the JSString header moves, the actual string data won't move.
+
+[10:44:45.0501] <hsivonen>
+I'm thinking of making ICU4X normalizer create a rope of unchanged substrings (dependent) and inline strings for the changed characters.
+
+[10:45:20.0535] <iain>
+NewDependentString takes indices into the string. If you root the original string and loop creating dependent strings, then everything will work out. You can even use `twoByteChars` in each iteration of the loop to read the contents of the string, as long as the lifetime of the return value of `twoByteChars` does not extend past the call to NewDependentString.
+
+[10:45:22.0613] <hsivonen>
+So it will need access to a stable UTF-16 input buffer while creating the dependent strings
+
+[10:46:20.0299] <hsivonen>
+I need to hold the pointer to a contiguous char16_t input while creating the dependents
+
+[10:47:12.0108] <hsivonen>
+Since a sink listening to normalizer output would create dependent strings while the normalizer holds the input
+
+[10:49:45.0617] <iain>
+I was thinking something like this should work:
+```
+Rooted<String> source = ...
+while (...) {
+  size_t start, length;
+  {
+    AutoRequireNoGC noGC;
+    char16_t* chars = source->twoByteChars(noGC);
+    start = ...
+    length = ...
+  }
+  ... = NewDependentString(source, start, length);
+}
+  
+```
+
+[10:50:37.0636] <iain>
+But I take it there's some sort of external normalizer that needs to hold `char16_t*` alive incrementally?
+
+[10:51:00.0266] <iain>
+You could also run the normalizer to create a list of start/length pairs, and then create all the dependent strings after that.
+
+[10:51:15.0111] <hsivonen>
+> <@iain:mozilla.org> I was thinking something like this should work:
+> ```
+> Rooted<String> source = ...
+> while (...) {
+>   size_t start, length;
+>   {
+>     AutoRequireNoGC noGC;
+>     char16_t* chars = source->twoByteChars(noGC);
+>     start = ...
+>     length = ...
+>   }
+>   ... = NewDependentString(source, start, length);
+> }
+>   
+> ```
+
+This won't work in my case, since Rust code own the loop over a contiguous UTF-16 slice representing the entire input, and that slice needs to stay alive for the duration of the whole normalizer invocation
+
+[10:51:51.0851] <sfink>
+If I understand correctly, then I think using AutoStableStringChars and then creating all the dependent strings while holding that should just work. You can use NewDependentString for the changed characters, too, since it will detect that it's a short string and give you back an inline string instead.
+
+[10:52:42.0781] <hsivonen>
+> <@sfink:mozilla.org> If I understand correctly, then I think using AutoStableStringChars and then creating all the dependent strings while holding that should just work. You can use NewDependentString for the changed characters, too, since it will detect that it's a short string and give you back an inline string instead.
+
+So it seems. Does creating dependent strings in a rope as opposed to writing to a new linear buffer seem like an optimization, then?
+
+[10:53:48.0904] <iain>
+How long are the expected input strings? What fraction of the string do we expect to remain unchanged?
+
+[10:54:53.0012] <hsivonen>
+> <@iain:mozilla.org> How long are the expected input strings? What fraction of the string do we expect to remain unchanged?
+
+For the first question, I don't know what's common on the Web. For the second, NFC to NFKC seems popular, so mostly unchanged.
+
+[10:55:56.0660] <hsivonen>
+In the worst case, like Vietnamese from NFC to NFD or vice versa, there are a lot of changes every two or three characters.
+
+[10:56:58.0019] <iain>
+Roughly speaking, I think every piece of the rope will add 3 words of overhead.
+
+[10:58:15.0845] <iain>
+So you'd want to write to a new linear buffer if there's more than one change per ... 24 bytes? Which is 12 characters?
+
+[10:59:03.0010] <iain>
+Linear strings are generally nicer to work with, so I would fudge the heuristics in that direction a little.
+
+[11:00:21.0109] <hsivonen>
+It seems that a rope is a pessimization for Vietnamese. Ropes seem excellent for Japanese and perhaps French. Unclear where German ends up.
+
+[11:02:23.0825] <iain>
+I guess another question is how often we will end up linearizing the rope eventually anyways. 
+
+[11:02:35.0195] <sfink>
+a rope built from lots of short inline strings wouldn't be great. Space overhead for the unused part of the inline strings, plus the rope overhead, plus everything is scattered in memory.
+
+[11:03:40.0082] <hsivonen>
+With a linear buffer, there's the issue of reallocating and copying when guessing the size wrong.
+
+[11:05:18.0561] <hsivonen>
+If assuming that the initial guess is wrong anyway, the simplest thing would be to write to a Rust Vec, let it handle the growth, and then have SpiderMonkey do yet another copy from there.
+
+[11:06:29.0861] <hsivonen>
+A fancier thing would be a Vec-like thing whose backing buffer is eligible to be adopted as the heap-allocated buffer of a JSString.
+
+[11:06:55.0948] <hsivonen>
+Does that already exist?
+
+[11:08:01.0284] <iain>
+You might be able to use the infrastructure Jan added [in this bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1892253)
+
+[11:08:50.0078] <sfink>
+string data needs to go into a specific jemalloc arena. I don't know if that'll be problematic. Jan's StringBuffer seems like a good idea to me.
+
+[11:09:27.0591] <sfink>
+hm, actually, I'm not sure if the arena restriction applies to external strings
+
+[11:09:32.0754] <hsivonen>
+Is there a good example already in SpiderMonkey using the new infra?
+
+[11:10:30.0165] <hsivonen>
+I take it that I won't be able to use the nsstring crate from under js/
+
+[11:12:14.0850] <sfink>
+I see https://searchfox.org/mozilla-central/source/js/xpconnect/src/XPCString.cpp#56-76 that [calls NewStringFromKnownLiveTwoByteBuffer](https://searchfox.org/mozilla-central/source/js/xpconnect/src/xpcpublic.h#255)
+
+[11:14:33.0329] <hsivonen>
+The issue then is how to I manage an mozilla::StringBuffer from Rust under js/, since nsstring assumes an actual nsString around the mozilla::StringBuffer.
+
+[11:15:25.0358] <hsivonen>
+ * The issue then is how to manage an mozilla::StringBuffer from Rust under js/, since nsstring assumes an actual nsString around the mozilla::StringBuffer.
+
+[11:19:13.0986] <sfink>
+> <@hsivonen:mozilla.org> I take it that I won't be able to use the nsstring crate from under js/
+
+I don't know the story of using Rust from js/, but isn't that what's happening in eg [encodeUTF8Partial](https://searchfox.org/mozilla-central/source/js/src/vm/StringType.cpp#186-187) that ends up calling [encoding_mem_convert_latin1_to_utf8_partial](https://searchfox.org/mozilla-central/source/mfbt/Latin1.h#226)?
+
+[11:19:52.0926] <sfink>
+oh, I guess it must be more a problem that the nsstring create needs Gecko.
+
+[11:20:00.0989] <sfink>
+ * oh, I guess it must be more a problem that the nsstring crate needs Gecko.
+
+[11:21:19.0955] <hsivonen>
+Yes, the UTF-8 conversion uses Rust. So far it seems it will probably be easier not have materialize a mozilla::StringBuffer from Rust under js/
+
+[11:26:19.0625] <hsivonen>
+Probably easier to make a Vec-like thing whose backing buffer comes from JS_string_malloc
+
+[11:26:57.0163] <sfink>
+[js::JSStringBuilder](https://searchfox.org/mozilla-central/source/js/src/util/StringBuilder.h#115) uses `mozilla::Vector` for the appending, then copies in [finishStringInternal](https://searchfox.org/mozilla-central/source/js/src/util/StringBuilder.cpp#114)
+
+[11:27:50.0115] <sfink>
+oh, and it creates a StringBuffer now.
+
+[11:29:48.0486] <hsivonen>
+I think I should use that and make a single FFI function that appends to it from Rust
+
+[11:33:56.0685] <hsivonen>
+Thanks!
+
+
+2024-11-22
+[19:55:46.0974] <gaporf>
+I have an issue with `clang-plugin`, it seems that I can't build `js` project with this option, but I'm able to build `browser` project with the same option.
+
+The `js` project `mozconfig`:
+
+```
+ac_add_options --with-ccache=sccache
+ac_add_options --enable-clang-plugin
+mk_add_options MOZ_OBJDIR=/dir/mozilla-source/project/obj-js
+ac_add_options --enable-project=js
+```
+
+The error is:
+```
+0:03.92 error: 'expected-error' diagnostics expected but not seen:
+ 0:03.92   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 5: Usage of ASCII file functions (such as PR_LoadLibrary) is forbidden.
+ 0:03.92   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 7: Usage of ASCII file functions (such as LoadLibraryA) is forbidden.
+ 0:03.93   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 9: Usage of ASCII file functions (such as LoadLibraryExA) is forbidden.
+ 0:03.93   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 14: Usage of ASCII file functions (such as LoadLibraryA) is forbidden.
+ 0:03.93   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 17: Usage of ASCII file functions (such as LoadLibraryExA) is forbidden.
+ 0:03.93 error: 'expected-error' diagnostics seen but not expected:
+ 0:03.93   File C:/mozilla-source/project/build/clang-plugin/tests/TestLoadLibraryUsage.cpp Line 2: 'prlink.h' file not found
+ 0:03.93 6 errors generated.
+```
+Full version is here (https://paste.mozilla.org/gX6HQYms)
+
+Based on https://bugzilla.mozilla.org/show_bug.cgi?id=1680362 and https://bugzilla.mozilla.org/show_bug.cgi?id=1640481 I assume that the problem that we have the issue only on Windows, and the fix is only for browser build, not for SpiderMonkey.
+
+What kind of solution do I have? I could try to build `js` project using WSL, but maybe there is an easy solution for Windows. Thank you in advance!
+
+[22:02:35.0100] <pbone (he/him)>
+Hi JS team.  I know about the GC's high frequency mode. Is there a better place(s) where the JS engine could tell mozjemalloc "I'm about to do a burst of allocations".  Maybe during object tenuring? or maybe it knows when the JS code is doing a lot of allocation?
+
+[22:08:45.0301] <arai>
+gaporf: `ac_add_options --enable-nspr-build` in mozconfig might help
+
+[22:09:26.0852] <arai>
+`prlink.h` is part of nspr, and iiuc it's disabled by default for JS shell build
+
+[22:12:41.0722] <arai>
+it would be nice to file a bug to exclude ""TestLoadLibraryUsage.cpp" if nspr is disabled
+
+[22:24:53.0340] <gaporf>
+arai: thank you a lot, with --enable-nspr-build it successfully was built, and it seems that it works 
+
+[01:56:37.0212] <jonco>
+pbone (he/him): Yes we could come up with a heuristic for tenuring. Otherwise I'm not sure. We're trying to move away from using jemalloc so much for GC things at the moment.
+
+[01:58:31.0215] <pbone (he/him)>
+I can expriment with adding it to tenuring.  I know JS has 3? 4? mozjemalloc arenas, which ones would be used during tenuring?  Eg are strings inline in the nursery and then moved to mozjemalloc during tenuring?
+
+[01:58:59.0247] <pbone (he/him)>
+Also I think parsing (of anything) is a good candidate for this too.
+
+[02:47:12.0499] <jonco>
+pbone (he/him):  mozjemalloc arenas are defined here: https://searchfox.org/mozilla-central/source/js/public/Utility.h#368-372
+
+[02:47:44.0847] <jonco>
+MallocArena and StringBufferArena would be the relevant ones for tenuring
+
+[02:48:24.0443] <jonco>
+Nursery strings are allocated in the nursery if they are short enough but they can also use mozjemalloc otherwise
+
+[04:57:16.0027] <hsivonen>
+> <@sfink:mozilla.org> [js::JSStringBuilder](https://searchfox.org/mozilla-central/source/js/src/util/StringBuilder.h#115) uses `mozilla::Vector` for the appending, then copies in [finishStringInternal](https://searchfox.org/mozilla-central/source/js/src/util/StringBuilder.cpp#114)
+
+Do I understand correctly that appending to JSStringBuilder can't GC?
+
+[05:47:50.0621] <jandem>
+> <@hsivonen:mozilla.org> Do I understand correctly that appending to JSStringBuilder can't GC?
+
+correct. Only the final `finishString` can trigger GC
+
+[05:48:04.0661] <hsivonen>
+> <@jandem:mozilla.org> correct. Only the final `finishString` can trigger GC
+
+Thanks!
+
+[08:12:40.0643] <davidj361>
+what would be my best bet for sharing code in here where it's working off this? just github gist or we have a paste site?
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/tree/esr102/examples
+
+[08:13:22.0993] <padenot>
+https://pastebin.mozilla.org/ exists but is limited in time
+
+[08:16:30.0834] <arai>
+what's the goal here?  is it for discussing about bug or something?
+
+[08:16:54.0812] <arai>
+if you need a temporary space to share a codelet to discuss about  the behavior etc, you can use https://pastebin.mozilla.org/
+
+[08:17:00.0420] <davidj361>
+if the usage of something is proper or not
+
+[08:17:05.0827] <davidj361>
+ * if the usage of stencils is proper or not
+
+[08:17:46.0065] <arai>
+so, you have some code and want to discuss about it here?
+
+[08:23:18.0536] <arai>
+for simple question, you can use the pastebin above.  if it's some more complex, it would be better using gist or something that's permanent
+
+
+2024-11-25
+[07:16:46.0404] <nchevobbe>
+I'm looking into explicit resource management support in DevTools, and the new `using` keyword isn't great to talk/search about :/ Was there discussion to change it to something else, or why we ended up with this name ?
+
+[07:39:45.0698] <arai>
+looks like some discussion happened in the proposal repository around the syntax and keyword
+
+[07:41:27.0495] <arai>
+e.g. https://github.com/tc39/proposal-explicit-resource-management/issues/11
+
+
+2024-11-26
+[03:08:56.0807] <jonco>
+smaug:  I noticed that we're a few doing COMPARTMENT_REVIVED GCs during sp3 on Android (bug 1933196). We fixed this on desktop in bug 1868437 based on your suggestion. I was wondering if you had any ideas about why this is happening on Android?
+
+[03:08:58.0581] <botzilla>
+https://bugzil.la/1933196 — NEW (nobody) — Long COMPARTMENT_REVIVED GCs during sp3 on Android
+
+[03:08:58.0656] <botzilla>
+https://bugzil.la/1868437 — RESOLVED (jonco) — Unnecessary COMPARTMENT_REVIVED GCs being triggered during speedometer3 run
+
+[03:12:00.0844] <smaug>
+jonco: I don't know about Android, but I there were lots of compartments when I had some addons enabled in the Firefox profile I use for sp3 testing
+
+[03:12:32.0735] <smaug>
+I think normally I see 4, but with an addon it got up to >100. Those were finally collected after sp3 run
+
+[03:13:49.0018] <jonco>
+That sounds not great, is the addon is creating a new compartment per realm or something? I'm not sure how addons work.
+
+[03:15:12.0122] <nbp>
+Ms2ger 🇧🇪 leaking location information, times are changing…
+
+[03:15:37.0867] <smaug>
+jonco: I'm not familiar with the setup we have for addons. zombie might know
+
+[03:16:04.0528] <Ms2ger 🇧🇪>
+nbp: come and say hi :)
+
+[03:18:06.0260] <smaug>
+jonco: https://share.firefox.dev/3V5b8OE is a local Android profile. 6 compartments 
+
+[03:18:47.0449] <smaug>
+(uh, forgot to disable memory tracking. That ruins memory handling related profiling)
+
+[03:21:04.0849] <jonco>
+right, the number of compartments seems fine, the problem is that we trigger these non-incremental GCs because we think that we are not clearing up dead compartments
+
+[03:28:12.0133] <smaug>
+are the heuristics possibly wrong there? Or should we just ensure that the next GC is a full gc if we see a possible garbage compartment? 
+
+[03:41:44.0549] <jonco>
+Possibly the heuristics are wrong, but maybe something is being kept alive by some kind of interaction that's happening during incremental GC (which is why we trigger this non-incremental GC). Maybe we want to give the GC a couple of chances to clean it up before we trigger this step though.
+
+[07:45:24.0000] <zombie>
+> <@jonco:mozilla.org> That sounds not great, is the addon is creating a new compartment per realm or something? I'm not sure how addons work.
+
+not sure when we get a new compartment, but each content script on a page is a separate sandbox like this
+
+https://searchfox.org/mozilla-central/rev/dfaf02d68a/toolkit/components/extensions/ExtensionContent.sys.mjs#901
+
+[07:46:45.0406] <zombie>
+if there's something we can optimize, we'd like to know! :)
+
+[07:47:48.0151] <zombie>
+> <@jonco:mozilla.org> That sounds not great, is the addon is creating a new compartment per realm or something? I'm not sure how addons work.
+
+ * not sure when we get a new compartment, but each content script on a page is a separate sandbox like this
+
+https://searchfox.org/mozilla-central/rev/dfaf02d68a/toolkit/components/extensions/ExtensionContent.sys.mjs#1004,1009
+
+[08:03:35.0871] <zombie>
+> but each content script on a page
+
+* content scripts from each addon get a separate sandbox (one per addon per page)
+
+[08:03:40.0899] <zombie>
+ * > but each content script on a page
+
+*content scripts from each addon get a separate sandbox (one per addon per page)
+
+[08:05:07.0417] <jonco>
+zombie: Looks like each each sandbox gets its own compartment. That sounds fine.
+
+[08:05:53.0542] <jonco>
+I guess the problem is that the addon is injecting a script into every realm and sp3 creates lots of them, and then they are not getting cleaned up promptly.
+
+[12:09:16.0630] <davidj361>
+what paste site should I use to show a 220 line example?
+
+[12:11:39.0839] <mccr8>
+> <@davidj361:matrix.org> what paste site should I use to show a 220 line example?
+
+there's https://paste.mozilla.org/
+
+[12:31:17.0121] <davidj361>
+Is this a proper way to use stencils? https://paste.mozilla.org/42DXXyjQ
+I found that execution time of stencils vs just `JS::Evaluate` didn't lead to significant time difference.
+
+[12:38:20.0790] <arai>
+which part are you comparing?
+
+[12:40:25.0528] <arai>
+oh, I misread your comment
+
+[12:41:34.0626] <arai>
+the API usage looks good
+
+[12:42:37.0374] <arai>
+the "proper way" would depend on what you want to do.
+
+[12:43:11.0680] <arai>
+for example, if you just want to execute it, you don't need encode/decode
+
+[12:45:49.0927] <arai>
+if you want to cache the result of compilation across processes or restart, you can encode it and save it
+
+[12:46:33.0120] <arai>
+otherwise you just need to compile and instantiate
+
+[12:48:57.0610] <davidj361>
+> <@arai:mozilla.org> if you want to cache the result of compilation across processes or restart, you can encode it and save it
+
+Save it as in into an actual file on disk?
+
+[12:51:13.0734] <davidj361>
+Wouldn't that slow things down?
+
+[12:51:22.0355] <arai>
+yeah, you can save to a file if you want to use it across processes restart.  also you can write to a shared memory in order to use across processes 
+
+[12:51:23.0644] <davidj361>
+ * Wouldn't that slow things down via file I/O?
+
+[12:53:08.0979] <arai>
+what do you mean with slow down?
+
+[12:54:37.0781] <davidj361>
+Just in the added times of reading/writing from disk across restarts
+
+[12:56:04.0952] <davidj361>
+But regardless, can things be done faster with including encode + decode via some options? Like BorrowBuffer or something?
+
+[12:57:01.0245] <davidj361>
+Or maybe because the source is included via plaintext in the encoding?
+
+[12:57:09.0248] <davidj361>
+ * Or maybe because the source is included via plaintext in the encoding it's slowing things down?
+
+[12:58:01.0538] <arai>
+stencil represents a result of compilation. and the purpose of caching it is to skip the compilation.  so, "read source code + compile" is replaced with "read the encoded stencil + decode"
+
+[13:01:20.0256] <davidj361>
+if I recall correctly the encoded stencils have the source code in it which you can say to omit, would that result in significant time gains?
+
+[13:02:05.0289] <davidj361>
+ * if I recall correctly the encoded stencils have the plaintext source code in it which you can say to omit, would that result in significant time gains?
+
+[13:02:35.0753] <arai>
+can you explain what you're seeing as "slow down"?
+
+[13:07:41.0526] <arai>
+do you observe that reading the encoded stencils takes much time compared to reading the original source code?
+
+[13:07:43.0703] <smaug>
+sfink: mccr8 : I'd like to be able to know in GC logs the memory address of the native object which owns some pointer to a gcthing. For this Youtube case I tweaked the relevant Trace implementation explicitly, but perhaps it could be there always. 
+
+[13:07:57.0787] <smaug>
+ 
+```
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(CallbackObject)
+   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCallback)
+   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCallbackGlobal)
+   NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mCreationStack)
+-  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mIncumbentJSGlobal)
++  char name[256];
++  SprintfLiteral(name, "mIncumbentJSGlobal, owner %p", tmp);
++  aCallbacks.Trace(&tmp->mIncumbentJSGlobal, name, aClosure);
+   // If a new member is added here, don't forget to update IsBlackForCC.
+ NS_IMPL_CYCLE_COLLECTION_TRACE_END
+```
+
+[13:09:07.0770] <smaug>
+I just wonder what it should look like, and also  what might be the easiest way to implement it.
+
+[13:09:13.0470] <smaug>
+/me needs to read some code 
+
+[13:09:27.0179] <smaug>
+ * I just wonder what it should look like, in the logs, and also  what might be the easiest way to implement it.
+
+[13:11:17.0386] <mccr8>
+Hmm I guess you could add an optional void* argument to  JS::TraceRoot() that could be included if present? It has been a long time since I looked at root tracing so I don't remember what all the APIs are for it.
+
+[13:12:54.0681] <mccr8>
+I guess for CCed stuff you'd need a void* argument in TraceCallbacks::Trace and then change the macros to pass in tmp?
+
+[13:15:02.0213] <mccr8>
+I usually look at the CC log to figure out which C++ thing is holding the JS thing but I can see an argument for just being able to know it from the CC log.
+
+[13:17:00.0637] <smaug>
+right, tweaking macros would make this easy on CC side
+
+[13:17:37.0965] <smaug>
+In this case it was hard to find the right native object because there were just too many CallbackObjects with same mIncumbentJSGlobal
+
+[14:04:18.0339] <mccr8>
+Yeah, it feels like there are always a ton of those.
+
+[14:04:36.0521] <arai>
+davidj361: for "proper way", here's a list of some common cases:  https://paste.mozilla.org/Nwf5YOHN 
+
+[15:37:45.0410] <davidj361>
+> do you observe that reading the encoded stencils takes much time compared to reading the original source code?
+I have to double check it.
+
+[15:37:50.0308] <davidj361>
+ * > do you observe that reading the encoded stencils takes much time compared to reading the original source code?
+
+I have to double check it.
+
+
+2024-11-27
+[02:35:47.0842] <Tarek>
+stupid question: if I add a printf in the c++ code that gets compiled in wasm, will I see it in the stdout when it runs in the browser in SpiderMonkey?
+
+[02:43:28.0580] <Ms2ger 🇧🇪>
+No
+
+[02:45:58.0992] <padenot>
+make yourself a small function to log, if needed
+
+[02:46:10.0167] <padenot>
+some sort of callback 
+
+[02:49:06.0572] <Tarek>
+that's surfaced as an extern via the imports stuff?
+
+[02:55:55.0365] <padenot>
+yep
+
+[02:56:07.0123] <padenot>
+then you can bind it to moz_log or just printf or whatever is best
+
+[02:56:14.0983] <padenot>
+same for profiler markers, etc.
+
+[03:02:50.0279] <Tarek>
+thx
+
+[04:22:23.0063] <smaug>
+jonco: ah, the functor thing is called only when we actually are dumping the heap https://searchfox.org/mozilla-central/rev/234f91a9d3ebef0d514868701cfb022d5f199cb5/js/src/util/DumpFunctions.cpp#593
+
+[04:22:36.0891] <smaug>
+I do need to add name to the functor callback
+
+[04:26:00.0749] <jonco>
+yes, we don't generate the edge name when marking
+
+[04:35:25.0357] <smaug>
+jonco: is there some flag in JSTracer which could be used as a hint that we want logs
+
+[04:36:40.0401] <smaug>
+looks like DumpHeapTracer is a callbacktracer
+
+[04:37:01.0004] <jonco>
+Not really
+
+[04:37:08.0662] <jonco>
+Yes
+
+[04:38:42.0041] <smaug>
+jonco: would it be ok to add a boolean flag to JSTracer telling that it is a DumpHeapTracer ?
+
+[04:39:18.0991] <smaug>
+or perhaps "wantLogs()"
+
+[04:40:03.0563] <smaug>
+ * or perhaps "wantLog()"
+
+[04:45:36.0073] <jonco>
+what do you need to know that for?
+
+[05:10:55.0826] <nbp>
+Are we progressively dropping `JitOptions` in favor of `JS::Prefs`?
+
+[05:11:07.0875] <nbp>
+ * jandem: Are we progressively dropping `JitOptions` in favor of `JS::Prefs`?
+
+[05:19:28.0668] <jandem>
+nbp: yes. I don't know if we can convert all of them but it should work for most
+
+[05:21:36.0386] <nbp>
+👏 Nice work Ryan Hunt
+
+[05:49:54.0432] <smaug>
+jonco: just to not use AutoTracingDetails if we're not logging
+
+[05:50:02.0194] <smaug>
+or do you think it is fast enough to use AutoTracingDetails always
+
+[05:53:11.0729] <jonco>
+smaug: the functor will only be called by DumpHeap so you can use it always
+
+[05:53:32.0464] <jonco>
+uh, I'm assuming you can use AutoTracingDetails outside the loop
+
+[05:53:33.0475] <smaug>
+sure, but AutoTracingDetails install the functor anyhow
+
+[05:54:11.0270] <smaug>
+Could I use it outside? And always change the internal holder pointer?
+
+[05:54:49.0888] <smaug>
+Nothing can somewhere (in some nested function call) replace it?
+
+[05:55:16.0636] <jonco>
+I think so if the functor has a reference to aIter
+
+[05:55:31.0095] <jonco>
+so you can get the current holder
+
+[05:55:49.0464] <smaug>
+right. I was mostly worried about someone overriding the functor
+
+[05:56:07.0337] <smaug>
+I wonder if ~AutoTracingDetails should restore the old value of trc_->context().functor_
+
+[05:56:11.0272] <smaug>
+not just set to null
+
+[05:57:01.0488] <jonco>
+yes, that's good idea
+
+[05:57:55.0349] <jonco>
+I don't think AutoTracingDetails is used very much though so it's unlikely to be a problem
+
+[06:14:22.0072] <smaug>
+ah, and there is AutoClearTracingContext for explicitly clearing
+
+[06:14:44.0010] <smaug>
+ * ah, and there is AutoClearTracingContext for explicitly clearing, temporarily
+
+[06:29:34.0621] <davidj361>
+> <@arai:mozilla.org> davidj361: for "proper way", here's a list of some common cases:  https://paste.mozilla.org/Nwf5YOHN
+
+I assume write XDR is also in idle time: 
+> on idle time, encode the stencil into XDR with JS::EncodeStencil
+> write the XDR to a file
+
+[06:30:32.0309] <arai>
+yes, it can be done any time, as long as you keep the stencil alive until that point.  the design is based on the browser's use case, where there's idle time after the page load
+
+[07:25:53.0151] <davidj361>
+> <@arai:mozilla.org> davidj361: for "proper way", here's a list of some common cases:  https://paste.mozilla.org/Nwf5YOHN
+
+Where is compile for non-stencils in the linked example?
+> Without stencil: compile, instantiate, and execute with JS::Evalute
+
+https://github.com/mozilla-spidermonkey/spidermonkey-embedding-examples/blob/9ad752366b2486eaa0867d5bcb6662648e5d7ee0/examples/hello.cpp#L20-L37
+
+[07:26:59.0233] <arai>
+JS::Evaluate is for those 3 steps
+
+[07:38:01.0935] <davidj361>
+Should
+```
+compile JS source to stencil with JS::CompileGlobalScriptToStencil
+instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+execute the JSScript with JS_ExecuteScript
+```
+be slow or faster than JS::Evaluate in completion time?
+
+[07:38:08.0783] <davidj361>
+ * Should
+
+```
+compile JS source to stencil with JS::CompileGlobalScriptToStencil
+instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+execute the JSScript with JS_ExecuteScript
+```
+
+be slower or faster than JS::Evaluate in completion time?
+
+[07:38:25.0936] <arai>
+there shouldn't be notable difference
+
+[07:38:48.0067] <arai>
+`JS::Evaluate` is doing the same thing internally
+
+[07:59:21.0529] <davidj361>
+arai:  So the whole aspect of stencils being faster is that you only have to execute (line 3) rather than compiling and instantiating right? i.e. `execute the JSScript with JS_ExecuteScript`
+
+[07:59:37.0643] <davidj361>
+ * arai:  So the whole aspect of stencils being faster is that you only have to execute (e.g. `execute the JSScript with JS_ExecuteScript`) rather than compiling and instantiating right? i.e. `execute the JSScript with JS_ExecuteScript`
+
+[07:59:54.0906] <davidj361>
+ * arai:  So the whole aspect of stencils being faster is that you only have to execute (e.g. line 3: `execute the JSScript with JS_ExecuteScript`) rather than compiling and instantiating right? i.e. `execute the JSScript with JS_ExecuteScript`
+
+[08:00:30.0841] <arai>
+"instantiate + execute" is what you need with stencil, for each global
+
+[08:00:51.0992] <arai>
+so you can skip "compile" part, except for the first one
+
+[08:02:07.0775] <arai>
+stencil is GC-free data, and it's independent from globals.  JSScript is GC data and associated with global.  so you need "instantiate" for each global
+
+[08:02:31.0848] <arai>
+but the "compile" step needs to be done only once, and all consumers can share the result
+
+[08:05:40.0776] <arai>
+so, if the stencil is directly shared between consumers as on-memory data structure, this reduces the cost of "compile" step for each global.  the additional cost is the memory consumption from the cached stencil
+
+[08:08:44.0460] <arai>
+if the stencil needs to be encoded/decoded, it replaces the "read JS source" with "read stencil XDR", and also "compile" with "decode",  with additional cost of encoding and writing at certain point.  So this is trade off.
+
+[08:09:51.0501] <arai>
+if the JS source is very small, there may be not much benefit, and the additional cost may result in some regression.  we have some heuristics in Firefox's script loader about the decision whether to cache the encoded stencil, in [mozilla::dom::ScriptLoader::CalculateBytecodeCacheFlag](https://searchfox.org/mozilla-central/rev/234f91a9d3ebef0d514868701cfb022d5f199cb5/dom/script/ScriptLoader.cpp#2530)
+
+[08:11:59.0086] <arai>
+so, "stencils being faster" is not precise.  stencil gives you more control, and there are some cases where using it can improve the performance, with acceptable amount of cost
+
+[08:14:02.0726] <davidj361>
+is the compile step very performance heavy? i.e. takes a long time or takes lots of memory?
+
+[08:14:37.0836] <arai>
+both, depending on the source size and the complexity
+
+[08:16:25.0296] <davidj361>
+For restarts: it's worth the trade off to read from a file and instantiate from it instead? i.e. you avoid having to compile across restarts?
+```
+    compile JS source to stencil with JS::CompileGlobalScriptToStencil
+    instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+    execute the JSScript with JS_ExecuteScript
+    on idle time, encode the stencil into XDR with JS::EncodeStencil
+    write the XDR to a file
+    restart
+    read the XDR from the file
+    decode the stencil with JS::DecodeStencil
+    instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+    execute the JSScript with JS_ExecuteScript
+```
+
+[08:16:49.0730] <davidj361>
+ * For restarts: it's worth the trade off to read from a file (file I/O operation) and instantiate from it instead? i.e. you avoid having to compile across restarts?
+
+```
+    compile JS source to stencil with JS::CompileGlobalScriptToStencil
+    instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+    execute the JSScript with JS_ExecuteScript
+    on idle time, encode the stencil into XDR with JS::EncodeStencil
+    write the XDR to a file
+    restart
+    read the XDR from the file
+    decode the stencil with JS::DecodeStencil
+    instantiate the stencil into JSScript with JS::InstantiateGlobalStencil
+    execute the JSScript with JS_ExecuteScript
+```
+
+[08:18:21.0067] <arai>
+I've omitted "read JS source from a file" step, but in general you always need it unless you decode from XDR
+
+[08:18:42.0347] <arai>
+so, file I/O is supposed to be always happen
+
+[08:22:30.0096] <arai>
+so, in this case, "read JS source from a file" + "compile" is replaced with "read the XDR from the file" + "decode".   "instantiate" is common between "without Stencil" vs "with Stencil"
+
+[08:37:26.0096] <Vyacheslav Zavadsky>
+arai: Thanks a lot of answering. Our use case that we have roughly ~1000 scripts, each script need to be executed in each own global (execution is mostly awaiting on promises), each script is few hundred lines of code, and 90% of it is definition is a JS object with a lot of different string/object members.
+Our goal is to optimize time till first await (load time). Loading XDR from file and any other prep work can happen on thread different from JsContext thread and we do not care about it that much . Our hope that your steps 8-10 will be significantly faster then just evaluate script. Do you think it reasonable? Anything we can do with overall execution flow to improve load time. Eg, play with zones/compartments, currently we create a compartment per global, but we do not care that much
+
+[08:39:58.0097] <arai>
+are those 1000 scripts same across restarts?
+
+[08:41:17.0352] <arai>
+"read XDR + decode" can be done in any thread.  "instantiate + execute" needs to be done in the same thread as the target JSContext
+
+[08:43:44.0031] <arai>
+so, in term of the JSContext's thread, the cost of "compile" can be fully removed
+
+[08:44:12.0914] <arai>
+then, I'm not sure about "significantly faster".  it depends on the script size and how long it's taking right now
+
+[08:44:31.0819] <arai>
+so, try taking a profile of your application and see how much time is taken by compilation part
+
+[09:27:51.0701] <Vyacheslav Zavadsky>
+> <@arai:mozilla.org> so, try taking a profile of your application and see how much time is taken by compilation part
+
+yes, they are same across restarts.
+
+[09:37:40.0532] <arai>
+if those scripts are same across restarts, you can save the compilation result on first execution, and all subsequent executions can use the saved file (as long as the SpiderMonkey version is same)
+
+[09:38:46.0543] <arai>
+then, I think you can rewrite the code with Stencil-based API without encode/decode, and the check the profile, and see how much time is taken by `JS::CompileGlobalScriptToStencil`
+
+[09:39:14.0697] <arai>
+if it's taking much time, then you can look into introducing the encode/decode
+
+[09:42:34.0818] <arai>
+also, `JS::CompileGlobalScriptToStencil` can also be done in any thread.  the other option than encode/decode is to compile scripts in some other thread while the main thread is busy, and use the result in the main thread
+
+[09:44:06.0059] <arai>
+both are done in Firefox.  If we have encoded stencil, retrieve it and decode it.  if we don't have it and the script is large enough,  compile it off main thread.  otherwise compile it on main thread.
+
+[09:46:14.0958] <arai>
+in your case, I suppose the set of scripts is known (compared to browser's case where the script is unknown), so you can apply some more optimization based on the input
+
+[09:50:32.0242] <Vyacheslav Zavadsky>
+Is it fair summary that optimal time on JsContext thread is pair (JS::InstantiateGlobalStencil and JS_ExecuteScript). We need to benchmark vs JS_EvaluateScript to make a decision if we can improve. Then we can decide what is better to be done on extra thread (read+decode or CompileGlobalScriptToStencil )?
+
+[09:51:26.0859] <arai>
+yeah
+
+[10:36:33.0181] <nbp>
+Do we have an equivalent of `SetGlobalOptionsPreJSInit` in XPConnect?
+
+[10:37:42.0691] <nbp>
+Or a way to ensure that we can reset a preference in safe mode?
+
+[10:53:19.0741] <arai>
+oh, wrong room
+
+
+2024-11-28
+[08:48:10.0332] <Ms2ger>
+dminor: hey - just to be sure, assuming try goes green, there's nothing blocking me from landing bug 1928619, right?
+
+[08:48:12.0826] <botzilla>
+https://bugzil.la/1928619 — ASSIGNED (Ms2ger) — Prepare non262 tests for exporting to test262
+
+[08:58:09.0266] <nbp>
+jonco: Do you mind if I split [this function](https://searchfox.org/mozilla-central/source/js/src/gc/Allocator-inl.h#102-112) to expose a new function `AllocateTenuredCellFor<T>(cx)` such that I can do a placement new after having checked the result? The reason being that I am changing the JitCode constructor by I adding a moved argument, and I need to handle it correctly in case of errors.
+
+[08:59:40.0708] <dminor>
+A quick introduction: Serah will be joining us as an Outreachy intern, working on Iterator.range over the next few months :)
+
+[09:00:04.0162] <nbp>
+OrOr I should just inline these 3 lines at the call site?
+
+[09:01:51.0126] <jonco>
+nbp: I don't quite follow why you need to do this
+
+[09:03:36.0296] <Serah>
+Hi everyone,
+
+I’m Serah, and I’m thrilled to join as an Outreachy intern working on the Iterator.range project!  I’m looking forward to learning from and contributing to the team over the next few months :).
+
+[09:04:35.0522] <nbp>
+jonco: I have a `cx->newCell<JitCode, allowGC>(std::move(executableCode));`, except that if the `newCell` operation fails, the move operator already cleaned up the caller and I cannot reuse it.
+
+[09:04:48.0740] <nbp>
+ * jonco: I have a `cx->newCell<JitCode, allowGC>(std::move(executableCode));`, except that if the `newCell` operation fails, the move operator already cleaned up the the original holder and I cannot reuse it.
+
+[09:05:09.0695] <nbp>
+I need it to unregister / discard the allocated JitCode.
+
+[09:06:32.0533] <nbp>
+Thus, I have to garantee the allocation before calling the constructor.
+
+[09:24:53.0683] <jonco>
+nbp: That's not how it should work. std::move doesn't do anything itself, it just changes the type so the desired constructor is called
+
+[09:25:19.0027] <jonco>
+(assuming the arguments get forwarded correctly)
+
+[09:28:53.0499] <mgaudet>
+Hello! Welcome! 
+
+[09:32:03.0759] <nbp>
+If so I have always been confused by std::forward and std::move, which is possible …
+
+[09:33:29.0058] <jonco>
+It is certainly confusing
+
+[09:36:43.0311] <nbp>
+Then thanks for helping better understand C++ :/
+
+[09:36:49.0723] <nbp>
+(wish for Rust)
+
+
+2024-11-29
+[08:21:19.0122] <sefeng>
+if I do `.sort(function(a, b) {})`, do we use the same algorithm as Chrome? Would a and b the same between Firefox and Chrome for each comparison? 
+
+[08:21:52.0474] <iain>
+No
+
+[08:45:22.0050] <mgaudet>
+jonco: Big patch stack up -- please say Nope to any of these that you dislike 
+
+[08:50:38.0911] <jonco>
+mgaudet: Thanks! I'll look through these on Monday
+
+[08:51:02.0205] <mgaudet>
+Yeah, deeply not urgent
+
+[08:51:18.0999] <mgaudet>
+Mostly wanted to highlight I'm not wedded to any of them :) 
+
+[09:43:51.0113] <kfjvj>
+I have a question about RunJobs.
+
+What happens in situations where RunJobs ends up calling itself indirectly.  For example, if we have a native function called from JS that calls RunJobs, but that function is already being executed as part of a job in the job queue.
+
+Could this cause problems?
+
+[09:45:25.0976] <iain>
+In the internal job queue, it looks like [we ignore reentrant calls to RunJobs](https://searchfox.org/mozilla-central/source/js/src/vm/JSContext.cpp#846-850).
+
+[09:46:22.0617] <iain>
+Although I think in general we would discourage that kind of behaviour
+
+[09:46:42.0587] <iain>
+And if you're implementing your own job queue you have to make that decision for yourself
+
+[09:48:29.0641] <kfjvj>
+Related question: Are there any "hidden" jobs that might be getting queued up in the job queue that we didn't put there ourselves?  For example, are there any housekeeping tasks like garbage collection?
+
+[09:50:27.0424] <iain>
+Promise resolution goes through RunJobs
+
+[09:51:34.0633] <kfjvj>
+I'm counting promises as things we put there ourselves.
+
+[09:51:39.0072] <iain>
+(Same with async code, which is sugar for promises)
+
+[09:52:06.0768] <kfjvj>
+I mean is there anything that doesn't originate directly in code that we run.
+
+[09:54:12.0648] <iain>
+Background GC tasks run in a [separate system](https://searchfox.org/mozilla-central/source/js/public/HelperThreadAPI.h#29)
+
+[09:54:37.0457] <iain>
+(There is an internal thread pool if you do not set up your own)
+
+[09:55:11.0981] <arai>
+there's a friend API `js::EnqueueJob`, which can enqueue a job to the same job queue.  but this happens only when you explicitly call it from embedding
+
+[09:55:59.0146] <kfjvj>
+The issue we're encountering is that RunJobs is taking more time to execute than we expected.  Could the helper thread potentially be interrupting RunJobs and causing the delay?
+
+[09:58:27.0609] <iain>
+No, helper thread tasks are exclusively scheduled on background threads. Doing a GC requires some main-thread work, which will stop the rest of the engine, but that happens whether or not you're in RunJobs.
+
+[09:58:32.0695] <arai>
+what's the expectation and what do you observe?
+
+[09:58:40.0324] <iain>
+Can you use a profiler?
+
+[10:00:39.0505] <kfjvj>
+> <@arai:mozilla.org> what's the expectation and what do you observe?
+
+When calling RunJobs, we're just taking longer than we would expect based on the code that's running.  (However, it could be an issue with our code, or how we're measuring the time)
+
+[10:01:17.0338] <kfjvj>
+> <@iain:mozilla.org> Can you use a profiler?
+
+I haven't looked into using a profiler yet.
+
+[10:04:55.0200] <arai>
+there's known performance issue around the promise jobs, due to the indirection and crossing the embedding/SpiderMonkey boundary multiple times, and there's ongoing research to improve the situation, but I'm not sure if that applies here, given it's internal job queue.  anyway, it would be nice to look into more details, such as how many jobs there are, how long each job takes, etc.  and yes, profiler will help investigating them
+
+[10:05:42.0901] <kfjvj>
+> <@arai:mozilla.org> there's known performance issue around the promise jobs, due to the indirection and crossing the embedding/SpiderMonkey boundary multiple times, and there's ongoing research to improve the situation, but I'm not sure if that applies here, given it's internal job queue.  anyway, it would be nice to look into more details, such as how many jobs there are, how long each job takes, etc.  and yes, profiler will help investigating them
+
+Do you have any recommendations on profilers to use?
+
+Also, are there any special considerations to be taken regarding profiling of SpiderMonkey specifically?
+
+[10:06:55.0437] <arai>
+for consideration, first, make sure you're using an optimized build (`--enable-optimize` and `--disable-debug`)
+
+[10:08:35.0789] <arai>
+I'm not sure about recommendation.  It would depend on OS, but Xcode's Time Profiler works (or at least worked ~5 years ago)
+
+[10:08:51.0636] <iain>
+If you're profiling jitcode, there are some complications. [This page](https://gist.github.com/mstange/a8a0943f16f388e3ddc9e726d68c436a) describes how we deal with them in the shell/browser.
+
+[10:09:37.0369] <iain>
+Oh, I guess there's a more recent version [here](https://firefox-source-docs.mozilla.org/performance/jit_profiling_with_perf.html)
+
+[10:12:28.0229] <kfjvj>
+Thanks, I will look into this.
+
+[10:14:05.0531] <iain>
+(In general, I like [samply](https://github.com/mstange/samply) and its ability to reuse the firefox profiler's UI)
+
+[10:15:03.0663] <kfjvj>
+> <@iain:mozilla.org> No, helper thread tasks are exclusively scheduled on background threads. Doing a GC requires some main-thread work, which will stop the rest of the engine, but that happens whether or not you're in RunJobs.
+
+Coming back to this comment for a moment, I just want to confirm one thing:  Could the main-thread work from the GC interrupt the execution of RunJobs and make it take longer?
+
+[10:15:30.0230] <iain>
+Only in the same way that it already does for any other code.
+
+[10:16:27.0488] <iain>
+And the GC is pretty fast, so you shouldn't notice unless you're allocating pathological amounts of memory
+
+[10:16:45.0968] <kfjvj>
+OK, so I suppose that's probably not where the issue is coming from.  Thanks
+
+[10:16:55.0476] <iain>
+If it is the problem, the profiler will show it
+
+[10:17:49.0931] <kfjvj>
+THanks for your help
+
+[10:24:14.0659] <mgaudet>
+wtf. ./mach run is eating a SIGSEGV?! 
+
+[10:36:17.0482] <mgaudet>
+oh worse. tried to make an STR to open a bug and it started freaking working
+
+[10:37:40.0618] <mgaudet>
+hrrmmmmmmmm. Anyhow. now I feel nice an silly having wasted a bunch of time. Woo 
+
+[10:37:45.0308] <mgaudet>
+what a way to friday
+
+[10:50:04.0025] <eemeli>
+No, what a way to _friyay_.
+
+[12:05:46.0690] <mgaudet>
+:D 
+
+[12:06:26.0615] <mgaudet>
+Well in this case turns out wasn't mach run; it's JSRuntime::atexit. But I don't understand wasmtrap handler at all, and I'm not going to page that in on a friday 
+
+https://bugzilla.mozilla.org/show_bug.cgi?id=1934315 
+
+opened instead
+
+[15:00:04.0456] <mgaudet>
+/
+
+[15:00:19.0757] <mgaudet>
+ * Uhm why doesn't this room seem to have message search anymore? 
+
+[15:00:41.0024] <mgaudet>
+Oh not just this room. Come on Element
+
+[15:00:45.0037] <mgaudet>
+-sigh- 
+
+[15:00:50.0821] <mgaudet>
+Signing off now :)
+
