@@ -44,7 +44,9 @@ function unlock() {
 async function api(path) {
   await lock();
   try {
-    return (await fetch('https://matrix.org/_matrix/client/r0/' + path, {
+    const server = creds.server || 'https://matrix.org';
+    const url = server + "/_matrix/client/r0/" + path;
+    return (await fetch(url, {
       headers: {
         'Authorization': `Bearer ${creds.accessToken}`,
       },
