@@ -295,9 +295,8 @@ function renderSearch(rooms, room) {
 <link rel="stylesheet" href="../style.css">
 <script src="../search-js/search.js"></script>
 ${renderRoomlistJS(room)}
-<script>initSearch(new URL('${ROOT_SQL_URL}/${sanitizeRoomName(room)}/config.json', location))</script>
 </head>
-<body>
+<body onload="initSearch(new URL('${ROOT_SQL_URL}/${sanitizeRoomName(room)}/config.json', location))">
 
 <div class="wrapper">
 <div class="sidebar">
