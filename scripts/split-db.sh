@@ -12,9 +12,10 @@ bytes="$(stat --printf="%s" "$indb")"
 # smaller chunks = smaller git diffs
 serverChunkSize=$((1024 * 1024))
 suffixLength=3
+additionalSuffix=.mp4
 mkdir -p "$outdir"
 rm -f "$outdir/db.sqlite3"*
-split "$indb" --bytes=$serverChunkSize "$outdir/db.sqlite3." --suffix-length=$suffixLength --numeric-suffixes
+split "$indb" --bytes=$serverChunkSize "$outdir/db.sqlite3." --suffix-length=$suffixLength --numeric-suffixes --additional-suffix=$additionalSuffix
 
 # set request chunk size to match page size
 requestChunkSize="$(sqlite3 "$indb" 'pragma page_size')"
@@ -31,6 +32,7 @@ echo '
     "serverChunkSize": '$serverChunkSize',
     "urlPrefix": "db.sqlite3.",
     "suffixLength": '$suffixLength',
+    "additionalSuffix": "'$additionalSuffix'",
     "cacheBust": "'$cacheBust'"
 }
 ' > "$outdir/config.json"
