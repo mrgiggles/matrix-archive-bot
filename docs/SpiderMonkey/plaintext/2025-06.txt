@@ -1757,3 +1757,239 @@ Sigh. Have a good weekend y'all. Will work on comparison reporting on Monday
 [14:46:34.0624] <mgaudet>
 😞
 
+
+2025-06-24
+[00:58:29.0568] <arai>
+Do we have any up-to-date script corpus to analyze the popular website's scripts usage?  I want to look into the use of certain characteristics of ECMAScript built-ins and WebIDL semantics, in order to minimize the difference between them.  I thought we had some, but I cannot remember where it is
+
+[06:51:51.0753] <dminor>
+Henri Sivonen has been using internet archive to do analyses like this, but I'm not sure what tools he's using, and he's away for the next few weeks.
+
+[07:04:47.0413] <arai>
+thanks!  I'll see if there's any public tools around that
+
+[07:05:39.0610] <jjaschke>
+arai: Ask zcorpan about httparchive :) 
+
+[07:08:04.0101] <arai>
+ah, thank you!
+
+[07:10:05.0538] <zcorpan>
+arai: https://docs.google.com/document/d/1-pAmOC-WFbEVjb2rE0VtMrlOHgcl4Bn7lqmgW3u1rtk/edit?usp=sharing but the examples are out of date. https://har.fyi/ should be up to date with the current table structure
+
+[07:12:01.0646] <zcorpan>
+arai: happy to help running a query or have a call if you want to get it running yourself
+
+[07:13:46.0361] <arai>
+great!  I'll look into the document and I'll ping you later with more details and concrete plan
+
+[07:14:40.0617] <zcorpan>
+I'm here this week, then PTO until 4 Aug
+
+[13:28:23.0034] <mgaudet>
+sfink: So, I've gotten to (mostly) the bottom of a mysterious performance gap I had between a prototype patch I built and a real patch I built. Colour me deeply surprised when I discovered that a huge part of the gap in performance is barriers. I mean, I knew that I had failed to get the barriers right in my prototype, but it ran the benchmark and only crashed sometimes so I (foolishly) ignored it thinking "there's no way it's barriers"
+
+As is tradition: It's barriers. I spend way too much time doing barrier code now. Which brings me to my actual question: When barriers are your problem, what kind of tips and tricks should I be looking at beyond: Hey, try and have less writes (which is my next task: It's clear in the profiles that I'm doing copies I did not expect, where the copies are _way_ more costly as a result of the barriers) 
+
+I see we have `JS::TenuredHeap<>` which certainly would avoid some barriers if I could prove I'm not writing a nursery object in (not sure yet), but I'd be curious about other things-- bulk barrier options etc 
+
+[13:30:51.0383] <mgaudet>
+Right now the core structure, because I wanted to avoid overheads (ha) is a `JS::Heap<JS::Value> arguments[ARGUMENT_MAX];` 
+
+[13:53:13.0928] <sfink>
+mgaudet: do you happen to know which barriers are expensive? As in, pre, post, or read barriers?
+
+[13:53:52.0481] <mgaudet>
+[the post barrier seems worst for sure](https://profiler.firefox.com/public/16m2aj2xch4qf8vx2sxfvrk4yeehzac2nyxc6hg/flame-graph/?globalTrackOrder=0wj&hiddenGlobalTracks=0wbdwj&hiddenLocalTracksByPid=3915693.2-0w6~3915693.1-0wAu~3915709.1-0~3915719.1-0w8~3915782.1-0w8~3915825-0wx0~3915832-0w7~3915881-0wt~3915940-0w6~3915953-0wx1~3915980-0ws~3915982-0ws~3915990-0ws&profileName=Patch%20Checksum.%20barrier-proto&range=4129m24714&symbolServer=http%3A%2F%2F127.0.0.1%3A3000%2F131l5rq2a3qn5h2fwqriv7jf710jkhn8zj2x90r&thread=C5&transforms=ff-2788~rec-2788&v=10) 
+
+[13:54:44.0507] <sfink>
+also, `arguments`... this must be some sort of stored arguments thing, like in a Promise reaction or something? (Because normally I'd expect something called `arguments` to be on the stack.)
+
+[13:55:27.0558] <sfink>
+oh, yep
+
+[13:59:48.0249] <mgaudet>
+yeah (i'm realizing that C++ needs you to write a heck of a lot more move constructors than you think as I try to eliminate copying) 
+
+[14:07:15.0129] <sfink>
+wow, you have a lot of samples. How did it manage to get 145 samples in Value.isGCThing()? (Yes, the profile says it's optimized.)
+
+[14:07:28.0696] <sfink>
+the profile says a fair amount of time in read barriers and pre barriers, too
+
+[14:07:46.0746] <sfink>
+* [the profile](https://profiler.firefox.com/public/16m2aj2xch4qf8vx2sxfvrk4yeehzac2nyxc6hg/flame-graph/?globalTrackOrder=0wj&hiddenGlobalTracks=0wbdwj&hiddenLocalTracksByPid=3915693.2-0w6~3915693.1-0wAu~3915709.1-0~3915719.1-0w8~3915782.1-0w8~3915825-0wx0~3915832-0w7~3915881-0wt~3915940-0w6~3915953-0wx1~3915980-0ws~3915982-0ws~3915990-0ws&profileName=Patch%20Checksum.%20barrier-proto&range=4129m24714&symbolServer=http%3A%2F%2F127.0.0.1%3A3000%2F131l5rq2a3qn5h2fwqriv7jf710jkhn8zj2x90r&thread=C5&transforms=ff-2788~rec-2788~ff-2945&v=10) says a fair amount of time in read barriers and pre barriers, too
+
+[14:09:20.0005] <iain>
+The most likely explanation for Value.isGCThing is that it's (at least sometimes) the first place we look at the contents of the Value, so if it's not currently in L1, it pays the cost of the cache miss
+
+[14:09:32.0278] <mgaudet>
+(Doxbee promise runs for a good chunk of time, and `samply -r 1000`) 
+
+[14:10:16.0826] <mgaudet>
+Actually that's another fix I should make if I can get this to stop copying; I am pretty sure I actually don't need value args, just objects. 
+
+[14:17:01.0216] <sfink>
+I wonder if we could have some sort of deferred barrier (for post and read barriers): kind of like a PersistentMinorRooted that does only pre barriers in the common case, but if it runs a minor GC (or CC?) while it's live, it does post barriers and read barriers for everything in the array/vector. If it dies before anything happens or it was never looked at (requiring a simple "observed" boolean flag barrier), then it wouldn't do any barriers at all. Hm... that's probably not sound.
+
+[14:17:19.0928] <sfink>
+(if you read something out, then change it, you'd lose the read barrier on the original value)
+
+[14:17:32.0179] <sfink>
+I'm overcomplicating this, I bet.
+
+[14:17:51.0149] <mgaudet>
+I mean possibly so am I -- currently trying to just stop copying by deleting copy constructors and seeign whta I can do 
+
+[14:17:58.0122] <mgaudet>
+* I mean possibly so am I -- currently trying to just stop copying by deleting copy constructors and seeing what I can do 
+
+[14:18:37.0999] <mgaudet>
+(std::move + JS::Handle<> == ow ow ow) 
+
+[14:18:58.0413] <iain>
+This doesn't necessarily work well with your current minimalist plan, but it occurs to me that you wouldn't need barriers to store arguments in a promise reaction if the promise reaction were also a nursery object
+
+[14:19:03.0850] <sfink>
+do you ever update the values? If not, I'm thinking at least the pre-barrier should be avoidable. I think it's triggered because of the copying.
+
+[14:19:30.0378] <mgaudet>
+That's the other thing; no. These things are pretty much write once, read once. 
+
+[14:19:48.0682] <mgaudet>
+once constructed and initialized, they never get mutated. 
+
+[14:20:14.0886] <mgaudet>
+But I do _need_ the barriers to make sure nursery pointers get updated 
+
+[14:20:20.0326] <mgaudet>
+if their referent gets tenured
+
+[14:20:27.0335] <sfink>
+yeah, that's the post barrier
+
+[14:24:57.0526] <sfink>
+we sort of need a magic object in the nursery that holds the arguments objects, like iain is saying, and make it pinky swear that it will have a single owner so we can recurse into it during a minor GC. Which essentially makes it part of the store buffer. Then it would be barriered, but it's a single barrier for all of the arguments.
+
+[14:25:52.0078] <iain>
+Why does it need a single owner?
+
+[14:26:55.0551] <sfink>
+I'm not sure if that's the right constraint. We just want to recurse into it without having any possibility of blowing the stack.
+
+[14:28:05.0377] <sfink>
+maybe all that's needed is that when it's visited, it appends all of its nursery contents onto the fixup list. No recursion needed.
+
+[14:28:49.0357] <mgaudet>
+(this may ultimately be moot -- I think there's other design constraints we'll eventually have to deal with, so making this perfect probably isn't necessary) 
+
+[14:31:06.0262] <iain>
+Just for the sake of sharpening my own intuition: suppose we had a nursery-allocated ListObject containing the arguments, and the promise reaction had a normally-barriered edge to that ListObject. Then we would have a barrier for the edge to the List, but no barriers for initializing the list, because nursery->nursery edges don't need post-barriers, right?
+
+[14:33:42.0090] <sfink>
+Hopefully I don't get this wrong... I think that's correct, but you sort of have to guarantee that the ListObject *is* in the nursery. A normal ListObject would check that in the post-barrier itself. "Is owner in the nursery? Done, nothing to do."
+
+[14:34:11.0770] <sfink>
+the per-entry post-barrier, I mean.
+
+[14:35:02.0130] <iain>
+Right.
+
+[14:36:19.0530] <iain>
+So in a hypothetical future world, we could have a PromiseReactionObject with a fast jit-code path to bump-allocate it in the nursery and store the arguments internally with no barriers?
+
+[14:36:55.0660] <sfink>
+oh yes, from the JIT that's something that already happens in some places
+
+[14:37:21.0926] <sfink>
+(eg creating a regexp result with capture strings)
+
+[14:37:32.0258] <iain>
+Yeah, that's what I thought
+
+[14:43:13.0502] <sfink>
+I guess the non-JIT "IC" equivalent is what mgaudet was saying in the first place: when assigning into the arguments array, do one check for the owner being in the nursery, and if it is, do unbarriered writes.
+
+[14:43:25.0606] <sfink>
+With some complexity if a minor GC happens in the middle of this, but as long as you're not creating new argument objects, it's still not a problem: now you know you're doing a tenured->tenured write.
+
+[14:43:36.0770] <sfink>
+Unless! you have a semi-space nursery :-(
+
+[14:45:02.0785] <sfink>
+(the mgaudet thing I was referring to was batching the barriers; this would be a form of that)
+
+[15:10:42.0453] <sfink>
+mgaudet: do you know if the [requirements](https://searchfox.org/mozilla-central/rev/ba8d4b59f46a820fc3c2f0a55c638e4f8b29bfda/js/src/gc/Barrier.h#597-599) for using GCPtr are met? That would be cheaper, at least.
+
+[15:15:51.0684] <mgaudet>
+Uhh. Methinks no; but I'm past EOD now so I'll think more tomorrow. 
+
+
+2025-06-25
+[23:29:19.0649] <delan>
+o/ does anyone know if the [Debugger api](https://firefox-source-docs.mozilla.org/js/Debugger/Debugger-API.html) is exposed to C++, or only javascript? if it’s only available to javascript, how do we run a privileged script that can [import resource://gre/modules/jsdebugger.sys.mjs](https://firefox-source-docs.mozilla.org/js/Debugger/Tutorial-Breakpoint.html)?
+
+[23:44:47.0077] <arai>
+it's mostly available only to JavaScript.
+
+[23:45:29.0225] <arai>
+are you having trouble with importing the module? for instance, do you get any error message?
+
+[23:46:22.0677] <arai>
+also, what's the context for the question?  is this for Firefox, or other embeddings?
+
+[23:46:32.0509] <arai>
+delan: ^
+
+[01:12:09.0701] <delan>
+arai: this is for servo, another embedding of spidermonkey. i haven’t really worked with spidermonkey before, so i’m not sure how running a privileged script would need to look compared to running a normal content script
+
+[01:47:55.0275] <arai>
+I don't know how servo works, but isn't there any privileged script already running as a part of browser UI ?
+
+[01:55:03.0750] <delan>
+i don’t think so, no, our browser ui is written in rust with a native widget toolkit such as egui
+
+[01:56:31.0462] <arai>
+if there's no privileged global or anything along that line, then it would mean you need to create similar thing from scratch
+
+[01:57:13.0863] <arai>
+then, for the Debugger API itself, you can call [JS_DefineDebuggerObject](https://searchfox.org/mozilla-central/rev/ec8a326713f60dec138a3e3383b03ac739870fc7/js/public/Debug.h#30-32) on the global
+
+[01:57:56.0101] <arai>
+which is done in [mozilla::jsdebugger::JSDebugger::AddClass](https://searchfox.org/mozilla-central/rev/ec8a326713f60dec138a3e3383b03ac739870fc7/devtools/platform/JSDebugger.cpp#43-46), that's the main part of [jsdebugger.sys.mjs](https://searchfox.org/mozilla-central/rev/ec8a326713f60dec138a3e3383b03ac739870fc7/devtools/platform/jsdebugger.sys.mjs#23-24)
+
+[01:58:41.0529] <delan>
+what makes a global privileged? sorry for probably a really basic question
+
+[01:58:42.0584] <arai>
+that way the `Debugger` property is defined on the global, and you can call Debugger API from JS code
+
+[02:00:17.0897] <arai>
+associated principal, passed to [JS_NewGlobalObject](https://searchfox.org/mozilla-central/rev/ec8a326713f60dec138a3e3383b03ac739870fc7/js/public/GlobalObject.h#65-66)
+
+[02:00:26.0986] <arai>
+but I'm not sure how it's used in servo
+
+[02:00:38.0800] <arai>
+so, I'd suggest looking into existing JSAPI consumers
+
+[02:00:53.0038] <arai>
+and how principal or anything along that line is implemented there
+
+[02:01:47.0800] <arai>
+especially [JSPrincipals::isSystemOrAddonPrincipal](https://searchfox.org/mozilla-central/rev/ec8a326713f60dec138a3e3383b03ac739870fc7/js/public/Principals.h#55-59)
+
+[02:06:18.0494] <arai>
+then, to my understanding, "privileged" is mostly what the embeddings define.  the principal provides a way to associate it to globals
+
+[02:07:03.0298] <delan>
+ahh thank you! it looks like [our counterpart is here](https://github.com/servo/servo/blob/4ee348a2021f80f23b1063841acf7402b020ddcb/components/script_bindings/interface.rs#L155-L161) → [here](https://github.com/servo/servo/blob/4ee348a2021f80f23b1063841acf7402b020ddcb/components/script_bindings/principals.rs#L27) → [here](https://github.com/servo/servo/blob/4ee348a2021f80f23b1063841acf7402b020ddcb/components/script/dom/bindings/utils.rs#L161) → [here](https://github.com/servo/servo/blob/4ee348a2021f80f23b1063841acf7402b020ddcb/components/script/dom/bindings/principals.rs#L77)
+
+[02:07:11.0518] <arai>
+so, if servo-side doesn't use it at all, then either (a) you don't have to worry about it, and just define Debugger API to dedicate global and use it, or (b) define it and use it
+
+[02:08:30.0654] <delan>
+this is very helpful, thanks again! i expect we’ll run into more questions along the way, but this is a great start
+
