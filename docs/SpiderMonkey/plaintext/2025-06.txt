@@ -2036,3 +2036,38 @@ whee, found a bug in mozilla::Printf format handling. Asserts or does out of bou
 [02:05:21.0060] <padenot>
 sfink: cool kids use `fmt`
 
+[08:00:55.0333] <sfink>
+padenot: I suspect you're right, and in fact that was the thought that ended up discouraging me from spending the time to fix the bug (bug 1974345 btw). Even though I haven't really used `fmt` yet, it seemed like a better use of time would be making `JS_LOG_FMT` (or switching `JS_LOG` to be on top of `MOZ_LOG_FMT`?) instead of patching together the painful portability mess of "%" PRIu64 "..."
+
+[08:00:57.0817] <botzilla>
+https://bugzil.la/1974345 — NEW (nobody) — Printf fails with reused positional parameters
+
+[08:01:22.0854] <sfink>
+unfortunately, I myself do not happen to be a cool kid, so I'm not sure if I'm allowed to use it.
+
+[08:05:45.0338] <padenot>
+the nice thing about fmt is that I can teach you how to use it in two sentences:
+1. use {}
+2. if you need to specify precision and format and things like that for numbers, read this: https://searchfox.org/mozilla-central/source/mozglue/tests/gtest/TestFmt.cpp#24
+
+[08:05:52.0509] <padenot>
+* sfink: the nice thing about fmt is that I can teach you how to use it in two sentences:
+
+1. use {}
+2. if you need to specify precision and format and things like that for numbers, read this: https://searchfox.org/mozilla-central/source/mozglue/tests/gtest/TestFmt.cpp#24
+
+[08:06:08.0385] <padenot>
+voilà
+
+[08:06:30.0093] <padenot>
+since you know how printf works and point 2 allows converting from one to the other, we're done
+
+[08:07:30.0505] <padenot>
+you can also copy-paste-adapt our `MOZ_LOG_FMT`: https://searchfox.org/mozilla-central/source/xpcom/base/Logging.h#275 that does type erasure etc to avoid bloating the binary
+
+[08:08:38.0593] <sfink>
+heh, I just looked, and `JS_LOG_FMT` already exists.
+
+[08:11:37.0116] <sfink>
+I was actually doing something horrible with this stuff. I had things like `printf_stderr("SKYNET: cp /proc/%d/smaps /tmp/after/\n", getpid()); sleep(10);` and then piped stderr through something like `perl -lne 'system($1) if /SKYNET: (.*)/` so that I could grab stuff from /proc, do an operation like mmap, grab it again, etc. But there's nothing in that blocking me from using JS_LOG*
+
